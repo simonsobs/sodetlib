@@ -4,7 +4,7 @@ dev_cfg:
     amp_50k_Id: 15 #mA
     amp_hemt_Vg: -1.1 #Volts
     amp_hemt_Id: 8 #mA
-  tunefile: 'tunefile.npy'
+  tunefile: None
   iv:
     bias_groups: [1,1,1,1,1,1,1,1,1,1,1,1] #Indicates whether bias group is on [0-11]
     bias_high: [10,10,10,10,10,10,10,10,10,10,10,10] #Volts
