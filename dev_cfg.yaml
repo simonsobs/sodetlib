@@ -5,6 +5,7 @@ dev_cfg:
     amp_hemt_Vg: -1.1 #Volts
     amp_hemt_Id: 8 #mA
   tunefile: NULL
+  pysmurf_cfg: '/data/pysmurf_cfg/experiment_pd009_cc02-01_lbBay0Bay1_r4.cfg'
   iv:
     bias_groups: [1,1,1,1,1,1,1,1,1,1,1,1] #Indicates whether bias group is on [0-11]
     bias_high: [10,10,10,10,10,10,10,10,10,10,10,10] #Volts
