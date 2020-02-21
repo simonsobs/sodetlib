@@ -1,37 +1,51 @@
 dev_cfg:
   amps:
-    amp_50k_Vg:-0.6 #Volts
-    amp_50k_Id:15 #mA
-    amp_hemt_Vg:-1.1 #Volts
-    amp_hemt_Id:8 #mA
+    amp_50k_Vg: -0.6 #Volts
+    amp_50k_Id: 15 #mA
+    amp_hemt_Vg: -1.1 #Volts
+    amp_hemt_Id: 8 #mA
   tunefile: 'tunefile.npy'
+  iv:
+    bias_groups: [1,1,1,1,1,1,1,1,1,1,1,1] #Indicates whether bias group is on [0-11]
+    bias_high: [10,10,10,10,10,10,10,10,10,10,10,10] #Volts
+    bias_low: [0,0,0,0,0,0,0,0,0,0,0,0] #Volts
+    overbias_amp: [19.9,19.9,19.9,19.9,19.9,19.9,19.9,19.9,19.9,19.9,19.9,19.9] #Volts
+    bias_step: [0.025,0.025,0.025,0.025,0.025,0.025,0.025,0.025,0.025,0.025,0.025,0.025] #Volts
+    wait_time: [0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001] #Wait time between steps
+    ob_wait_time: [30,30,30,30,30,30,30,30,30,30,30,30] #Time to wait after overbiasing bolometers
   AMC[0]:
     power:
-      uc_att:[30,30,30,30]   
-      dc_att:[0,0,0,0]
-      drive:[12,12,12,12]
+      uc_att: [30,30,30,30]   
+      dc_att: [0,0,0,0]
+      drive: [12,12,12,12]
     tracking:
-      frac_pp:[0.5,0.5,0.5,0.5]
-      flux_ramp_rate_khz:[4,4,4,4]
-      lms_freq_hz:[None,None,None,None]
-      lms_gain:[6,6,6,6]
-      feedback_start_frac:[0.25,0.25,0.25,0.25]
-      feedback_end_frac:[0.98,0.98,0.98,0.98]
-      meas_lms_freq:[True,True,True,True]
-      make_plot:[True,True,True,True]
-      show_plot:[False,False,False,False]
+      frac_pp: [0.5,0.5,0.5,0.5]
+      flux_ramp_rate_khz: [4,4,4,4]
+      lms_freq_hz: [None,None,None,None]
+      lms_gain: [6,6,6,6]
+      feedback_start_frac: [0.25,0.25,0.25,0.25]
+      feedback_end_frac: [0.98,0.98,0.98,0.98]
+      meas_lms_freq: [True,True,True,True]
+      make_plot: [True,True,True,True]
+      show_plot: [False,False,False,False]
+    noise:
+      time: [30,30,30,30]
+      nperseg: [2**16,2**16,2**16,2**16]      
   AMC[1]:
     power:
-      uc_att:[30,30,30,30]   
-      dc_att:[0,0,0,0]
-      drive:[12,12,12,12]
+      uc_att: [30,30,30,30]   
+      dc_att: [0,0,0,0]
+      drive: [12,12,12,12]
     tracking:
-      frac_pp:[0.5,0.5,0.5,0.5]
-      flux_ramp_rate_khz:[4,4,4,4]
-      lms_freq_hz:[None,None,None,None]
-      lms_gain:[6,6,6,6]
-      feedback_start_frac:[0.25,0.25,0.25,0.25]
-      feedback_end_frac:[0.98,0.98,0.98,0.98]
-      meas_lms_freq:[True,True,True,True]
-      make_plot:[True,True,True,True]
-      show_plot:[False,False,False,False]
+      frac_pp: [0.5,0.5,0.5,0.5]
+      flux_ramp_rate_khz: [4,4,4,4]
+      lms_freq_hz: [None,None,None,None]
+      lms_gain: [6,6,6,6]
+      feedback_start_frac: [0.25,0.25,0.25,0.25]
+      feedback_end_frac: [0.98,0.98,0.98,0.98]
+      meas_lms_freq: [True,True,True,True]
+      make_plot: [True,True,True,True]
+      show_plot: [False,False,False,False]
+    noise:
+      time: [30,30,30,30]
+      nperseg: [2**16,2**16,2**16,2**16]
