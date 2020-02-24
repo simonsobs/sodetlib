@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+import shlex
+import yaml
+import sys
+import time
+import os
+
+# This should be the same for every smurf-srv
+cwd=os.environ['OCS_CONFIG_DIR']
+sys_config_file = os.path.join(os.environ['OCS_CONFIG_DIR'], 'sys_config.yml')
+
+with open(sys_config_file, 'r') as stream:
+    sys_config = yaml.safe_load(stream)
+
+########################################################################
+# Various utility functions
+########################################################################
+def print_header(msg):
+    print('\n' + "-"*80)
+    print(msg)
+    print("-"*80)
+
+def check_epics_connection(epics_server, retry=False):
+    """
+        Checks if we can connect to a specific epics server. 
+
+        Args:
+            epics_server (string): 
+                epics server to connect to
+            retry (bool):
+                If true, will continuously check until a connection has been 
+                established.
+    """
+    if retry:
+        print(f"Waiting for epics connection to {epics_server}", end='', flush=True)
+        while True:
+            x = subprocess.run(
+                f'docker exec -it smurf-util caget {epics_server}:AMCc:enable'.split(),
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
+            if "True" in x.stdout.decode():
+                break
+            print('.', end='', flush=True)
+
+        print("\nConnected!")
+        return True
+    else:
+        x = subprocess.run(
+            'docker exec -it smurf-util caget {epics_server}:AMCc:enable'.split(),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return "True" in x.stdout.decode()
+
+
+def get_running_dockers():
+    """
+        Gets all currently running dockers. 
+
+        Returns: 
+            A list of tuples of the (cid, image, name)
+    """
+    x = subprocess.run('docker ps -a'.split(), stdout=subprocess.PIPE)
+    containers=[]
+    for line in x.stdout.decode().split('\n')[1:]:
+        if not line:
+            continue
+
+        cid, image, *_, cname = line.split()
+        containers.append((cid, image, cname))
+
+    return containers
+
+
+def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
+    """
+        Kills relevant dockers for a given set of slots.
+
+        Args: 
+            slots (list of ints):
+                list of slots which we should kill related dockers
+            ocs (bool): 
+                If true, will also kill ocs-related dockers
+            names (list of strings): 
+                List of additional docker names we should kill
+            images (list of strings):
+    """
+
+    print(f"Killing bad dockers for slots {slots}")
+    bad_names = names
+
+    for slot in slots:
+        # conflicting names created by jackhammer
+        bad_names.append(f'smurf-streamer-s{slot}')
+        bad_names.append(f'pysmurf-client-s{slot}')
+
+        # conflicting names created by shawnhammer
+        bad_names.append(f"pysmurf_s{slot}")
+        bad_names.append(f"smurf_server_s{slot}")
+        if ocs:
+            bad_names.append(f'ocs-pysmurf-s{slot}')
+    if ocs:
+        bad_names.append('ocs-pysmurf-monitor')
+
+    bad_images = images
+
+    containers = get_running_dockers()
+
+    for cid, full_image, name in containers:
+        # This will usually get the real image name. 
+        # We want 'pysmurf-server' from 'tidair/pysmurf-server:R0.0.0'
+        image = full_image.split('/')[-1].split(':')[0]
+
+        if (name in bad_names) or (image in bad_images):
+            print(f"Stopping docker {name} ({image})")
+            subprocess.run(f'docker stop {cid}'.split())
+            subprocess.run(f'docker rm {cid}'.split())
+
+def run_on_shelf_manager(cmd_str):
+    """ Runs a command on the shelf manager. Takes in the command as a string"""
+    cmd = ['ssh', f'root@{sys_config["shelf_manager"]}', f'{cmd_str}']
+    print(cmd)
+    subprocess.run(cmd)
+
+def enter_pysmurf(slot, agg=False):
+
+    cmd = f'docker exec -it smurf-util ' \
+          f'python3 /sodetlib/server_scripts/start_pysmurf_ipython.py -N {slot} '
+
+    if agg:
+        cmd += '--agg'
+
+    subprocess.run(cmd.split())
+
+########################################################################
+# jackhammer subcommand entrypoints
+########################################################################
+
+# Entrypoint for jackhammer pysmurf
+def pysmurf_func(args):
+    available_slots = sys_config['smurf_slots']
+
+    if args.slot is not None:
+        if args.slot not in available_slots:
+            print(f"Slot {args.slot} is not listed in the available smurf_slots in {sys_config_file}")
+            raise ValueError
+        slot = args.slot
+    else:
+        if len(available_slots) > 1:
+            print("There are multiple slot options. Must specify slot in command line")
+        else:
+            slot = available_slots[0]
+
+    enter_pysmurf(slot, args.agg)
+
+
+# Entrypoint for jackhammer soft_reset
+def softreset_func(args):
+    containers = get_running_dockers()
+
+    # If no slots are specified reset all slots
+    if not args.slots:
+        args.slots = sys_config['smurf_slots']
+
+    kill_bad_dockers(args.slots, ocs=args.ocs)
+
+    print("Running docker-compose up....")
+    subprocess.run('docker-compose up -d'.split(), cwd=cwd)
+
+
+# Entrypoint for jackhammer hard_reset
+def hardreset_func(args):
+    print("Not implemented....")
+    pass
+
+
+# Entrypoint for jackhammer hammer
+def hammer_func(args):
+    # here we go....
+
+    slots = sys_config['smurf_slots']
+    print_header("Killing conflicting dockers")
+    kill_bad_dockers(slots, ocs=True)
+
+    print_header("Restarting smurf-util")
+    # Restarts smurf-util to clean up any running processes
+    subprocess.run('docker-compose restart smurf-util'.split(), cwd=cwd)
+
+    # Sets fan levels on crate
+    print_header("Setting fan levels")
+    if sys_config['startup']['set_crate_fans_to_full']:
+        cmd =  f'clia minfanlevel {sys_config["max_fan_level"]}; '
+        cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
+
+        print("Setting crate fans to full...")
+        run_on_shelf_manager(cmd)
+
+
+
+    if sys_config['startup']['reboot'] and (not args.no_reboot):
+        print_header("Rebooting all slots")
+
+        deactivate_commands = []
+        activate_commands = []
+        for slot in slots:
+            deactivate_commands.append(f'clia deactivate board {slot}')
+            activate_commands.append(f'clia activate board {slot}')
+
+        print(f"Deactivating carriers: {slots}")
+        run_on_shelf_manager('; '.join(deactivate_commands))
+
+        print("Waiting 5 seconds before re-activating carriers")
+        time.sleep(5)
+
+        print(f"Activating carriers: {slots}")
+        run_on_shelf_manager('; '.join(activate_commands))
+
+    
+        print("Waiting for carriers to come back online")        
+        for slot in slots:
+            ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
+            subprocess.run(['ping_carrier', ip])
+    else:
+        print("Skipping reboot process")
+    
+    #Brings up all smurf-streamer dockers
+    print_header('Bringing up smurf dockers')
+    cmd = 'docker-compose up -d'.split()
+    for slot in sys_config['smurf_slots']:
+        cmd.append(f'smurf-streamer-s{slot}')
+        cmd.append(f'ocs-pysmurf-s{slot}')
+    cmd.append('ocs-pysmurf-monitor')
+    cmd.append('smurf-util')
+    subprocess.run(cmd, cwd=cwd)
+
+    # Waits for streamer-dockers to start
+    print("Waiting for server dockers to connect. This might take a few minutes...")
+    for slot in sys_config['smurf_slots']:
+        epics_server = f'smurf_server_s{slot}'
+        check_epics_connection(epics_server, retry=True)
+
+    print("All streamers have started!")
+    if sys_config['startup']['configure_pysmurf']:
+        print_header("Configuring pysmurf")
+        for slot in sys_config['smurf_slots']:
+            print(f"Configuring pysmurf on slot {slot}...")
+
+            cmd = f'docker exec -it smurf-util ' \
+                  f'python3 /sodetlib/server_scripts/setup_pysmurf.py -N {slot}'
+
+            subprocess.run(shlex.split(cmd))
+        print("Finished configuring pysmurf!")
+
+
+    # If there is only a single pysmurf slot, starts an ipython session
+    if len(slots) == 1:
+        print_header(f"Entering pysmurf slot {slot}")
+        enter_pysmurf(slots[0], agg=args.agg)
+    else:
+        print("There are multiple pysmurf slots! To enter one, run:")
+        print("\tjackhammer pysmurf <slot>")
+        
+
+# Entrypoint for jackhammer logs
+def log_func(args):
+    cmd = shlex.split('docker-compose logs -f')
+    cmd.extend(args.log_args)
+    subprocess.run(cmd, cwd=cwd)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    ########### Jackhammer pysmurf parser ############
+    pysmurf_parser = subparsers.add_parser('pysmurf', 
+        help="Drops user into ipython session with pysmurf already initialized"
+    )
+    pysmurf_parser.set_defaults(func=pysmurf_func)
+    pysmurf_parser.add_argument('slot', type=int, nargs="?", 
+        help="Slot number of pysmurf to connect to. If left blank it will "
+             "try to figure it out from the sys_config file."
+    )
+    pysmurf_parser.add_argument('--config-file', '-c', 
+        help="Pysmurf config file. Defaults to what is specified in sys config file."
+    )
+    pysmurf_parser.add_argument('--setup', '-s', action='store_true', 
+        help="If specified, pysmurf will start with setup=True."
+    )
+    pysmurf_parser.add_argument('--agg', action='store_true', 
+        help="If specified, matplotlib will use the agg backend. This can be "
+             "helpful if you are connecting over ssh without a display."
+    )
+
+    ########### Jackhammer soft_reset parser ############
+    softreset_parser = subparsers.add_parser('soft_reset', 
+        help="Resets the smurf_server backends and makes sure ocs dockers are running."
+    )
+    softreset_parser.set_defaults(func=softreset_func)
+    softreset_parser.add_argument('slots', nargs="*", 
+        help="Slots to reset. If not specified, will reset all of them."
+    )
+    softreset_parser.add_argument('--ocs', action='store_true',
+        help="If specified, ocs agents will also be restarted. If not, they will "
+             "be left running."
+    )
+
+    ########### Jackhammer hard_reset parser ############
+    hardreset_parser = subparsers.add_parser('hard_reset')
+    hardreset_parser.set_defaults(func=hardreset_func)
+    hardreset_parser.add_argument('slots', nargs="*", 
+        help="Slots to reset. If not specified, will reset all of them."
+    )
+    hardreset_parser.add_argument('--ocs', action='store_true',
+        help="If specified, ocs agents will also be restarted. If not, they will "
+             "be left running."
+    )
+
+    ########### Jackhammer hammer parser ############
+    hammer_parser = subparsers.add_parser("hammer")
+    hammer_parser.set_defaults(func=hammer_func)
+    hammer_parser.add_argument('--no-reboot', '-n', action='store_true')
+    hammer_parser.add_argument('--agg', action='store_true')
+
+    ########### Jackhammer logs parser ############
+    log_parser = subparsers.add_parser('logs')
+    log_parser.add_argument('log_args', nargs="*", type=str, help="args passed to docker-compose logs")
+    log_parser.set_defaults(func=log_func)
+
+
+    args = parser.parse_args()
+    if hasattr(args, 'func'):
+        args.func(args)
+    else:
+        parser.print_help()
+
