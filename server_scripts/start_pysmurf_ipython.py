@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--slot', '-N')
+    parser.add_argument('--slot', '-N', type=int)
     parser.add_argument('--config-file', '-c', default=sys_config['pysmurf_config_file'])
     parser.add_argument('--setup', action='store_true')
     parser.add_argument('--agg', action='store_true')
@@ -24,6 +24,10 @@ if __name__ == "__main__":
     import pysmurf.client
 
     epics_root = f'smurf_server_s{args.slot}'
+
+    # Sets pysmurf publisher id
+    crate = sys_config['crate_id']
+    os.environ['SMURFPUB_ID'] = f'crate{crate}_slot{args.slot}'
 
     print(f"Creating pysmurf object for slot {args.slot}")
     S = pysmurf.client.SmurfControl(

@@ -125,6 +125,14 @@ def run_on_shelf_manager(cmd_str):
     subprocess.run(cmd)
 
 def enter_pysmurf(slot, agg=False):
+    """
+        Enters into a pysmurf ipython session.
+
+        Args: 
+            slot (int): slot to enter into
+            agg (bool): if true, use the matplotlib agg backend.
+    """
+    print(f"Entering pysmurf on slot {slot}", flush=True)
 
     cmd = f'docker exec -it smurf-util ' \
           f'python3 /sodetlib/server_scripts/start_pysmurf_ipython.py -N {slot} '
@@ -148,12 +156,9 @@ def pysmurf_func(args):
             raise ValueError
         slot = args.slot
     else:
-        if len(available_slots) > 1:
-            print("There are multiple slot options. Must specify slot in command line")
-        else:
-            slot = available_slots[0]
+        slot = available_slots[0]
 
-    enter_pysmurf(slot, args.agg)
+    enter_pysmurf(slot, agg=args.agg)
 
 
 # Entrypoint for jackhammer soft_reset
@@ -169,6 +174,11 @@ def softreset_func(args):
     print("Running docker-compose up....")
     subprocess.run('docker-compose up -d'.split(), cwd=cwd)
 
+    for slot in args.slots:
+        check_epics_connection(f'smurf_server_s{slot}', retry=True)
+
+    enter_pysmurf(args.slots[0])
+
 
 # Entrypoint for jackhammer hard_reset
 def hardreset_func(args):
@@ -179,7 +189,6 @@ def hardreset_func(args):
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
-
     slots = sys_config['smurf_slots']
     print_header("Killing conflicting dockers")
     kill_bad_dockers(slots, ocs=True)
@@ -218,7 +227,7 @@ def hammer_func(args):
         run_on_shelf_manager('; '.join(activate_commands))
 
     
-        print("Waiting for carriers to come back online")        
+        print("Waiting for carriers to come back online (this takes a bit)")        
         for slot in slots:
             ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
             subprocess.run(['ping_carrier', ip])
@@ -254,13 +263,10 @@ def hammer_func(args):
         print("Finished configuring pysmurf!")
 
 
-    # If there is only a single pysmurf slot, starts an ipython session
-    if len(slots) == 1:
-        print_header(f"Entering pysmurf slot {slot}")
-        enter_pysmurf(slots[0], agg=args.agg)
-    else:
-        print("There are multiple pysmurf slots! To enter one, run:")
-        print("\tjackhammer pysmurf <slot>")
+    # Enters into an ipython notebook for the first specified slot   
+    print_header(f"Entering pysmurf slot {slots[0]}")
+    enter_pysmurf(slots[0], agg=args.agg)
+ 
         
 
 # Entrypoint for jackhammer logs
