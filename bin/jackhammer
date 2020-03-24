@@ -195,6 +195,8 @@ def hammer_func(args):
 
     print_header("Restarting smurf-util")
     # Restarts smurf-util to clean up any running processes
+    subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
+    subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
     subprocess.run('docker-compose restart smurf-util'.split(), cwd=cwd)
 
     # Sets fan levels on crate
@@ -275,6 +277,17 @@ def log_func(args):
     cmd.extend(args.log_args)
     subprocess.run(cmd, cwd=cwd)
 
+# Entrypoint for jackhamer util
+def util_func(args):
+    # Check if util docker is up and running
+    containers = get_running_dockers()
+    names = [c[2] for c in containers]
+
+    if "smurf-util" not in names:
+        subprocess.run('docker-compose up -d smurf-util'.split(), cwd=cwd)
+
+    subprocess.run('docker exec -it smurf-util bash'.split())
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -335,6 +348,9 @@ if __name__ == '__main__':
     log_parser.add_argument('log_args', nargs="*", type=str, help="args passed to docker-compose logs")
     log_parser.set_defaults(func=log_func)
 
+    ########### Jackhammer util parser ############
+    util_parser = subparsers.add_parser('util')
+    util_parser.set_defaults(func=util_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
