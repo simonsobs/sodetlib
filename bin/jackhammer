@@ -142,6 +142,22 @@ def enter_pysmurf(slot, agg=False):
 
     subprocess.run(cmd.split())
 
+def start_services(services):
+    env = os.environ.copy()
+
+    docker_env = sys_config.get('docker_env')
+    if docker_env is not None:
+        env.update(docker_env)
+
+    if isinstance(services, str):
+        services = [services]
+
+    cmd = 'docker-compose up -d'.split()
+    cmd.extend(services)
+
+    subprocess.run(cmd, cwd=cwd, env=env)
+
+
 ########################################################################
 # jackhammer subcommand entrypoints
 ########################################################################
@@ -172,7 +188,13 @@ def softreset_func(args):
     kill_bad_dockers(args.slots, ocs=args.ocs)
 
     print("Running docker-compose up....")
-    subprocess.run('docker-compose up -d'.split(), cwd=cwd)
+
+    services = ['ocs-pysmurf-monitor', 'smurf-util']
+    for slot in sys_config['smurf_slots']:
+        services.append(f'smurf-streamer-s{slot}')
+        services.append(f'ocs-pysmurf-s{slot}')
+
+    start_services(services)
 
     for slot in args.slots:
         check_epics_connection(f'smurf_server_s{slot}', retry=True)
@@ -197,7 +219,7 @@ def hammer_func(args):
     # Restarts smurf-util to clean up any running processes
     subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
     subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
-    subprocess.run('docker-compose restart smurf-util'.split(), cwd=cwd)
+    start_services('smurf-util')
 
     # Sets fan levels on crate
     print_header("Setting fan levels")
@@ -238,13 +260,13 @@ def hammer_func(args):
     
     #Brings up all smurf-streamer dockers
     print_header('Bringing up smurf dockers')
-    cmd = 'docker-compose up -d'.split()
+
+    services = ['ocs-pysmurf-monitor', 'smurf-util']
     for slot in sys_config['smurf_slots']:
-        cmd.append(f'smurf-streamer-s{slot}')
-        cmd.append(f'ocs-pysmurf-s{slot}')
-    cmd.append('ocs-pysmurf-monitor')
-    cmd.append('smurf-util')
-    subprocess.run(cmd, cwd=cwd)
+        services.append(f'smurf-streamer-s{slot}')
+        services.append(f'ocs-pysmurf-s{slot}')
+
+    start_services(services)
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
@@ -282,11 +304,22 @@ def util_func(args):
     # Check if util docker is up and running
     containers = get_running_dockers()
     names = [c[2] for c in containers]
-
     if "smurf-util" not in names:
-        subprocess.run('docker-compose up -d smurf-util'.split(), cwd=cwd)
+        start_services('smurf-util') 
 
     subprocess.run('docker exec -it smurf-util bash'.split())
+
+def gui_func(args):
+    if args.port is not None:
+        server_port = args.port
+    else:
+        if args.slot is not None:
+            server_port = 9000 + 2 * args.slot
+        else:
+            server_port = 9099
+
+    subprocess.run(f'/home/cryo/sodetlib/server_scripts/run_gui.sh {server_port}'.split())
+
 
 
 if __name__ == '__main__':
@@ -351,6 +384,12 @@ if __name__ == '__main__':
     ########### Jackhammer util parser ############
     util_parser = subparsers.add_parser('util')
     util_parser.set_defaults(func=util_func)
+
+    ########### Jackhammer gui parser ###########
+    gui_parser = subparsers.add_parser('gui')
+    gui_parser.add_argument('slot', nargs='?', type=int)
+    gui_parser.add_argument('--port', '-p', type=int, help='gui server port')
+    gui_parser.set_defaults(func=gui_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
