@@ -142,12 +142,26 @@ def enter_pysmurf(slot, agg=False):
 
     subprocess.run(cmd.split())
 
-def start_services(services):
-    env = os.environ.copy()
 
+def start_services(services, write_env=False):
+    """
+        Starts docker-compose services
+
+        Args:
+            services (list or str): docker-compose services to restart
+            write_env(bool):
+                If true, will write sys_config['docker-env'] to the
+                $OCS_CONFIG_DIR/.env file. This is so the most recent
+                environment variables can be used by standard docker-compose
+                commands.
+    """
     docker_env = sys_config.get('docker_env')
-    if docker_env is not None:
-        env.update(docker_env)
+
+    # Writes docker_env to $OCS_CONFIG_DIR/.env so docker-compose still works
+    if write_env and docker_env is not None:
+        with open(os.path.join(os.environ["OCS_CONFIG_DIR"], ".env"), "w") as env_file:
+            for k,v in docker_env.items():
+                env_file.write(f'{k}={v}\n')
 
     if isinstance(services, str):
         services = [services]
@@ -155,7 +169,7 @@ def start_services(services):
     cmd = 'docker-compose up -d'.split()
     cmd.extend(services)
 
-    subprocess.run(cmd, cwd=cwd, env=env)
+    subprocess.run(cmd, cwd=cwd)
 
 
 ########################################################################
@@ -194,7 +208,7 @@ def softreset_func(args):
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
-    start_services(services)
+    start_services(services, write_env=True)
 
     for slot in args.slots:
         check_epics_connection(f'smurf_server_s{slot}', retry=True)
@@ -219,7 +233,7 @@ def hammer_func(args):
     # Restarts smurf-util to clean up any running processes
     subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
     subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
-    start_services('smurf-util')
+    start_services('smurf-util', write_env=True)
 
     # Sets fan levels on crate
     print_header("Setting fan levels")
@@ -305,7 +319,7 @@ def util_func(args):
     containers = get_running_dockers()
     names = [c[2] for c in containers]
     if "smurf-util" not in names:
-        start_services('smurf-util') 
+        start_services('smurf-util', write_env=True)
 
     subprocess.run('docker exec -it smurf-util bash'.split())
 
