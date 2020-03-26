@@ -13,14 +13,19 @@ import os
 def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
             n_read=2, make_plot=False, save_plot=True, plotname_append='',
             window=50, rolling_med=True, make_subband_plot=False,
-            show_plot=False, grad_cut=.05, amp_cut=.25, pad=2, min_gap=2
-            ):
+            show_plot=False, grad_cut=.05, amp_cut=.25, pad=2, min_gap=2, # find_freq
+            resonance=None, sweep_width=.3, df_sweep=.002, min_offset=0.1,
+            delta_freq=None, new_master_assignment=False,
+            lock_max_derivative=False, # setup_notches
+            sync_group=True, timeout=240): # run_serial_gradient_descent & eta_scan
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
 
     Parameters
     ----------
+    S : pysmurf instance
+        pysmurf instance to work with
     band : int
         band to find tuned frequencies on
 
@@ -43,42 +48,66 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         sample.
     window : int
         The width of the rolling median window
-    pad : int): number of samples to pad on either side of a resonance search
+    pad : int
+        number of samples to pad on either side of a resonance search
         window
-    min_gap : int): minimum number of samples between resonances
-    grad_cut : float): The value of the gradient of phase to look for
+    min_gap : int
+        minimum number of samples between resonances
+    grad_cut : float
+        The value of the gradient of phase to look for
         resonances. Default is .05
-    amp_cut : float): The fractional distance from the median value to decide
+    amp_cut : float
+        The fractional distance from the median value to decide
         whether there is a resonance. Default is .25.
+    resonance : [float]
+        A 2 dimensional array with resonance
+        frequencies and the subband they are in. If given, this will take
+        precedent over the one in self.freq_resp.
+    sweep_width : float
+        The range to scan around the input resonance in
+        units of MHz. Default .3
+    df_sweep : float
+        The sweep step size in MHz. Default .005
+    min_offset : float
+        Minimum distance in MHz between two resonators for assigning channels.
+    delta_freq : float
+        The frequency offset at which to measure
+        the complex transmission to compute the eta parameters.
+        Passed to eta_estimator.  Units are MHz.  If none supplied
+        as an argument, takes value in config file.
+    new_master_assignment : bool
+        Whether to create a new master assignment
+        file. This file defines the mapping between resonator frequency
+        and channel number.
+    sync_group : bool
+        Whether to use the sync group to monitor
+        the PV. Defauult is True.
+    timeout : float
+        The maximum amount of time to wait for the PV.
 
     Returns
     -------
-    found_min : str
-        tells you if the minimum of the noise is within your range, yes if true, low if its at uc_atten = 30, and high if its at uc_atten = 0
-    median_noise_min : float
-        minimum median white noise level at the optimized uc_atten value
-    atten_min : int
-        attenuator value which minizes the median noise
+    ??
     """
 
-    print(band)
 
     S.find_freq(band,subband=subband, drive_power=drive_power,
-                n_read=n_read, make_plot=make_plot, save_plot=aave_plot,
-                plotname_append='',
-                window=50, rolling_med=True, make_subband_plot=False,
-                show_plot=False, grad_cut=.05, amp_cut=.25, pad=2, min_gap=2)'''
-    S.setup_notches(band, drive=10, new_master_assignment=True)
+                n_read=n_read, make_plot=make_plot, save_plot=save_plot,
+                plotname_append=plotname_append, window=window,
+                rolling_med=rolling_med, make_subband_plot=make_subband_plot,
+                show_plot=show_plot, grad_cut=grad_cut, amp_cut=amp_cut, pad=pad,
+                min_gap=min_gap)
+
+    S.setup_notches(band, drive=drive_power, resonance=resonance,
+            sweep_width=sweep_width, df_sweep=df_sweep, min_offset=min_offset,
+            delta_freq=resonance, new_master_assignment=new_master_assignment,
+            lock_max_derivative=new_master_assignment)
 
     #set up tracking
+    S.run_serial_gradient_descent(band, sync_group=sync_group, timeout=timeout)
+    S.run_serial_eta_scan(band, sync_group=sync_group, timeout=timeout)
 
-    S.run_serial_gradient_descent(band);
-    S.run_serial_eta_scan(band);
-    S.tracking_setup(band,reset_rate_khz=4,fraction_full_scale=0.7, make_plot=True, save_plot=True, show_plot=False,channel=S.which_on(band), nsamp=2**18, lms_gain=6, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=1/12,feedback_end_frac=1)
-
-    #return found_min, np.min(median_noise), attens[med_min_arg]
-    '''
-
+    '''return found_min, np.min(median_noise), attens[med_min_arg]'''
 
 
 if __name__=='__main__':
@@ -92,42 +121,63 @@ if __name__=='__main__':
     # Custom arguments for this script
     parser.add_argument('--band', type=int, required=True,
             help='band (must be in range [0,7])')
-    """
-    parser.add_argument('--tunefile', required=True,
-        help='Tune file that you want to load for this analysis.')
+    # find_freq optional arguments
+    parser.add_argument('--subband', type=int, default=np.arange(13,115),
+        help='An int array for the subbands')
+    parser.add_argument('--drive-power', type=int, default=None,
+        help='The drive amplitude. If none given, takes from cfg.')
+    parser.add_argument('--n-read', type=int, default=2,
+        help='The number sweeps to do per subband')
+    parser.add_argument('--make-plot', type=bool, default=False,
+        help='make the plot frequency sweep. Default False.')
+    parser.add_argument('--save-plot', type=bool, default=True,
+        help='save the plot. Default True.')
+    parser.add_argument('--plotname-append', type=str, default='',
+        help='Appended to the default plot filename. Default ''.')
+    parser.add_argument('--window', type=int, default=50,
+        help='The width of the rolling median window')
+    parser.add_argument('--grad-cut', type=float, default=.05,
+        help='The value of the gradient of phase to look for resonances. Default is .05')
+    parser.add_argument('--amp-cut', type=float, default=.25,
+        help='The fractional distance from the median value to decide whether there is a resonance. Default is .25.')
+    # setup_notches optional arguments
+    parser.add_argument('--resonance', type=[float], default=None,
+        help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp.')
+    parser.add_argument('--sweep-width', type=float, default=.3,
+        help='The range to scan around the input resonance in units of MHz. Default .3')
+    parser.add_argument('--df-sweep', type=float, default=.002,
+        help='The sweep step size in MHz. Default .005')
+    parser.add_argument('--min-offset', type=float, default=0.1,
+        help='Minimum distance in MHz between two resonators for assigning channels.')
+    parser.add_argument('--new-master-assignment', type=bool, default=False,
+        help='Whether to create a new master assignment file. This file defines the mapping between resonator frequency and channel number.')
+    # run_serial_gradient_descent & run_serial_eta_scan optional args
+    parser.add_argument('--sync-group', type=bool, default=True,
+        help='Whether to use the sync group to monitor the PV. Defauult is True.')
+    parser.add_argument('--timeout', type=float, default=240,
+        help='The maximum amount of time to wait for the PV.')
 
-    parser.add_argument('--dr', type=int, default = 12,
-        help='Drive power at which to optimize the noise.')
-
-    parser.add_argument('--frac-pp', type=float, required=True,
-            help='Fraction full scale of your flux ramp used in tracking setup.')
-
-    parser.add_argument('--lms-freq', type=float, required=True,
-            help='Tracking frequency used in tracking setup.')
-    """
     # Parse command line arguments
     args = parser.parse_args()
 
     # OFFLINE VERSION!
-    S = pysmurf.client.SmurfControl(offline=True)
-    '''
+    #S = pysmurf.client.SmurfControl(offline=True)
+    # Online version!
     S = pysmurf.client.SmurfControl(
             epics_root = args.epics_root,
             cfg_file = args.config_file,
             setup = args.setup, make_logfile=False,
-    )'''
+    )
 
     #Put your script calls here
-    #optimize_power_per_band(S,band = args.band,tunefile = args.tunefile,dr_start = args.dr,frac_pp = args.frac_pp,lms_freq = args.lms_freq)
-    find_and_tune_freq(S, args.band)
-	# TODO!!
-    '''
-    S.find_freq(band,drive_power=10,make_plot=True,subband=range(50,100))
-    S.setup_notches(band, drive=10, new_master_assignment=True)
-
-    #set up tracking
-
-    S.run_serial_gradient_descent(band);
-    S.run_serial_eta_scan(band);
-    S.tracking_setup(band,reset_rate_khz=4,fraction_full_scale=0.7, make_plot=True, save_plot=True, show_plot=False,channel=S.which_on(band), nsamp=2**18, lms_gain=6, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=1/12,feedback_end_frac=1)
-    '''
+    find_and_tune_freq(S, args.band, subband=args.subband, drive_power=args.drive_power,
+                n_read=args.n_read, make_plot=args.make_plot, save_plot=args.save_plot,
+                plotname_append=args.plotname_append, window=args.window,
+                rolling_med=args.rolling_med, make_subband_plot=args.make_subband_plot,
+                show_plot=args.show_plot, grad_cut=args.grad_cut, amp_cut=args.amp_cut, pad=args.pad,
+                min_gap=args.min_gap, # find_freq
+                resonance=args.resonance,
+                sweep_width=args.sweep_width, df_sweep=args.df_sweep, min_offset=args.min_offset,
+                delta_freq=args.resonance, new_master_assignment=args.new_master_assignment,
+                lock_max_derivative=args.new_master_assignmen, #setup_notches
+                sync_group=args.sync_group, timeout=args.timeout)
