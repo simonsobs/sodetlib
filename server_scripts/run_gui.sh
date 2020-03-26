@@ -6,6 +6,7 @@ user="cryo"
 docker run -it --rm  \
   --log-opt tag=guis \
   -u $(id -u ${user}):$(id -g ${user}) \
+  --security-opt apparmor=docker-smurf \
   --net host \
   -e EPICS_CA_AUTO_ADDR_LIST=NO \
   -e EPICS_CA_ADDR_LIST=127.255.255.255 \
