@@ -16,7 +16,7 @@ frac_pp = 0.14139048298824738
 def get_power(dr, att):
     return -19 - 3*dr - 0.5*att
 
-def get_median_noise(S, band, dr, att, run_find_freq=False):
+def get_median_noise(S, band, dr, att, run_find_freq=False,bad_track_channels=[]):
     plot_dir = S.plot_dir
 
     if run_find_freq: 
@@ -24,7 +24,7 @@ def get_median_noise(S, band, dr, att, run_find_freq=False):
         S.setup_notches(band, drive=dr, new_master_assignment=False)
         S.plot_tune_summary(band, eta_scan=True)
 
-        for chans in bad_track_chans:
+        for chans in bad_track_channels:
             S.channel_off(band, chans)
 
     S.run_serial_gradient_descent(band)
@@ -45,14 +45,25 @@ def get_median_noise(S, band, dr, att, run_find_freq=False):
         show_plot=False, make_channel_plot=True
     ) 
 
-    basename, _ = os.path.splitext(os.path.basename(datafile))
-    # This his how pysmurf formats the data file
-    noise_file = basename+'_{:3.2f}_{:3.2f}.txt'.format(low_freq, high_freq)
-
-    _, _, noise, _ = np.loadtxt(os.path.join(plot_dir, noise_file), unpack=True)
-    mask = ~np.isnan(noise)
-    median_noise = np.median(noise[mask])
-
+    noise_per_chan = []
+    
+    timestamp, phase, mask = S.read_stream_data_gcp_save(datafile)
+    phase *= S.pA_per_phi0/(2.*np.pi)
+    num_averages = S.config.get('smurf_to_mce')['num_averages']
+    fs = S.get_flux_ramp_freq()*1.0E3/num_averages
+    nperseg = 2**16
+    detrend = 'constant'
+    for chan in S.which_on(band):
+        if chan < 0:
+            continue
+        ch_idx = mask[band,chan]
+        f, Pxx = signal.welch(phase[ch_idx], nperseg=nperseg,fs=fs, detrend=detrend)
+        Pxx = np.sqrt(Pxx)
+        popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx)
+        wl,n,f_knee = popt
+        noise_per_chan.append(wl)
+    median_noise = np.median(np.asarray(noise_per_chan))
+    
     return median_noise
 
 
@@ -64,6 +75,8 @@ if __name__=='__main__':
     parser.add_argument('--epics-root', default='smurf_server_s2')
 
     parser.add_argument('--band', type=int, default=2)
+
+    parser.add_argument('--bad-channels',type=int,nargs="*")
     
     args = parser.parse_args()
     
@@ -94,7 +107,7 @@ if __name__=='__main__':
     for i, att in enumerate(uc_att_list):
         S.set_att_uc(band,att)
 
-        median_noise.append(get_median_noise(S, band, dr, att, run_find_freq=run_find_freq))
+        median_noise.append(get_median_noise(S, band, dr, att, run_find_freq=run_find_freq,bad_track_channels=args.bad_channels))
         powers.append(get_power(dr, at))
 
         run_find_freq = False
@@ -102,8 +115,9 @@ if __name__=='__main__':
     # Loop over drive array at fixed attenuator
     att = 30 
     starting_asa = S.get_amplitude_scale_array(band)
+    asa_mask = (starting_asa != 0).astype(int)
     for i,dr in enumerate(drive_list):
-        S.set_amplitude_scale_array(band, starting_asa * dr // 12)
+        S.set_amplitude_scale_array(band, dr*asa_mask)
 
         median_noise.append(get_median_noise(S, band, dr, att))
         powers.append(get_power(dr, at))
