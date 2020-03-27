@@ -122,8 +122,9 @@ if __name__=='__main__':
     parser.add_argument('--epics-root', default='smurf_server_s2')
 
     # Custom arguments for this script
-    parser.add_argument('--band', type=int, required=True,
-            help='band (must be in range [0,7])')
+    # it does ALL bands, thus doesn't need this one.
+    #parser.add_argument('--band', type=int, required=True,
+    #        help='band (must be in range [0,7])')
     # find_freq optional arguments
     parser.add_argument('--subband', type=int, default=np.arange(13,115),
         help='An int array for the subbands')
@@ -173,14 +174,23 @@ if __name__=='__main__':
     )
 
     #Put your script calls here
-    find_and_tune_freq(S, args.band, subband=args.subband, drive_power=args.drive_power,
-                n_read=args.n_read, make_plot=args.make_plot, save_plot=args.save_plot,
+    num_resonators_on = 0
+    for band in range(7):
+        (tune_name, res_on) = find_and_tune_freq(S, band, subband=args.subband,
+                drive_power=args.drive_power, n_read=args.n_read,
+                make_plot=args.make_plot, save_plot=args.save_plot,
                 plotname_append=args.plotname_append, window=args.window,
-                rolling_med=args.rolling_med, make_subband_plot=args.make_subband_plot,
-                show_plot=args.show_plot, grad_cut=args.grad_cut, amp_cut=args.amp_cut, pad=args.pad,
+                rolling_med=args.rolling_med,
+                make_subband_plot=args.make_subband_plot,
+                show_plot=args.show_plot, grad_cut=args.grad_cut,
+                amp_cut=args.amp_cut, pad=args.pad,
                 min_gap=args.min_gap, # find_freq
-                resonance=args.resonance,
-                sweep_width=args.sweep_width, df_sweep=args.df_sweep, min_offset=args.min_offset,
-                delta_freq=args.resonance, new_master_assignment=args.new_master_assignment,
+                resonance=args.resonance, sweep_width=args.sweep_width,
+                df_sweep=args.df_sweep, min_offset=args.min_offset,
+                delta_freq=args.resonance,
+                new_master_assignment=args.new_master_assignment,
                 lock_max_derivative=args.new_master_assignmen, #setup_notches
                 sync_group=args.sync_group, timeout=args.timeout)
+        print(tune_name)
+        num_resonators_on += res_on
+    (tune_name, num_resonators_on)
