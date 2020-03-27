@@ -204,7 +204,7 @@ if __name__=='__main__':
                 rolling_med=args.rolling_med,
                 make_subband_plot=args.make_subband_plot,
                 show_plot=args.show_plot, grad_cut=args.grad_cut,
-                amp_cut=args.amp_cut, pad=argsi.pad,
+                amp_cut=args.amp_cut, pad=args.pad,
                 min_gap=args.min_gap, # find_freq
                 resonance=args.resonance, sweep_width=args.sweep_width,
                 df_sweep=args.df_sweep, min_offset=args.min_offset,
