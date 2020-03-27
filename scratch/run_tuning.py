@@ -126,8 +126,8 @@ if __name__=='__main__':
     #parser.add_argument('--band', type=int, required=True,
     #        help='band (must be in range [0,7])')
     # find_freq optional arguments
-    parser.add_argument('--subband', type=int, default=np.arange(13,115),
-        help='An int array for the subbands')
+    parser.add_argument('--subband', nargs='+', type=int, default=np.arange(13,115),
+        help='An int array for the subbands. Type integers separated by spaces to input.')
     parser.add_argument('--drive-power', type=int, default=None,
         help='The drive amplitude. If none given, takes from cfg.')
     parser.add_argument('--n-read', type=int, default=2,
@@ -137,7 +137,9 @@ if __name__=='__main__':
     parser.add_argument('--save-plot', type=bool, default=True,
         help='save the plot. Default True.')
     parser.add_argument('--plotname-append', type=str, default='',
-        help='Appended to the default plot filename. Default ''.')
+        help="Appended to the default plot filename. Default is ''.")
+    parser.add_argument('--rolling-med', type=bool, default=True, # causing trouble for some reason
+        help='Whether to iterate on a rolling median or just the median of the whole sample.')
     parser.add_argument('--window', type=int, default=50,
         help='The width of the rolling median window')
     parser.add_argument('--grad-cut', type=float, default=.05,
@@ -145,8 +147,8 @@ if __name__=='__main__':
     parser.add_argument('--amp-cut', type=float, default=.25,
         help='The fractional distance from the median value to decide whether there is a resonance. Default is .25.')
     # setup_notches optional arguments
-    parser.add_argument('--resonance', type=float, default=None,
-        help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp.')
+    parser.add_argument('--resonance', nargs='+', type=float, default=None,
+        help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp. Type floats separated by spaces to input. ')
     parser.add_argument('--sweep-width', type=float, default=.3,
         help='The range to scan around the input resonance in units of MHz. Default .3')
     parser.add_argument('--df-sweep', type=float, default=.002,
