@@ -83,6 +83,9 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         Whether to create a new master assignment
         file. This file defines the mapping between resonator frequency
         and channel number.
+    lock_max_derivative : bool
+        I'm not sure what this is, but it was in setup_notches when I wrote the
+        OCS script (though with no documentation.) Defaults to False.
     sync_group : bool
         Whether to use the sync group to monitor
         the PV. Defauult is True.
@@ -154,6 +157,10 @@ if __name__=='__main__':
         help='The value of the gradient of phase to look for resonances. Default is .05')
     parser.add_argument('--amp-cut', type=float, default=.25,
         help='The fractional distance from the median value to decide whether there is a resonance. Default is .25.')
+    parser.add_argument("--pad", type=int, default=2,
+        help="number of samples to pad on either side of a resonance search window")
+    parser.add_argument("--min-gap", type=int, default=2,
+        help="minimum number of samples between resonances")
     # setup_notches optional arguments
     parser.add_argument('--resonance', nargs='+', type=float, default=None,
         help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp. Type floats separated by spaces to input. ')
@@ -163,6 +170,10 @@ if __name__=='__main__':
         help='The sweep step size in MHz. Default .005')
     parser.add_argument('--min-offset', type=float, default=0.1,
         help='Minimum distance in MHz between two resonators for assigning channels.')
+    parser.add_argument("--delta-freq", type=float, default=None,
+        help="The frequency offset at which to measure the complex transmission to compute the eta parameters. Passed to eta_estimator. Units are MHz. If none supplied as an argument, takes value in config file.")
+    parser.add_argument("--lock-max-derivative", type=bool, default=False,
+        help="I'm not sure what this is, but it was in setup_notches when I wrote the OCS script (though with no documentation.) Defaults to False.")
     parser.add_argument('--new-master-assignment', type=bool, default=False,
         help='Whether to create a new master assignment file. This file defines the mapping between resonator frequency and channel number.')
     # run_serial_gradient_descent & run_serial_eta_scan optional args
@@ -193,7 +204,7 @@ if __name__=='__main__':
                 rolling_med=args.rolling_med,
                 make_subband_plot=args.make_subband_plot,
                 show_plot=args.show_plot, grad_cut=args.grad_cut,
-                amp_cut=args.amp_cut, pad=args.pad,
+                amp_cut=args.amp_cut, pad=argsi.pad,
                 min_gap=args.min_gap, # find_freq
                 resonance=args.resonance, sweep_width=args.sweep_width,
                 df_sweep=args.df_sweep, min_offset=args.min_offset,
