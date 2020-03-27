@@ -41,7 +41,7 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         make the plot frequency sweep. Default False.
     save_plot : bool
         save the plot. Default True.
-    plotname_append : string
+    plotname_append : str
         Appended to the default plot filename. Default ''.
     rolling_med : bool
         Whether to iterate on a rolling median or just the median of the whole
@@ -87,7 +87,10 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
 
     Returns
     -------
-    ??
+    tune_file : str
+        Name of the resultant tune file, currently loaded.
+    resonators_on : int
+        Number of channels (resonators) in this band that are on.
     """
 
 
@@ -107,7 +110,7 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
     S.run_serial_gradient_descent(band, sync_group=sync_group, timeout=timeout)
     S.run_serial_eta_scan(band, sync_group=sync_group, timeout=timeout)
 
-    '''return found_min, np.min(median_noise), attens[med_min_arg]'''
+    return S.tune_file, S.which_on(band)
 
 
 if __name__=='__main__':
