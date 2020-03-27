@@ -145,7 +145,7 @@ if __name__=='__main__':
     parser.add_argument('--amp-cut', type=float, default=.25,
         help='The fractional distance from the median value to decide whether there is a resonance. Default is .25.')
     # setup_notches optional arguments
-    parser.add_argument('--resonance', type=[float], default=None,
+    parser.add_argument('--resonance', type=float, default=None,
         help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp.')
     parser.add_argument('--sweep-width', type=float, default=.3,
         help='The range to scan around the input resonance in units of MHz. Default .3')
