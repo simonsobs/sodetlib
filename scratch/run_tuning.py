@@ -31,7 +31,7 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
 
     Optional parameters
     ----------
-    subband : int
+    subband : [int]
         An int array for the subbands
     drive_power : int
         The drive amplitude.  If none given, takes from cfg.
@@ -48,6 +48,10 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         sample.
     window : int
         The width of the rolling median window
+    make_subband_plot : bool
+        Make subband plots? Default False.
+    show_plot : bool
+        Show plots as they are made? Default False.
     pad : int
         number of samples to pad on either side of a resonance search
         window
@@ -142,6 +146,10 @@ if __name__=='__main__':
         help='Whether to iterate on a rolling median or just the median of the whole sample.')
     parser.add_argument('--window', type=int, default=50,
         help='The width of the rolling median window')
+    parser.add_argument("--make-subband-plot", type=bool, default=False,
+        help="Make subband plots? Default False.")
+    parser.add_argument("--show-plot", type=bool, default=False,
+        help="Show plots as they are made? Default False.")
     parser.add_argument('--grad-cut', type=float, default=.05,
         help='The value of the gradient of phase to look for resonances. Default is .05')
     parser.add_argument('--amp-cut', type=float, default=.25,
