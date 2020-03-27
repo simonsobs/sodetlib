@@ -208,9 +208,9 @@ if __name__=='__main__':
                 min_gap=args.min_gap, # find_freq
                 resonance=args.resonance, sweep_width=args.sweep_width,
                 df_sweep=args.df_sweep, min_offset=args.min_offset,
-                delta_freq=args.resonance,
+                delta_freq=args.delta_freq,
                 new_master_assignment=args.new_master_assignment,
-                lock_max_derivative=args.new_master_assignmen, #setup_notches
+                lock_max_derivative=args.lock_max_derivative, #setup_notches
                 sync_group=args.sync_group, timeout=args.timeout)
         print(tune_name)
         num_resonators_on += len(res_on)
