@@ -192,5 +192,5 @@ if __name__=='__main__':
                 lock_max_derivative=args.new_master_assignmen, #setup_notches
                 sync_group=args.sync_group, timeout=args.timeout)
         print(tune_name)
-        num_resonators_on += res_on
+        num_resonators_on += len(res_on)
     (tune_name, num_resonators_on)
