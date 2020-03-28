@@ -130,8 +130,8 @@ if __name__=='__main__':
 
     # Custom arguments for this script
     # it does ALL bands, thus doesn't need this one.
-    #parser.add_argument('--band', type=int, required=True,
-    #        help='band (must be in range [0,7])')
+    parser.add_argument('--bands', nargs='+', type=int, required=True,
+            help='input bands to tune as ints, separated by spaces (must be in range [0,7])')
     # find_freq optional arguments
     parser.add_argument('--subband', nargs='+', type=int, default=np.arange(13,115),
         help='An int array for the subbands. Type integers separated by spaces to input.')
@@ -196,7 +196,8 @@ if __name__=='__main__':
 
     #Put your script calls here
     num_resonators_on = 0
-    for band in range(7):
+    print(args.bands)
+    for band in args.bands:
         (tune_name, res_on) = find_and_tune_freq(S, band, subband=args.subband,
                 drive_power=args.drive_power, n_read=args.n_read,
                 make_plot=args.make_plot, save_plot=args.save_plot,
@@ -212,6 +213,6 @@ if __name__=='__main__':
                 new_master_assignment=args.new_master_assignment,
                 lock_max_derivative=args.lock_max_derivative, #setup_notches
                 sync_group=args.sync_group, timeout=args.timeout)
-        print(tune_name)
+        #print(tune_name)
         num_resonators_on += len(res_on)
     (tune_name, num_resonators_on)
