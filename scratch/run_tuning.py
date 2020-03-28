@@ -10,7 +10,7 @@ from scipy import signal
 import os
 
 
-def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
+def find_and_tune_freq(S, bands, subband=np.arange(13,115), drive_power=None,
             n_read=2, make_plot=False, save_plot=True, plotname_append='',
             window=50, rolling_med=True, make_subband_plot=False,
             show_plot=False, grad_cut=.05, amp_cut=.25, pad=2, min_gap=2, # find_freq
@@ -26,8 +26,8 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
     ----------
     S : pysmurf instance
         pysmurf instance to work with
-    band : int
-        band to find tuned frequencies on
+    bands : [int]
+        bands to find tuned frequencies on. In range [0,7].
 
     Optional parameters
     ----------
@@ -88,7 +88,7 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         OCS script (though with no documentation.) Defaults to False.
     sync_group : bool
         Whether to use the sync group to monitor
-        the PV. Defauult is True.
+        the PV. Default is True.
     timeout : float
         The maximum amount of time to wait for the PV.
 
@@ -100,24 +100,28 @@ def find_and_tune_freq(S, band, subband=np.arange(13,115), drive_power=None,
         Number of channels (resonators) in this band that are on.
     """
 
-
-    S.find_freq(band,subband=subband, drive_power=drive_power,
-                n_read=n_read, make_plot=make_plot, save_plot=save_plot,
-                plotname_append=plotname_append, window=window,
-                rolling_med=rolling_med, make_subband_plot=make_subband_plot,
-                show_plot=show_plot, grad_cut=grad_cut, amp_cut=amp_cut, pad=pad,
-                min_gap=min_gap)
-
-    S.setup_notches(band, drive=drive_power, resonance=resonance,
-            sweep_width=sweep_width, df_sweep=df_sweep, min_offset=min_offset,
-            delta_freq=resonance, new_master_assignment=new_master_assignment,
-            lock_max_derivative=new_master_assignment)
-
-    #set up tracking
-    S.run_serial_gradient_descent(band, sync_group=sync_group, timeout=timeout)
-    S.run_serial_eta_scan(band, sync_group=sync_group, timeout=timeout)
-
-    return S.tune_file, S.which_on(band)
+    num_resonators_on = 0
+    band_tune_file_dict = {}
+    for band in bands:
+        S.find_freq(band,subband=subband, drive_power=drive_power,
+                    n_read=n_read, make_plot=make_plot, save_plot=save_plot,
+                    plotname_append=plotname_append, window=window,
+                    rolling_med=rolling_med, make_subband_plot=make_subband_plot,
+                    show_plot=show_plot, grad_cut=grad_cut, amp_cut=amp_cut, pad=pad,
+                    min_gap=min_gap)
+        S.setup_notches(band, drive=drive_power, resonance=resonance,
+                sweep_width=sweep_width, df_sweep=df_sweep, min_offset=min_offset,
+                delta_freq=resonance, new_master_assignment=new_master_assignment,
+                lock_max_derivative=new_master_assignment)
+        #set up tracking
+        S.run_serial_gradient_descent(band, sync_group=sync_group, timeout=timeout)
+        S.run_serial_eta_scan(band, sync_group=sync_group, timeout=timeout)
+        band_tune_file_dict[band]= S.tune_file
+        num_resonators_on += S.which_on(band)
+    # testing
+    print("Total num resonators on: " + str(num_resonators_on))
+    print("Dictionary of band tune file names: " +str(band_tune_file_dict))
+    return (num_resonators_on, band_tune_file_dict)
 
 
 if __name__=='__main__':
@@ -131,7 +135,7 @@ if __name__=='__main__':
     # Custom arguments for this script
     # it does ALL bands, thus doesn't need this one.
     parser.add_argument('--bands', nargs='+', type=int, required=True,
-            help='input bands to tune as ints, separated by spaces (must be in range [0,7])')
+        help='input bands to tune as ints, separated by spaces (must be in range [0,7])')
     # find_freq optional arguments
     parser.add_argument('--subband', nargs='+', type=int, default=np.arange(13,115),
         help='An int array for the subbands. Type integers separated by spaces to input.')
@@ -163,7 +167,7 @@ if __name__=='__main__':
         help="minimum number of samples between resonances")
     # setup_notches optional arguments
     parser.add_argument('--resonance', nargs='+', type=float, default=None,
-        help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp. Type floats separated by spaces to input. ')
+        help='A 2 dimensional array with resonance frequencies and the subband they are in. If given, this will take precedent over the one in self.freq_resp. Type floats separated by spaces to input.')
     parser.add_argument('--sweep-width', type=float, default=.3,
         help='The range to scan around the input resonance in units of MHz. Default .3')
     parser.add_argument('--df-sweep', type=float, default=.002,
@@ -173,7 +177,7 @@ if __name__=='__main__':
     parser.add_argument("--delta-freq", type=float, default=None,
         help="The frequency offset at which to measure the complex transmission to compute the eta parameters. Passed to eta_estimator. Units are MHz. If none supplied as an argument, takes value in config file.")
     parser.add_argument("--lock-max-derivative", type=bool, default=False,
-        help="I'm not sure what this is, but it was in setup_notches when I wrote the OCS script (though with no documentation.) Defaults to False.")
+        help="I'm not sure what this is, but it was in setup_notches when I wrote the OCS script (though with no documentation.) Defaults to  False.")
     parser.add_argument('--new-master-assignment', type=bool, default=False,
         help='Whether to create a new master assignment file. This file defines the mapping between resonator frequency and channel number.')
     # run_serial_gradient_descent & run_serial_eta_scan optional args
@@ -186,33 +190,29 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     # OFFLINE VERSION!
-    #S = pysmurf.client.SmurfControl(offline=True)
+    # S = pysmurf.client.SmurfControl(offline=True)
     # Online version!
     S = pysmurf.client.SmurfControl(
-            epics_root = args.epics_root,
-            cfg_file = args.config_file,
-            setup = args.setup, make_logfile=False,
+        epics_root=args.epics_root,
+        cfg_file=args.config_file,
+        setup=args.setup, make_logfile=False,
     )
 
-    #Put your script calls here
-    num_resonators_on = 0
-    print(args.bands)
-    for band in args.bands:
-        (tune_name, res_on) = find_and_tune_freq(S, band, subband=args.subband,
-                drive_power=args.drive_power, n_read=args.n_read,
-                make_plot=args.make_plot, save_plot=args.save_plot,
-                plotname_append=args.plotname_append, window=args.window,
-                rolling_med=args.rolling_med,
-                make_subband_plot=args.make_subband_plot,
-                show_plot=args.show_plot, grad_cut=args.grad_cut,
-                amp_cut=args.amp_cut, pad=args.pad,
-                min_gap=args.min_gap, # find_freq
-                resonance=args.resonance, sweep_width=args.sweep_width,
-                df_sweep=args.df_sweep, min_offset=args.min_offset,
-                delta_freq=args.delta_freq,
-                new_master_assignment=args.new_master_assignment,
-                lock_max_derivative=args.lock_max_derivative, #setup_notches
-                sync_group=args.sync_group, timeout=args.timeout)
-        #print(tune_name)
-        num_resonators_on += len(res_on)
-    (tune_name, num_resonators_on)
+    # Put your script calls here
+    # I still want to know why the for loop over bands HAS to be inside func
+    find_and_tune_freq(
+        S, args.bands, subband=args.subband,
+        drive_power=args.drive_power, n_read=args.n_read,
+        make_plot=args.make_plot, save_plot=args.save_plot,
+        plotname_append=args.plotname_append, window=args.window,
+        rolling_med=args.rolling_med,
+        make_subband_plot=args.make_subband_plot,
+        show_plot=args.show_plot, grad_cut=args.grad_cut,
+        amp_cut=args.amp_cut, pad=args.pad,
+        min_gap=args.min_gap,  # find_freq
+        resonance=args.resonance, sweep_width=args.sweep_width,
+        df_sweep=args.df_sweep, min_offset=args.min_offset,
+        delta_freq=args.delta_freq,
+        new_master_assignment=args.new_master_assignment,
+        lock_max_derivative=args.lock_max_derivative,  # setup_notches
+        sync_group=args.sync_group, timeout=args.timeout)
