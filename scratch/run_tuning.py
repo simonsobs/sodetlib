@@ -117,7 +117,7 @@ def find_and_tune_freq(S, bands, subband=np.arange(13,115), drive_power=None,
         S.run_serial_gradient_descent(band, sync_group=sync_group, timeout=timeout)
         S.run_serial_eta_scan(band, sync_group=sync_group, timeout=timeout)
         band_tune_file_dict[band]= S.tune_file
-        num_resonators_on += S.which_on(band)
+        num_resonators_on += len(S.which_on(band))
     # testing
     print("Total num resonators on: " + str(num_resonators_on))
     print("Dictionary of band tune file names: " +str(band_tune_file_dict))
