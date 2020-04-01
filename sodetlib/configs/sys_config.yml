@@ -1,0 +1,33 @@
+crate_id: 1
+
+smurf_slots: [2]
+
+
+
+shelf_manager: shm-smrf-sp01
+max_fan_level: 10
+
+# Configuration files (One for each slot)
+device_configs:
+  - $OCS_CONFIG_DIR/dev_cfg.yaml
+pysmurf_configs:
+  - $OCS_CONFIG_DIR/experiment_ucsd_k2so_cc02-06_lbOnlyBay0.cfg
+
+# Startup configuration options for jackhammer hammer
+startup:
+  set_crate_fans_to_full: True
+  reboot: True
+  configure_pysmurf: True
+
+# Jackhammer stuff
+streamer_ports: [4532, 4533, 4534, 4535, 4536, 4537] # For slots 2-7
+docker_env:
+  # Docker image tags
+  SOCS_TAG: v0.0.1-56-gc58c835
+  STREAMER_TAG: v0.0.1-rc21
+  PYSMURF_CLIENT_TAG: v4.0.0-rc21
+  ATCA_MONITOR_TAG: R1.0.0
+
+  # Crossbar host
+  CB_HOST: 192.168.0.120
+

@@ -1,0 +1,7 @@
+sys_file: /Users/jacoblashner/so/ocs-site-configs/usc/jlashner//sys_config.yml
+dev_file: /Users/jacoblashner/so/ocs-site-configs/usc/jlashner//dev_cfg.yml
+pysmurf_file: $OCS_CONFIG_DIR/pysmurf.cfg
+slot: 2
+cwd: /Users/jacoblashner/so/sodetlib/sodetlib
+args: /Users/jacoblashner/so/sodetlib/sodetlib/det_config.py
+time: 1585697490
