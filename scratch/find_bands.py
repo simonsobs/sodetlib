@@ -6,7 +6,6 @@ import argparse
 import numpy as np
 import os
 
-#S.get_channel_order()
 
 def find_bands(S,bands=np.arange(8)):
 	"""
@@ -55,7 +54,7 @@ if __name__=='__main__':
             setup = args.args.setup, make_logfile=False,
     )
 
-    find_bands(S,bands=args.bands)
+    find_bands(S, bands=args.bands)
 
 
 
