@@ -14,6 +14,7 @@ if __name__ == "__main__":
     parser.add_argument('--slot', '-N', type=int)
     parser.add_argument('--config-file', '-c', default=sys_config['pysmurf_config_file'])
     parser.add_argument('--setup', action='store_true')
+    parser.add_argument('--make-logfile', action='store_true')
     parser.add_argument('--agg', action='store_true')
 
     args = parser.parse_args()
@@ -24,7 +25,6 @@ if __name__ == "__main__":
     import pysmurf.client
 
     epics_root = f'smurf_server_s{args.slot}'
-
     # Sets pysmurf publisher id
     crate = sys_config['crate_id']
     os.environ['SMURFPUB_ID'] = f'crate{crate}_slot{args.slot}'
@@ -33,7 +33,8 @@ if __name__ == "__main__":
     S = pysmurf.client.SmurfControl(
         epics_root=epics_root,
         cfg_file=args.config_file,
-        setup=args.setup
+        setup=args.setup,
+        make_logfile=args.make_logfile
     )
 
     _ipython_config = traitlets.config.get_config()
