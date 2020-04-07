@@ -1,0 +1,48 @@
+experiment:
+  amp_50k_Id: 12
+  amp_50k_Vg: -0.6
+  amp_hemt_Id: 8
+  amp_hemt_Vg: -1.1
+  tunefile: null
+bias_groups:
+  bias_high: [11, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+  bias_low: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  bias_step: [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025,
+    0.025, 0.025]
+  enabled: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  ob_wait_time: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+  overbias_amp: [19.9, 19.9, 19.9, 19.9, 19.9, 19.9, 19.9, 19.9, 19.9, 19.9, 19.9,
+    19.9]
+  wait_time: [0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+    0.001, 0.001]
+bands:
+  AMC[0]:
+    dc_att: [0, 3, 0, 0]
+    drive: [12, 11, 12, 12]
+    feedback_end_frac: [0.98, 0.98, 0.98, 0.98]
+    feedback_start_frac: [0.25, 0.25, 0.25, 0.25]
+    flux_ramp_rate_khz: [4, 4, 4, 4]
+    frac_pp: [0.125, 0.5, 0.5, 0.5]
+    lms_freq_hz: [null, null, null, null]
+    lms_gain: [6, 6, 6, 6]
+    make_plot: [true, true, true, true]
+    meas_lms_freq: [true, true, true, true]
+    noise_time: [30, 30, 30, 30]
+    nperseg: [2**16, 2**16, 2**16, 2**16]
+    show_plot: [false, false, false, false]
+    uc_att: [30, 30, 30, 30]
+  AMC[1]:
+    dc_att: [0, 0, 0, 0]
+    drive: [12, 12, 12, 12]
+    feedback_end_frac: [0.98, 0.98, 0.98, 0.98]
+    feedback_start_frac: [0.25, 0.25, 0.25, 0.25]
+    flux_ramp_rate_khz: [4, 4, 4, 4]
+    frac_pp: [0.5, 0.5, 0.5, 0.5]
+    lms_freq_hz: [null, null, null, null]
+    lms_gain: [6, 6, 6, 6]
+    make_plot: [true, true, true, true]
+    meas_lms_freq: [true, true, true, true]
+    noise_time: [30, 30, 30, 30]
+    nperseg: [2**16, 2**16, 2**16, 2**16]
+    show_plot: [false, false, false, false]
+    uc_att: [30, 30, 30, 30]
