@@ -1,7 +1,0 @@
-sys_file: /Users/jacoblashner/so/ocs-site-configs/usc/jlashner//sys_config.yml
-dev_file: /Users/jacoblashner/so/ocs-site-configs/usc/jlashner//dev_cfg.yml
-pysmurf_file: $OCS_CONFIG_DIR/pysmurf.cfg
-slot: 2
-cwd: /Users/jacoblashner/so/sodetlib/tests
-args: /Applications/PyCharm.app/Contents/helpers/pycharm/_jb_pytest_runner.py test_det_config.py::test_dev_cfg
-time: 1585705553

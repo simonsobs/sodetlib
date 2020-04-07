@@ -1,0 +1,9 @@
+crate_id: 1
+shelf_manager: shm-smrf-sp01
+smurf_slots: [2]
+
+device_configs:
+  - $OCS_CONFIG_DIR/dev_cfg.yml
+
+pysmurf_configs:
+  - $OCS_CONFIG_DIR/pysmurf.cfg
