@@ -53,7 +53,7 @@ def optimize_bias(target_Id, vg_min, vg_max, amp_name, max_iter=30):
 		if amp_name=='hemt':
 			step = np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
 		else:
-			step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.01)
+			step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.001)
 
 		Vg_next = Vg + step
 		if not (vg_min < Vg_next < vg_max):
