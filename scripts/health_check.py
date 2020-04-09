@@ -1,10 +1,17 @@
 import matplotlib
-
 matplotlib.use('Agg')
 import argparse
 import numpy as np
 from sodetlib.det_config import DetConfig
 import os
+import time
+
+
+def print_header(msg):
+	banner_len = 80
+	print("\n" + "*"*banner_len)
+	print(msg)
+	print("*"*banner_len)
 
 
 def optimize_bias(target_Id, vg_min, vg_max, amp_name, max_iter=30):
@@ -35,19 +42,30 @@ def optimize_bias(target_Id, vg_min, vg_max, amp_name, max_iter=30):
 		raise ValueError(f"amp_name must be either 'hemt' or '50K'")
 
 	for _ in range(max_iter):
-		amp_biases = S.get_amplifier_biases()
+		amp_biases = S.get_amplifier_biases(write_log=True)
 		Vg = amp_biases[f"{amp_name}_Vg"]
 		Id = amp_biases[f"{amp_name}_Id"]
 		delta = target_Id - Id
 		# Id should be within 0.5 from target without going over.
 		if 0 < delta < 0.5:
 			return True
-		Vg_next = Vg + np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
+
+		if amp_name=='hemt':
+			step = np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
+		else:
+			step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.01)
+
+		Vg_next = Vg + step
 		if not (vg_min < Vg_next < vg_max):
 			print(f"Adjustment would go out of range ({vg_min}, {vg_max}). "
 				  f"Unable to change {amp_name}_Id to desired value")
 			return False
-		S.set_hemt_gate_voltage(Vg_next)
+
+		if amp_name == 'hemt':
+			S.set_hemt_gate_voltage(Vg_next)
+		else:
+			S.set_50k_amp_gate_voltage(Vg_next)
+		time.sleep(0.2)
 	print(f"Max allowed iterations ({max_iter}) has been reached. "
 		  f"Unable to get target Id for {amp_name}.")
 	return False
@@ -81,6 +99,8 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 	amp_50K_Id = cfg.dev.exp['amp_50k_Id']
 
 	# Turns on both amplifiers and checks biasing.
+
+	print_header("Checking biases")
 	S.C.write_ps_en(11)
 	amp_biases = S.get_amplifier_biases()
 	biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
@@ -92,8 +112,11 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 
 	# Optimize bias voltages
 	if biased_hemt and biased_50K:
+		print_header("Scanning hemt bias voltage")
 		Id_hemt_in_range = optimize_bias(amp_hemt_Id, -1.2, -0.6, 'hemt')
+		print_header("Scanning 50K bias voltage")
 		Id_50K_in_range = optimize_bias(amp_50K_Id, -0.8, -0.3, '50K')
+		time.sleep(0.2)
 		amp_biases = S.get_amplifier_biases()
 		Vg_hemt, Vg_50K = amp_biases['hemt_Vg'], amp_biases['50K_Vg']
 		print(f"Final hemt current = {amp_biases['hemt_Id']}")
@@ -117,7 +140,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 	# Check JESD connection on bay 0 and bay 1
 	# Return connections for both bays
 	# Make distinction between config not having bay and jesd check failed
-
+	print_header("Checking JESD Connections")
 	if bay0:
 		jesd_tx0, jesd_rx0 = S.check_jesd(0)
 		if jesd_tx0:
@@ -150,7 +173,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 	# Typical in-band noise values are around ~2-7, so here check that average value of
 	# noise through band 0 is above 1.
 	# Check limit makes sense when through system
-
+	print_header("Checking full-band response for band 0")
 	band_cfg = cfg.dev.bands[0]
 	S.set_att_uc(0, band_cfg['uc_att'])
 
@@ -182,10 +205,22 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 		'amp_50k_Vg': Vg_50K,
 	})
 	if dev_outfile is not None:
-		print(f"Writing new dev-cfg file to {os.path.abspath(dev_outfile)}")
+		print(f"Writing new dev-cfg file to {os.path.abspath(os.path.expandvars(dev_outfile))}")
 		cfg.dev.dump(os.path.abspath(os.path.expandvars(dev_outfile)), clobber=clobber)
 
-	print("Health check finished")
+	print_header("Health check finished! Final status")
+	print(f" - Hemt biased: \t{biased_hemt}")
+	print(f" - Hemt Id in range: \t{Id_hemt_in_range}")
+	print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
+	print(f" - 50K biased: \t\t{biased_50K}")
+	print(f" - 50K Id in range: \t{Id_50K_in_range}")
+	print(f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
+	print(f" - Response check: \t{resp_check}")
+
+	if bay0:
+		print(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}")
+	if bay1:
+		print(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}")
 
 	status_bools = [biased_hemt, biased_50K, Id_hemt_in_range, Id_50K_in_range, resp_check]
 	if bay0:
@@ -199,17 +234,17 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 
 if __name__ == '__main__':
 	cfg = DetConfig()
-
 	parser = argparse.ArgumentParser()
 
 	# Custom arguments for this script
-	parser.add_argument('--bay0', action='store_true', required=True,
+	parser.add_argument('--bay0', action='store_true',
 						help='Whether or not bay0 is active')
-	parser.add_argument('--bay1', action='store_true', required=True,
+	parser.add_argument('--bay1', action='store_true',
 						help='Whether or not bay1 is active')
 
 	args = cfg.parse_args(parser)
-	S = cfg.make_pysmurf_instance()
+	S = cfg.make_pysmurf_instance(dump_configs=True)
 
 	# Put your script calls here
-	health_check(S, cfg, bay0=args.bay0, bay1=args.bay1)
+	health_check(S, cfg, bay0=args.bay0, bay1=args.bay1, 
+		dev_outfile=cfg.dev_file, clobber=True)
