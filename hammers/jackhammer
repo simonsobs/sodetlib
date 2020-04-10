@@ -135,7 +135,7 @@ def enter_pysmurf(slot, agg=False):
     print(f"Entering pysmurf on slot {slot}", flush=True)
 
     cmd = f'docker exec -it smurf-util ' \
-          f'python3 /sodetlib/server_scripts/start_pysmurf_ipython.py -N {slot} '
+          f'python3 /sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot} '
 
     if agg:
         cmd += '--agg'
@@ -295,7 +295,7 @@ def hammer_func(args):
             print(f"Configuring pysmurf on slot {slot}...")
 
             cmd = f'docker exec -it smurf-util ' \
-                  f'python3 /sodetlib/server_scripts/setup_pysmurf.py -N {slot}'
+                  f'python3 /sodetlib/hammers/scripts/setup_pysmurf.py -N {slot}'
 
             subprocess.run(shlex.split(cmd))
         print("Finished configuring pysmurf!")
