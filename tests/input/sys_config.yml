@@ -1,9 +1,9 @@
 crate_id: 1
 shelf_manager: shm-smrf-sp01
-smurf_slots: [2]
 
-device_configs:
-  - $OCS_CONFIG_DIR/dev_cfg.yml
-
-pysmurf_configs:
-  - $OCS_CONFIG_DIR/pysmurf.cfg
+slot_order: [2]
+slots:
+  SLOT[2]:
+    device_config: $OCS_CONFIG_DIR/dev_cfg.yml
+    pysmurf_config: $OCS_CONFIG_DIR/pysmurf.cfg
+    stream_port: 4536
