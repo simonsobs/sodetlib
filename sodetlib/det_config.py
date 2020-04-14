@@ -137,7 +137,7 @@ class DeviceConfig:
             (f'AMC[{i}]', {
                 k: YamlReps.FlowSeq([b[k] for b in self.bands[4*i:4*i+4]])
                 for k in self.bands[0].keys()
-            }) for i in [0,1]])
+            }) for i in [0, 1]])
         with open(path, 'w') as f:
             yaml.dump(data, f)
 
@@ -217,7 +217,7 @@ class DetConfig:
         self.sys = None
         self.dev: DeviceConfig = None
         self.dump = None  # Whether config files should be dumped
-
+        self._parser: argparse.ArgumentParser = None
         self._argparse_args = None
 
     def parse_args(self, parser=None, args=None):
@@ -250,7 +250,7 @@ class DetConfig:
         parser.add_argument('--dump-configs', '-D', action='store_true',
                             help="If true, all config info will be written to "
                                  "the pysmurf output directory")
-
+        self._parser = parser
         args = parser.parse_args(args=args)
         self.load_config_files(args.slot, args.sys_file, args.dev_file,
                                args.pysmurf_file)
@@ -260,7 +260,7 @@ class DetConfig:
     def load_config_files(self, slot=None, sys_file=None, dev_file=None, pysmurf_file=None):
         """
         Loads configuration files. If arguments are not specified, sensible
-        defatuls will be chosen.
+        defaults will be chosen.
 
         Args:
             slot (int, optional):
@@ -291,8 +291,12 @@ class DetConfig:
         elif len(self.sys['smurf_slots']) == 1:
             self.slot = self.sys['smurf_slots'][0]
         else:
-            raise argparse.ArgumentError("Multiple smurf slots exist! "
-                                         "Must specify --slot from command line")
+            self._parser.print_help()
+            raise ValueError(
+                "Slot could not be automatically determined from sys_config "
+                "file! Must specify slot directly from command line with "
+                "--slot argument."
+            )
 
         if dev_file is None:
             self.dev_file = os.path.expandvars(
@@ -345,7 +349,7 @@ class DetConfig:
         self.dev.dump(dev_out, clobber=clobber)
         return run_out, sys_out, dev_out
 
-    def make_pysmurf_instance(self, offline=False, epics_root=None, smurfpub_id=None,
+    def get_smurf_control(self, offline=False, epics_root=None, smurfpub_id=None,
                               make_logfile=False, setup=False, dump_configs=None,
                               config_dir=None, **pysmurf_kwargs):
         """
@@ -401,7 +405,7 @@ class DetConfig:
                                               S.get_timestamp())
                 else:
                     config_dir = os.path.join('config', S.get_timestamp())
-                    print("Warning! Being run in offline mode with no config"
+                    print("Warning! Being run in offline mode with no config "
                           f"directory specified! Writing to {config_dir}")
             self.dump_configs(config_dir)
 
