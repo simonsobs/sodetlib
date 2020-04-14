@@ -11,6 +11,7 @@ def cfg():
     ]
     return DetConfig(sys_file=sys, dev_file=dev, pysmurf_file=pysmurf)
 
+
 def test_dev_cfg(cfg):
     cfg.parse_args(args=[])
     cfg.dev.update_band(1, {'dc_att': 3, 'drive': 11})
@@ -32,6 +33,6 @@ def test_failed_update(cfg):
 
 def test_offline_pysmurf_instance(cfg):
     cfg.parse_args(args=[])
-    S = cfg.make_pysmurf_instance(offline=True, dump_configs=True)
+    S = cfg.get_smurf_control(offline=True, dump_configs=True)
 
 
