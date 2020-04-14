@@ -6,16 +6,31 @@ import sys
 import time
 
 
-class flowseq( list ): pass
-def flowseq_rep(dumper, data):
-    return dumper.represent_sequence( u'tag:yaml.org,2002:seq', data, flow_style=True)
+class YamlReps:
+    class FlowSeq(list):
+        """Represents a list as a flow sequencey by default"""
+        pass
 
-yaml.add_representer(flowseq, flowseq_rep)
-yaml.add_representer(
-    OrderedDict,
-    lambda self, data: self.represent_mapping('tag:yaml.org,2002:map',
-                                              data.items())
-)
+    class Odict(OrderedDict):
+        """
+        Represents an ordered dict in the same way as a dict, but with
+        ordering upheld.
+        """
+        pass
+
+    @classmethod
+    def setup_reps(cls):
+        def flowseq_rep(dumper, data):
+            return dumper.represent_sequence(u'tag:yaml.org,2002:seq', data,
+                                             flow_style=True)
+        yaml.add_representer(cls.FlowSeq, flowseq_rep)
+
+        def odict_rep(dumper, data):
+            return dumper.represent_mapping('tag:yaml.org,2002:map',data.items())
+        yaml.add_representer(cls.Odict, odict_rep)
+
+
+YamlReps.setup_reps()
 
 
 class DeviceConfig:
@@ -112,15 +127,15 @@ class DeviceConfig:
         if os.path.exists(path) and not clobber:
             raise FileExistsError(f"Can't dump device config! Path {path} already "
                                   "exists!!")
-        data = OrderedDict()
+        data = YamlReps.Odict()
         data['experiment'] = self.exp
         data['bias_groups'] = {
-            k: flowseq([bg[k] for bg in self.bias_groups])
+            k: YamlReps.FlowSeq([bg[k] for bg in self.bias_groups])
             for k in self.bias_groups[0].keys()
         }
-        data['bands'] = OrderedDict([
+        data['bands'] = YamlReps.Odict([
             (f'AMC[{i}]', {
-                k: flowseq([b[k] for b in self.bands[4*i:4*i+4]])
+                k: YamlReps.FlowSeq([b[k] for b in self.bands[4*i:4*i+4]])
                 for k in self.bands[0].keys()
             }) for i in [0,1]])
         with open(path, 'w') as f:
@@ -308,7 +323,7 @@ class DetConfig:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        run_info = OrderedDict([
+        run_info = YamlReps.Odict([
             ('sys_file', self.sys_file),
             ('dev_file', self.dev_file),
             ('pysmurf_file', self.pysmurf_file),
