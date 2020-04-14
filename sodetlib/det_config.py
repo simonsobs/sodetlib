@@ -288,8 +288,8 @@ class DetConfig:
 
         if slot is not None:
             self.slot = slot
-        elif len(self.sys['smurf_slots']) == 1:
-            self.slot = self.sys['smurf_slots'][0]
+        elif len(self.sys['slot_order']) == 1:
+            self.slot = self.sys['slot_order'][0]
         else:
             self._parser.print_help()
             raise ValueError(
@@ -298,17 +298,16 @@ class DetConfig:
                 "--slot argument."
             )
 
+        slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
         if dev_file is None:
-            self.dev_file = os.path.expandvars(
-                self.sys['device_configs'][self.slot - 2])
+            self.dev_file = os.path.expandvars(slot_cfg['device_config'])
         else:
             self.dev_file = dev_file
         self.dev = DeviceConfig.from_yaml(self.dev_file)
 
         # Gets the pysmurf config file
         if pysmurf_file is None:
-            self.pysmurf_file = os.path.expandvars(
-                self.sys['pysmurf_configs'][self.slot - 2])
+            self.pysmurf_file = os.path.expandvars(slot_cfg['pysmurf_config'])
         else:
             self.pysmurf_file = pysmurf_file
 
