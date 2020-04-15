@@ -13,7 +13,7 @@ def cfg():
 
 
 def test_dev_cfg(cfg):
-    cfg.parse_args(args=[])
+    cfg.parse_args(args=['-N', '2'])
     cfg.dev.update_band(1, {'dc_att': 3, 'drive': 11})
     cfg.dev.update_bias_group(0, {'bias_high': 11, 'enabled': 1})
     cfg.dev.update_experiment({"amp_50k_Id": 12})
@@ -21,7 +21,7 @@ def test_dev_cfg(cfg):
 
     # Testing reloading written config file
     cfg = DetConfig(sys_file=sys, dev_file=dev)
-    cfg.parse_args(args=[])
+    args = cfg.parse_args(args=['-N', '2'])
     assert (cfg.dev.bands[1]['dc_att'] == 3)
 
 
