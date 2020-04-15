@@ -19,7 +19,7 @@ def resonator_fitting(S,tunefile):
 	Returns
 	-------
 	df_param : dataframe
-		a pandas dataframe consisting of columns:ctime, resonator_index, f0, Qi, Qc, Q, br,depth.
+		a pandas dataframe consisting of columns:ctime, resonator_index, f0, Qi, Qc, Q, br, depth.
 	"""
 	if np.array([tunefile]).size==1:
 		df_param=one_resonator_fitting(tunefile)
@@ -27,7 +27,7 @@ def resonator_fitting(S,tunefile):
 		df_param=pd.DataFrame( {'time':[],'resonator_index':[], 'f0':[], 'Qi':[], 
                 'Qc':[],'Q':[],'br': [],'depth':[]})
 		for onefile in list(tunefile):
-			f=one_resonator_fitting(tunefile)
+			f=one_resonator_fitting(onefile)
 			df_param=df_param.append(f)
 	return df_param
 
@@ -41,7 +41,7 @@ def one_resonator_fitting(tunefile):
 	Returns
 	-------
 	dfres : dataframe
-		a pandas dataframe consisting of columns:ctime, resonator_index, f0, Qi, Qc, Q, br,depth.
+		a pandas dataframe consisting of columns:ctime, resonator_index, f0, Qi, Qc, Q, br, depth.
 	"""    
 	dres = {'time':[],'resonator_index':[], 'f0':[], 'Qi':[], 
                 'Qc':[],'Q':[],'br': [],'depth':[]}
@@ -62,16 +62,11 @@ def one_resonator_fitting(tunefile):
 	            br = get_br(result.best_values['Q'], result.best_values['f_0'])
 	            res_index = scan['channel']+band*512
 	            time=data[band]['find_freq']['timestamp'][0]
-	            depth = get_dip_depth(result.best_fit.real, result.best_fit.imag)
+	            s21_mag=np.abs(result.best_fit.real+1j*result.best_fit.imag)
+	            depth = max(s21_mag)-min(s21_mag)
 	            dfres = dfres.append({'time':time,'resonator_index': int(res_index), 'f0': f0, 'Qi': Qi, 
 	                'Qc': Qc, 'Q': Q, 'br':br, 'depth':depth}, ignore_index=True)
 	return dfres
-
-def get_dip_depth(real, imag):
-    s21_mag=np.abs(real+1j*imag)
-    return (max(s21_mag)-min(s21_mag))
-
-
 		
 if __name__=='__main__':    
 	parser = argparse.ArgumentParser()
