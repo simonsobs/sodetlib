@@ -291,11 +291,11 @@ class DetConfig:
         elif len(self.sys['slot_order']) == 1:
             self.slot = self.sys['slot_order'][0]
         else:
-            self._parser.print_help()
             raise ValueError(
                 "Slot could not be automatically determined from sys_config "
                 "file! Must specify slot directly from command line with "
-                "--slot argument."
+                "--slot argument. "
+                f"Available slots are {self.sys['slot_order']}."
             )
 
         slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
