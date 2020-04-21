@@ -4,60 +4,48 @@ matplotlib.use('Agg')
 import pysmurf.client
 import argparse
 import numpy as np
+from sodetlib.det_config import DetConfig
 import os
 
+def find_bands(S, cfg, bands=np.arange(8)):
+    """
+    Do a noise sweep to find the coarse position of resonators. Return a dictionary of resonator locations.
+    ----------
+    S : pysmurf.client.SmurfControl
+        Smurf control object
+    cfg : DetConfig
+        sodetlib config object
+    bands : int array
+        bands to find resonators in. Default is 0 to 8.
 
-def find_bands(S,bands=np.arange(8)):
-	"""
-	Do a noise sweep to find the coarse position of resonators. Return a dictionary of resonator locations.
-	----------
-	bands : int array
-		bands to find resonators in. Default is 0 to 8. 
-		  
-	Returns
-	-------
-	resonances : dict
-		A dictionary of {band:[list of subbands]} for each resonator
-	"""
-
-	resonances={}
-
-	for band in bands:
-		freq, resp = S.full_band_resp(band)
-		peaks = S.find_peak(freq, resp, make_plot=False, show_plot=False, band=band)
-		f=np.array(peaks*1.0E-6)+S.get_band_center_mhz(band)
-		subbands, channels, offsets = S.assign_channels(f, band=band, as_offset=False)
-		resonances[band]=subbands
-
-	return resonances
+    Returns
+    -------
+    resonances : dict
+        A dictionary of {band:[list of subbands]} for each resonator in MHz.
+    """
+    resonances = {}
+    for band in bands:
+        band_cfg = cfg.dev.bands[band]
+        freq, resp = S.full_band_resp(band)
+        peaks = S.find_peak(freq, resp, make_plot=band_cfg['make_plots'],
+                            show_plot=band_cfg['show_plots'], band=band)
+        f = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
+        subbands, channels, offsets = S.assign_channels(f, band=band, as_offset=False)
+        resonances[band] = subbands
+        cfg.dev.update_band(band, {'resonances': subbands})
+    return resonances
 
 
-if __name__=='__main__':    
+if __name__ == '__main__':
+    cfg = DetConfig()
     parser = argparse.ArgumentParser()
 
-    # Arguments that are needed to create Pysmurf object
-    parser.add_argument('--setup', action='store_true')
-    parser.add_argument('--config-file', required=True)
-    parser.add_argument('--epics-root', default='smurf_server_s2')
-
     # Custom arguments for this script
-    parser.add_argument('--bands', type=int, required=True, 
+    parser.add_argument('--bands', type=int, nargs='+', required=True,
                         help='range of bands to find resonators, separate by spaces')
+    args = cfg.parse_args(parser)
+    S = cfg.get_smurf_control(dump_configs=True)
 
-
-    # Parse command line arguments
-    args = parser.parse_args()
-
-    S = pysmurf.client.SmurfControl(
-            epics_root = args.epics_root,
-            cfg_file = args.config_file,
-            setup = args.args.setup, make_logfile=False,
-    )
-
-    find_bands(S, bands=args.bands)
-
-
-
-
-
-
+    resonances = find_bands(S, cfg, bands=args.bands)
+    cfg.dev.dump(os.path.abspath(os.path.expandvars(cfg.dev_file)),
+                 clobber=True)
