@@ -27,6 +27,17 @@ def find_and_tune_freq(S, cfg, bands, plotname_append='', new_master_assignment=
         Whether to create a new master assignment (tuning)
         file. This file defines the mapping between resonator frequency
         and channel number. Default True.
+
+    Optional parameters from cfg file
+    ----------
+    subband : [int]
+        An int array for the subbands
+    drive_power : int
+        The drive amplitude.  If none given, takes from cfg.
+    make_plot : bool
+        make the plot frequency sweep. Default False.
+    save_plot : bool
+        save the plot. Default True.
     """
     num_resonators_on = 0
     for band in bands:
