@@ -6,11 +6,10 @@ import argparse
 import os
 
 
-def find_and_tune_freq(S, cfg, bands):
+def find_and_tune_freq(S, cfg, bands, plotname_append='', new_master_assignment=True):
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
-
     Parameters
     ----------
     S:  (pysmurf.client.SmurfControl)
@@ -19,13 +18,25 @@ def find_and_tune_freq(S, cfg, bands):
         Detector config object
     bands : [int]
         bands to find tuned frequencies on. In range [0,7].
+
+    Optional parameters
+    ----------
+    plotname_append : str
+        Appended to the default plot filename. Default ''.
+    new_master_assignment : bool
+        Whether to create a new master assignment (tuning)
+        file. This file defines the mapping between resonator frequency
+        and channel number. Default True.
     """
     num_resonators_on = 0
     for band in bands:
         band_cfg = cfg.dev.bands[band]
 
-        S.find_freq(band, drive_power=band_cfg['drive'], make_plot=band_cfg['make_plot'],
-                    save_plot=band_cfg['save_plot'])
+        S.find_freq(band, drive_power=band_cfg['drive'],
+                    make_plot=band_cfg['make_plot'],
+                    save_plot=band_cfg['save_plot'], # Expecting to add a subband argument from config in here at some point
+                    plotname_append=plotname_append,
+                    new_master_assignment=new_master_assignment)
         S.setup_notches(band, drive=band_cfg['drive'])
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
@@ -47,10 +58,16 @@ if __name__ == '__main__':
     cfg = DetConfig()
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument('--bands', nargs='+', type=int,
                         help='input bands to tune as ints, separated by spaces. '
                              'Must be in range [0,7]. Defaults to tuning all '
                              'bands. Defaults to using all bands')
+    parser.add_argument('--plotname-append', type=str, default='',
+        help="Appended to the default plot filename. Default is ''.")
+    parser.add_argument('--new-master-assignment', type=bool, default=True,
+        help='Whether to create a new master assignment file. This file defines the mapping between resonator frequency and channel number. Default True.')
+
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
 
