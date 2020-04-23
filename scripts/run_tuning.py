@@ -35,9 +35,9 @@ def find_and_tune_freq(S, cfg, bands, plotname_append='', new_master_assignment=
         S.find_freq(band, drive_power=band_cfg['drive'],
                     make_plot=band_cfg['make_plot'],
                     save_plot=band_cfg['save_plot'], # Expecting to add a subband argument from config in here at some point
-                    plotname_append=plotname_append,
+                    plotname_append=plotname_append)
+        S.setup_notches(band, drive=band_cfg['drive'],
                     new_master_assignment=new_master_assignment)
-        S.setup_notches(band, drive=band_cfg['drive'])
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
