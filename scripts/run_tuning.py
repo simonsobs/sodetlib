@@ -63,8 +63,10 @@ if __name__ == '__main__':
                         help='input bands to tune as ints, separated by spaces. '
                              'Must be in range [0,7]. Defaults to tuning all '
                              'bands. Defaults to using all bands')
+    # find_freq
     parser.add_argument('--plotname-append', type=str, default='',
         help="Appended to the default plot filename. Default is ''.")
+    # setup_notches
     parser.add_argument('--new-master-assignment', type=bool, default=True,
         help='Whether to create a new master assignment file. This file defines the mapping between resonator frequency and channel number. Default True.')
 
