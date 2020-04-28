@@ -81,7 +81,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     return False
 
 
-def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
+def health_check(S, cfg, bay0, bay1):
     """
     Performs a system health check. This includes checking/adjusting amplifier biases,
     checking timing, checking the jesd connection, and checking that noise can
@@ -93,8 +93,6 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
         Whether or not bay 0 is active
     bay1 : bool
         Whether or not bay 1 is active
-    dev_outfile : path
-        Path to output device config file.
 
     Returns
     -------
@@ -215,9 +213,6 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
         'amp_hemt_Vg': Vg_hemt,
         'amp_50k_Vg': Vg_50K,
     })
-    if dev_outfile is not None:
-        print(f"Writing new dev-cfg file to {os.path.abspath(os.path.expandvars(dev_outfile))}")
-        cfg.dev.dump(os.path.abspath(os.path.expandvars(dev_outfile)), clobber=clobber)
 
     cprint("Health check finished! Final status", TermColors.HEADER)
     cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)

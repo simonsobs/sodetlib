@@ -17,10 +17,10 @@ if __name__ == '__main__':
                         help='Whether or not bay1 is active')
 
     args = cfg.parse_args(parser)
-    S = cfg.make_pysmurf_instance(dump_configs=True)
+    S = cfg.get_smurf_control(dump_configs=True)
 
     # Put your script calls here
-    health_check(S, cfg, bay0=args.bay0, bay1=args.bay1, dev_outfile=cfg.dev_file, clobber=True)
+    health_check(S, cfg, bay0=args.bay0, bay1=args.bay1)
 
     out_file = os.path.abspath(os.path.expandvars(cfg.dev_file))
     print(f"Writing new device config to {out_file}")
