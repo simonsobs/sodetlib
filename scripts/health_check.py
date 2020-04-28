@@ -8,7 +8,7 @@ import time
 
 
 class TermColors:
-    HEADER = '\033[95m'
+    HEADER = '\n\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -17,19 +17,12 @@ class TermColors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'        
 
-def cprint(msg, style):
+def cprint(msg, style=TermColors.OKBLUE):
     if style == True:
         style = TermColors.OKGREEN
     if style == False:
         style = TermColors.FAIL
     print(style + msg + TermColors.ENDC)
-
-
-def print_header(msg):
-    banner_len = 80
-    print("\n" + "*"*banner_len)
-    print(msg)
-    print("*"*banner_len)
 
 
 def optimize_bias(target_Id, vg_min, vg_max, amp_name, max_iter=30):
@@ -118,7 +111,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 
     # Turns on both amplifiers and checks biasing.
 
-    print_header("Checking biases")
+    cprint("Checking biases", TermColors.HEADER)
     S.C.write_ps_en(11)
     amp_biases = S.get_amplifier_biases()
     biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
@@ -130,9 +123,9 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 
     # Optimize bias voltages
     if biased_hemt and biased_50K:
-        print_header("Scanning hemt bias voltage")
+        cprint("Scanning hemt bias voltage", TermColors.HEADER)
         Id_hemt_in_range = optimize_bias(amp_hemt_Id, -1.2, -0.6, 'hemt')
-        print_header("Scanning 50K bias voltage")
+        cprint("Scanning 50K bias voltage", TermColors.HEADER)
         Id_50K_in_range = optimize_bias(amp_50K_Id, -0.8, -0.3, '50K')
         time.sleep(0.2)
         amp_biases = S.get_amplifier_biases()
@@ -159,7 +152,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
 
     # Check JESD connection on bay 0 and bay 1
     # Return connections for both bays, or passes if bays not active
-    print_header("Checking JESD Connections")
+    cprint("Checking JESD Connections", TermColors.HEADER)
     if bay0:
         jesd_tx0, jesd_rx0 = S.check_jesd(0)
         if jesd_tx0:
@@ -192,7 +185,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
     # Typical in-band noise values are around ~2-7, so here check that average value of
     # noise through band 0 is above 1.
     # Check limit makes sense when through system
-    print_header("Checking full-band response for band 0")
+    cprint("Checking full-band response for band 0", TermColors.HEADER)
     band_cfg = cfg.dev.bands[0]
     S.set_att_uc(0, band_cfg['uc_att'])
 
@@ -204,7 +197,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
         if -band_width/2 < f < band_width/2:
             resp_inband.append(r)
     # If the mean is > 1, say response received
-    if np.mean(resp_inband) > 1:
+    if np.mean(resp_inband) > 1: #LESS THAN CHANGE
         resp_check = True
         cprint("Full band response check passed", True)
     else:
@@ -227,7 +220,7 @@ def health_check(S, cfg, bay0, bay1, dev_outfile=None, clobber=False):
         print(f"Writing new dev-cfg file to {os.path.abspath(os.path.expandvars(dev_outfile))}")
         cfg.dev.dump(os.path.abspath(os.path.expandvars(dev_outfile)), clobber=clobber)
 
-    print_header("Health check finished! Final status")
+    cprint("Health check finished! Final status", TermColors.HEADER)
     cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
     cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
     print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
