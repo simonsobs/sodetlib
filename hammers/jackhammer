@@ -148,13 +148,9 @@ def enter_pysmurf(slot, agg=False):
             agg (bool): if true, use the matplotlib agg backend.
     """
     print(f"Entering pysmurf on slot {slot}", flush=True)
-
-    cmd = f'docker exec -it smurf-util ' \
-          f'python3 /sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot} '
-    if agg:
-        cmd += '--agg'
-
-    subprocess.run(cmd.split())
+    cmd = f"docker-compose run --rm --entrypoint=python3 smurf-util " \
+          f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}"
+    subprocess.run(cmd.split(), cwd=cwd)
 
 
 def start_services(services, write_env=False):
@@ -325,12 +321,8 @@ def log_func(args):
 
 # Entrypoint for jackhamer util
 def util_func(args):
-    # Check if util docker is up and running
-    containers = get_running_dockers()
-    names = [c[2] for c in containers]
-    if "smurf-util" not in names:
-        start_services('smurf-util', write_env=True)
-    subprocess.run('docker exec -it smurf-util bash'.split())
+    cmd = "docker-compose run --rm --entrypoint=bash smurf-util"
+    subprocess.run(shlex.split(cmd), cwd=cwd)
 
 
 def gui_func(args):
