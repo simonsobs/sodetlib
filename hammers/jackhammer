@@ -38,6 +38,14 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 # Various utility functions
 ########################################################################
+
+
+def util_run(cmd, args=[], **run_kwargs):
+    cmd =f'docker-compose run --rm --entrypoint={cmd} '\
+         f'smurf-util {" ".join(args)}'
+    return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
+
+
 def check_epics_connection(epics_server, retry=False):
     """
         Checks if we can connect to a specific epics server. 
@@ -52,8 +60,8 @@ def check_epics_connection(epics_server, retry=False):
     if retry:
         print(f"Waiting for epics connection to {epics_server}", end='', flush=True)
         while True:
-            x = subprocess.run(
-                f'docker exec -it smurf-util caget {epics_server}:AMCc:enable'.split(),
+            x = util_run(
+                'caget', args=['smurf_server_s2:AMCc:enable'],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT
             )
             if "True" in x.stdout.decode():
@@ -63,9 +71,9 @@ def check_epics_connection(epics_server, retry=False):
         print("\nConnected!")
         return True
     else:
-        x = subprocess.run(
-            'docker exec -it smurf-util caget {epics_server}:AMCc:enable'.split(),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        x = util_run(
+            'caget', args=['smurf_server_s2:AMCc:enable'],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
         return "True" in x.stdout.decode()
 
@@ -148,9 +156,10 @@ def enter_pysmurf(slot, agg=False):
             agg (bool): if true, use the matplotlib agg backend.
     """
     print(f"Entering pysmurf on slot {slot}", flush=True)
-    cmd = f"docker-compose run --rm --entrypoint=python3 smurf-util " \
-          f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}"
-    subprocess.run(cmd.split(), cwd=cwd)
+    util_run(
+        'python3',
+        args=f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}".split()
+    )
 
 
 def start_services(services, write_env=False):
@@ -248,7 +257,7 @@ def hammer_func(args):
     # Sets fan levels on crate
     cprint("Setting fan levels", style=TermColors.HEADER)
     if sys_config['startup']['set_crate_fans_to_full']:
-        cmd =  f'clia minfanlevel {sys_config["max_fan_level"]}; '
+        cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
         cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
 
         print("Setting crate fans to full...")
@@ -301,10 +310,8 @@ def hammer_func(args):
         for slot in sys_config['slot_order']:
             print(f"Configuring pysmurf on slot {slot}...")
 
-            cmd = f'docker exec -it smurf-util ' \
-                  f'python3 /sodetlib/hammers/scripts/setup_pysmurf.py -N {slot}'
-
-            subprocess.run(shlex.split(cmd))
+            util_run('python3',
+                     args=f'/sodetlib/hammers/scripts/setup_pysmurf.py -N {slot}'.split())
         print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
@@ -321,8 +328,7 @@ def log_func(args):
 
 # Entrypoint for jackhamer util
 def util_func(args):
-    cmd = "docker-compose run --rm --entrypoint=bash smurf-util"
-    subprocess.run(shlex.split(cmd), cwd=cwd)
+    util_run('bash')
 
 
 def gui_func(args):
