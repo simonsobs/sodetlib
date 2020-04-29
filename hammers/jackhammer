@@ -333,7 +333,7 @@ def gui_func(args):
             server_port = 9000 + 2 * args.slot
         else:
             server_port = 9099
-    subprocess.run(f'/home/cryo/sodetlib/server_scripts/run_gui.sh {server_port}'.split())
+    subprocess.run(f'/home/cryo/sodetlib/hammers/scripts/run_gui.sh {server_port}'.split())
 
 
 if __name__ == '__main__':
