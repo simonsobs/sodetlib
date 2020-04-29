@@ -8,6 +8,26 @@ import sys
 import time
 import os
 
+
+class TermColors:
+    HEADER = '\n\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+def cprint(msg, style=TermColors.OKBLUE):
+    if style == True:
+        style = TermColors.OKGREEN
+    elif style == False:
+        style = TermColors.FAIL
+    print(style + str(msg) + TermColors.ENDC)
+
+
 # This should be the same for every smurf-srv
 cwd=os.environ['OCS_CONFIG_DIR']
 sys_config_file = os.path.join(os.environ['OCS_CONFIG_DIR'], 'sys_config.yml')
@@ -18,11 +38,6 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 # Various utility functions
 ########################################################################
-def print_header(msg):
-    print('\n' + "-"*80)
-    print(msg)
-    print("-"*80)
-
 def check_epics_connection(epics_server, retry=False):
     """
         Checks if we can connect to a specific epics server. 
@@ -136,7 +151,6 @@ def enter_pysmurf(slot, agg=False):
 
     cmd = f'docker exec -it smurf-util ' \
           f'python3 /sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot} '
-
     if agg:
         cmd += '--agg'
 
@@ -178,7 +192,7 @@ def start_services(services, write_env=False):
 
 # Entrypoint for jackhammer pysmurf
 def pysmurf_func(args):
-    available_slots = sys_config['smurf_slots']
+    available_slots = sys_config['slot_order']
 
     if args.slot is not None:
         if args.slot not in available_slots:
@@ -197,14 +211,14 @@ def softreset_func(args):
 
     # If no slots are specified reset all slots
     if not args.slots:
-        args.slots = sys_config['smurf_slots']
+        args.slots = sys_config['slot_order']
 
     kill_bad_dockers(args.slots, ocs=args.ocs)
 
     print("Running docker-compose up....")
 
     services = ['ocs-pysmurf-monitor', 'smurf-util']
-    for slot in sys_config['smurf_slots']:
+    for slot in sys_config['slot_order']:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
@@ -225,18 +239,18 @@ def hardreset_func(args):
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
-    slots = sys_config['smurf_slots']
-    print_header("Killing conflicting dockers")
+    slots = sys_config['slot_order']
+    cprint("Killing conflicting dockers", style=TermColors.HEADER)
     kill_bad_dockers(slots, ocs=True)
 
-    print_header("Restarting smurf-util")
+    cprint("Restarting smurf-util", style=TermColors.HEADER)
     # Restarts smurf-util to clean up any running processes
     subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
     subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
     start_services('smurf-util', write_env=True)
 
     # Sets fan levels on crate
-    print_header("Setting fan levels")
+    cprint("Setting fan levels", style=TermColors.HEADER)
     if sys_config['startup']['set_crate_fans_to_full']:
         cmd =  f'clia minfanlevel {sys_config["max_fan_level"]}; '
         cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
@@ -244,10 +258,8 @@ def hammer_func(args):
         print("Setting crate fans to full...")
         run_on_shelf_manager(cmd)
 
-
-
     if sys_config['startup']['reboot'] and (not args.no_reboot):
-        print_header("Rebooting all slots")
+        cprint("Rebooting all slots", style=TermColors.HEADER)
 
         deactivate_commands = []
         activate_commands = []
@@ -264,7 +276,6 @@ def hammer_func(args):
         print(f"Activating carriers: {slots}")
         run_on_shelf_manager('; '.join(activate_commands))
 
-    
         print("Waiting for carriers to come back online (this takes a bit)")        
         for slot in slots:
             ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
@@ -273,10 +284,10 @@ def hammer_func(args):
         print("Skipping reboot process")
     
     #Brings up all smurf-streamer dockers
-    print_header('Bringing up smurf dockers')
+    cprint('Bringing up smurf dockers', style=TermColors.HEADER)
 
     services = ['ocs-pysmurf-monitor', 'smurf-util']
-    for slot in sys_config['smurf_slots']:
+    for slot in sys_config['slot_order']:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
@@ -284,14 +295,14 @@ def hammer_func(args):
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
-    for slot in sys_config['smurf_slots']:
+    for slot in sys_config['slot_order']:
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
     print("All streamers have started!")
     if sys_config['startup']['configure_pysmurf']:
-        print_header("Configuring pysmurf")
-        for slot in sys_config['smurf_slots']:
+        cprint("Configuring pysmurf", style=TermColors.HEADER)
+        for slot in sys_config['slot_order']:
             print(f"Configuring pysmurf on slot {slot}...")
 
             cmd = f'docker exec -it smurf-util ' \
@@ -300,18 +311,17 @@ def hammer_func(args):
             subprocess.run(shlex.split(cmd))
         print("Finished configuring pysmurf!")
 
-
     # Enters into an ipython notebook for the first specified slot   
-    print_header(f"Entering pysmurf slot {slots[0]}")
+    cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
     enter_pysmurf(slots[0], agg=args.agg)
- 
-        
+
 
 # Entrypoint for jackhammer logs
 def log_func(args):
     cmd = shlex.split('docker-compose logs -f')
     cmd.extend(args.log_args)
     subprocess.run(cmd, cwd=cwd)
+
 
 # Entrypoint for jackhamer util
 def util_func(args):
@@ -320,8 +330,8 @@ def util_func(args):
     names = [c[2] for c in containers]
     if "smurf-util" not in names:
         start_services('smurf-util', write_env=True)
-
     subprocess.run('docker exec -it smurf-util bash'.split())
+
 
 def gui_func(args):
     if args.port is not None:
@@ -331,9 +341,7 @@ def gui_func(args):
             server_port = 9000 + 2 * args.slot
         else:
             server_port = 9099
-
     subprocess.run(f'/home/cryo/sodetlib/server_scripts/run_gui.sh {server_port}'.split())
-
 
 
 if __name__ == '__main__':
