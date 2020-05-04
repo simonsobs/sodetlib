@@ -100,8 +100,9 @@ if __name__=='__main__':
             S.set_rtm_slow_dac_volt(4,b)
             print('Bias set to: ' + str(S.get_rtm_slow_dac_volt(4)))
             time.sleep(5)
-        time.sleep(120)
         print('Waiting for 120 seconds to stabilize')
+        time.sleep(120)
+
 
         #If not set it to the right value
         S.set_rtm_slow_dac_volt(4,b_bias/S.high_low_current_ratio) 
