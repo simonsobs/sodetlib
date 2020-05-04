@@ -11,59 +11,59 @@ from scipy import signal
 pi = np.pi
 
 if __name__=='__main__':
-	parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
 
-	parser.add_argument('--setup', action='store_true')
-	parser.add_argument('--config-file', required=True)
-	parser.add_argument('--epics-root', default='smurf_server_s2')
+    parser.add_argument('--setup', action='store_true')
+    parser.add_argument('--config-file', required=True)
+    parser.add_argument('--epics-root', default='smurf_server_s2')
 
-	parser.add_argument('--out-file')
+    parser.add_argument('--out-file')
 
-	parser.add_argument('--band', type=int, default=2)
-	parser.add_argument('--bias-group',type=int,default=1)
-	parser.add_argument('--frac-pp',type=float, default = 0.28834)
-	parser.add_argument('--temp',type=float, default = .100)
-	# parser.add_argument('--noise-dur',type=float,)
-	# parser.add_argument('--step-dur',type=float)
-	# parser.add_argument('--step-size',type=float)
-	# parser.add_argument('--bias-high',type=float)
-	# parser.add_argument('--bias-low',type=float)
-	# parser.add_argument('--bias-step',type=float)
-	# parser.add_argument('--high-current-mode',action='store_true')
-	
-	args = parser.parse_args()
-	
-	S = pysmurf.client.SmurfControl(
-			epics_root = args.epics_root,
-			cfg_file = args.config_file,
-			setup = args.setup,make_logfile=False
-	)
+    parser.add_argument('--band', type=int, default=2)
+    parser.add_argument('--bias-group',type=int,default=1)
+    parser.add_argument('--frac-pp',type=float, default = 0.28834)
+    parser.add_argument('--temp',type=float, default = .100)
+    # parser.add_argument('--noise-dur',type=float,)
+    # parser.add_argument('--step-dur',type=float)
+    # parser.add_argument('--step-size',type=float)
+    # parser.add_argument('--bias-high',type=float)
+    # parser.add_argument('--bias-low',type=float)
+    # parser.add_argument('--bias-step',type=float)
+    # parser.add_argument('--high-current-mode',action='store_true')
+    
+    args = parser.parse_args()
+    
+    S = pysmurf.client.SmurfControl(
+            epics_root = args.epics_root,
+            cfg_file = args.config_file,
+            setup = args.setup,make_logfile=False
+    )
 
-	#Args to define:
-	step_size = args.step_size #In volts
-	band = args.band
-	reset_rate_khz = S.get_flux_ramp_freq()*1e3
-	downsampled = S.get_downsample_factor()
-	fs = reset_rate_khz/downsampled
-	# noise_dur = args.noise_dur
-	# step_dur = args.step_dur
-	bias_group = args.bias_group
-	temp = args.temp
-	nperseg = 2**16
-	detrend = 'constant'
-	plot_dir = S.plot_dir
-	output_dir = S.output_dir
+    #Args to define:
+    step_size = args.step_size #In volts
+    band = args.band
+    reset_rate_khz = S.get_flux_ramp_freq()*1e3
+    downsampled = S.get_downsample_factor()
+    fs = reset_rate_khz/downsampled
+    # noise_dur = args.noise_dur
+    # step_dur = args.step_dur
+    bias_group = args.bias_group
+    temp = args.temp
+    nperseg = 2**16
+    detrend = 'constant'
+    plot_dir = S.plot_dir
+    output_dir = S.output_dir
 
-	# if args.high_current_mode:
-	# 	bias_high = args.bias_high / S.high_low_current_ratio
-	# 	bias_low = args.bias_low / S.high_low_current_ratio
-	# 	bias_step = args.bias_step / S.high_low_current_ratio
-	# else:
-	# 	bias_high = args.bias_high
-	# 	bias_low = args.bias_low
-	# 	bias_step = args.bias_step
+    # if args.high_current_mode:
+    # 	bias_high = args.bias_high / S.high_low_current_ratio
+    # 	bias_low = args.bias_low / S.high_low_current_ratio
+    # 	bias_step = args.bias_step / S.high_low_current_ratio
+    # else:
+    # 	bias_high = args.bias_high
+    # 	bias_low = args.bias_low
+    # 	bias_step = args.bias_step
 
-	# bias_points = np.arange(bias_high,bias_low-bias_step,-bias_step)
+    # bias_points = np.arange(bias_high,bias_low-bias_step,-bias_step)
 
     bias_points = np.arange(10.5,3.5,-0.25)
     extra_points = np.array([13.5,12.5,11.5,2.5,1.5,0])
@@ -126,6 +126,6 @@ if __name__=='__main__':
 
         out_file = args.out_file
         print(f'Writing to file {out_file}')
-	    with open(out_file, 'a') as fname:
-		    fname.write(f'T = {temp} mK, Bias Point: {b}, Datafile: {datfile}, plot_dir: {plot_dir}\n')
+        with open(out_file, 'a') as fname:
+            fname.write(f'T = {temp} mK, Bias Point: {b}, Datafile: {datfile}, plot_dir: {plot_dir}\n')
 
