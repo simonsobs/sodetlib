@@ -101,6 +101,7 @@ if __name__=='__main__':
             print('Bias set to: ' + str(S.get_rtm_slow_dac_volt(4)))
             time.sleep(5)
         time.sleep(120)
+        print('Waiting for 120 seconds to stabilize')
 
         #If not set it to the right value
         S.set_rtm_slow_dac_volt(4,b_bias/S.high_low_current_ratio) 
@@ -127,5 +128,5 @@ if __name__=='__main__':
         out_file = args.out_file
         print(f'Writing to file {out_file}')
         with open(out_file, 'a') as fname:
-            fname.write(f'T = {temp} mK, Bias Point: {b}, Datafile: {datfile}, plot_dir: {plot_dir}\n')
+            fname.write(f'T = {temp} mK, Bias Point: {b_bias}, Datafile: {datfile}, plot_dir: {plot_dir}\n')
 
