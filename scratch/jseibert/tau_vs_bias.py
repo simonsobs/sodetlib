@@ -104,7 +104,7 @@ if __name__=='__main__':
 
         #If not set it to the right value
         S.set_rtm_slow_dac_volt(4,b_bias/S.high_low_current_ratio) 
-        print(S.get_rtm_slow_dac_volt(4))
+        print('Bias set to: ' + str(S.get_rtm_slow_dac_volt(4)))
         
         #Once temp is stable do some bias steps
         step_size = 0.004
@@ -122,8 +122,10 @@ if __name__=='__main__':
             time.sleep(step_dur)
         time.sleep(1) 
         S.stream_data_off() 
+        print('Stopping Bias Step Data')
 
         out_file = args.out_file
+        print(f'Writing to file {out_file}')
 	    with open(out_file, 'a') as fname:
 		    fname.write(f'T = {temp} mK, Bias Point: {b}, Datafile: {datfile}, plot_dir: {plot_dir}\n')
 
