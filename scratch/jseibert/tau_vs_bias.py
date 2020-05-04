@@ -21,15 +21,15 @@ if __name__=='__main__':
 
 	parser.add_argument('--band', type=int, default=2)
 	parser.add_argument('--bias-group',type=int,default=1)
-	parser.add_argument('--frac-pp',type=float)
-	parser.add_argument('--temp',type=float)
-	parser.add_argument('--noise-dur',type=float)
-	parser.add_argument('--step-dur',type=float)
-	parser.add_argument('--step-size',type=float)
+	parser.add_argument('--frac-pp',type=float, default = 0.28834)
+	parser.add_argument('--temp',type=float, default = .100)
+	# parser.add_argument('--noise-dur',type=float,)
+	# parser.add_argument('--step-dur',type=float)
+	# parser.add_argument('--step-size',type=float)
 	# parser.add_argument('--bias-high',type=float)
 	# parser.add_argument('--bias-low',type=float)
 	# parser.add_argument('--bias-step',type=float)
-	parser.add_argument('--high-current-mode',action='store_true')
+	# parser.add_argument('--high-current-mode',action='store_true')
 	
 	args = parser.parse_args()
 	
@@ -45,8 +45,8 @@ if __name__=='__main__':
 	reset_rate_khz = S.get_flux_ramp_freq()*1e3
 	downsampled = S.get_downsample_factor()
 	fs = reset_rate_khz/downsampled
-	noise_dur = args.noise_dur
-	step_dur = args.step_dur
+	# noise_dur = args.noise_dur
+	# step_dur = args.step_dur
 	bias_group = args.bias_group
 	temp = args.temp
 	nperseg = 2**16
