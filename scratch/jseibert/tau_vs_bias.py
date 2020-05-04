@@ -40,7 +40,7 @@ if __name__=='__main__':
     )
 
     #Args to define:
-    step_size = args.step_size #In volts
+    # step_size = args.step_size #In volts
     band = args.band
     reset_rate_khz = S.get_flux_ramp_freq()*1e3
     downsampled = S.get_downsample_factor()
