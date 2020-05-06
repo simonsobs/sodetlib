@@ -237,7 +237,7 @@ def health_check(S, cfg, bay0, bay1):
     return all(status_bools)
 
 
-def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_master_assignment=True):
+def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
@@ -252,12 +252,6 @@ def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_mast
 
     Optional parameters
     ----------
-    subband : [int]
-        An int array for the subbands. If None, or [], will try to pull the
-        subbands for the correct band from the device config. If that fails,
-        defaults to np.arange(13, 115).
-    plotname_append : str
-        Appended to the default plot filename. Default ''.
     new_master_assignment : bool
         Whether to create a new master assignment (tuning)
         file. This file defines the mapping between resonator frequency
@@ -265,7 +259,7 @@ def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_mast
 
     Optional parameters from cfg file
     ----------
-    drive_power : int
+    drive : int
         The drive amplitude.  If none given, takes from cfg.
     make_plot : bool
         make the plot frequency sweep. Default False.
@@ -273,16 +267,22 @@ def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_mast
         save the plot. Default True.
     """
     num_resonators_on = 0
+    default_subbands = np.arange(13, 115)
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        if not subband:
-            subband = band_cfg.get('subband', np.arange(13, 115))
-
+        subband = band_cfg.get('active_subbands', default_subbands)
+        if subband is True:
+            subband = default_subbands
+        elif not subband:
+            continue
         S.find_freq(band, drive_power=band_cfg['drive'],
                     make_plot=band_cfg['make_plot'],
                     save_plot=band_cfg['save_plot'],
-                    subband=subband,
-                    plotname_append=plotname_append)
+                    subband=subband)
+        if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
+            cprint(f'Find freqs could not find resonators in '
+            f'band : {band} and subbands : {subband}', False)
+            continue
         S.setup_notches(band, drive=band_cfg['drive'],
                     new_master_assignment=new_master_assignment)
         S.run_serial_gradient_descent(band)
@@ -291,7 +291,10 @@ def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_mast
         num_resonators_on += len(S.which_on(band))
 
     tune_file = S.tune_file
-
+    if not tune_file:
+        cprint("Find freqs was unsuccessful! could not find resonators in the\
+                specified bands + subbands", False)
+        return False 
     print(f"Total num resonators on: {num_resonators_on}")
     print(f"Tune file: {tune_file}")
 
@@ -299,3 +302,4 @@ def find_and_tune_freq(S, cfg, bands, subband=None, plotname_append='', new_mast
     cfg.dev.update_experiment({'tunefile': tune_file})
 
     return num_resonators_on, tune_file
+
