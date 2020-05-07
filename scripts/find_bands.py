@@ -49,7 +49,6 @@ def find_bands(S, cfg):
         subbands=S.freq_to_subband(band,f)[0] 
         subbands=np.unique(subbands)
 
-        subband_dict[band]={}
         subband_dict[band] = subbands
 
         cfg.dev.update_band(band, {'resonances': subbands})
