@@ -20,7 +20,7 @@ def find_bands(S, cfg):
     -------
     bands : int array
         Active bands
-        
+
     subband_dict : dict
         A dictionary of {band:[list of subbands]} for each resonator in MHz.
     """
@@ -44,8 +44,8 @@ def find_bands(S, cfg):
         freq, resp = S.full_band_resp(band)
         peaks = S.find_peak(freq, resp, make_plot=band_cfg['make_plots'],
                             show_plot=band_cfg['show_plots'], band=band)
-        freq = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
-        subbands=S.freq_to_subband(band,freq)[0] 
+        f = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
+        subbands=S.freq_to_subband(band,f)[0] 
         subbands=np.unique(subbands)
 
         subband_dict[band]={}
