@@ -9,7 +9,8 @@ import os
 
 def find_bands(S, cfg):
     """
-    Do a noise sweep to find the coarse position of resonators. Return a dictionary of resonator locations.
+    Do a noise sweep to find the coarse position of resonators. 
+    Return active bands and a dictionary of active subbands.
     ----------
     S : pysmurf.client.SmurfControl
         Smurf control object
