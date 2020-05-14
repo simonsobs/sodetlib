@@ -395,7 +395,7 @@ def analyze_noise_psd(S, band, dat_file):
 
 def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                             frac_pp=None, lms_freq=None, make_plots=True,
-                            meas_time=None, fix_drive=False):
+                            meas_time=None, fixed_drive=False):
     """
     Finds the drive power and uc attenuator value that minimizes the median noise within a band.
 
@@ -424,7 +424,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
         Optimized dr value
     meas_time : float
         Measurement time for noise PSD in seconds.
-    fix_drive: bool
+    fixed_drive: bool
         If true, will not try to vary drive to search for global minimum.
     """
     band_cfg = cfg.dev.bands[band]
@@ -482,7 +482,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
         medians= np.asarray(medians)
         min_arg = np.argmin(medians)
         checked_drives.append(drive)
-        if (0 < min_arg < len(medians)-1) or fix_drive:
+        if (0 < min_arg < len(medians)-1) or fixed_drive:
             found_min = True
             min_median = medians[min_arg]
             min_atten = attens[min_arg]
