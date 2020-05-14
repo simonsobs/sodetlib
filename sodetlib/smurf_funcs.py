@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import time
+from scipy import signal
+
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -82,7 +84,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
             S.set_50k_amp_gate_voltage(Vg_next)
         time.sleep(0.2)
     cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
-                 f"Unable to get target Id for {amp_name}.", False)
+           f"Unable to get target Id for {amp_name}.", False)
     return False
 
 
@@ -309,9 +311,9 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
     return num_resonators_on, tune_file
 
 
-def get_median_noise(S, cfg, band):
+def get_median_noise(S, cfg, band, meas_time=30):
     """
-    Gets the median noise from the psd.
+    Takes PSD and returns the median noise of all active channels.
 
     Parameters
     ------------
@@ -332,91 +334,15 @@ def get_median_noise(S, cfg, band):
     S.run_serial_eta_scan(band)
     S.tracking_setup(
         band, reset_rate_khz=4, fraction_full_scale=band_cfg['frac_pp'],
-        make_plot=band_cfg.get('make_plot', False), channel=S.which_on(band),
-        nsamp=2**18, lms_gain=band_cfg['lms_gain'],
+        make_plot=band_cfg.get('make_plot', False),
+        save_plot=band_cfg.get('save_plot', False),
+        channel=S.which_on(band), nsamp=2**18, lms_gain=band_cfg['lms_gain'],
         lms_freq_hz=band_cfg['lms_freq_hz'], feedback_start_frac=1/12,
-        feedback_end_frac=0.98
+        feedback_end_frac=0.98, show_plot=False
     )
-    datafile = S.take_noise_psd(30, nperseg=2**16, save_data=False,
-                                make_channel_plot=False)
+    datafile = S.take_stream_data(meas_time)
     median_noise, _ = analyze_noise_psd(S, band, datafile)
     return median_noise
-
-
-
-def optimize_uc_att_fix_dr(band,frac_pp,lms_freq,ctime):
-    """
-    Finds the minimum median white noise level for all channels on in a band vs
-    the uc attenuator value and tells you if you actually found a minimum vs uc
-    attenuator within your range or not.
-
-    Parameters
-    ----------
-    band : int
-        band to optimize noise on
-    frac_pp : float
-        fraction full scale of the FR DAC used for tracking_setup
-    lms_freq : float
-        tracking frequency used for tracking_setup
-    ctime : str
-        ctime used for saved data/plot titles
-
-    Returns
-    -------
-    delta_dr : int
-
-    found_min : str
-        tells you if the minimum of the noise is within your range, yes if
-        true, low if its at uc_atten = 30, and high if its at uc_atten = 0
-    median_noise_min : float
-        minimum median white noise level at the optimized uc_atten value
-    atten_min : int
-        attenuator value which minizes the median noise
-    """
-    attens = np.arange(30, -2, -2) #This is the full range of the attenuators
-    median_noise = []
-
-    for atten in attens:
-        print('Setting UC Atten to: ',atten)
-        S.set_att_uc(band, atten)
-        S.run_serial_gradient_descent(band)
-        S.run_serial_eta_scan(band)
-
-        #4kHz is the standard reset_rate, this can be changed but not to any arbitrary number. We can choose to expose this value as an argument later or not.
-        S.tracking_setup(
-            band, reset_rate_khz=4, fraction_full_scale=frac_pp, make_plot=False,
-            save_plot=False, show_plot=False, channel=S.which_on(band),
-            nsamp=2**18, lms_gain=6, lms_freq_hz = lms_freq,
-            feedback_start_frac=1/12, feedback_end_frac=0.98
-        )
-        dat_file_temp = S.take_noise_psd(30, nperseg=2**16, save_data=False,
-                                         make_channel_plot = False)
-        mn, od = analyze_noise_psd(band,dat_file_temp,ctime)
-        median_noise.append(mn)
-       if atten == 30:
-            mn_initial = mn
-        if mn > 4*mn_initial:
-            print('Median noise is now greater than 4 times what it was at UC atten = 30 so exiting loop at uc_atten = '+str(atten))
-            attens = np.arange(30,atten-2,-2)
-            break
-    plt.figure()
-    plt.plot(attens,median_noise)
-    plt.title(f'Drive = {S.get_amplitude_scale_channel(band, S.which_on(band)[0])} in Band {band}',fontsize = 18)
-    plt.xlabel('UC Attenuator Value',fontsize = 14)
-    plt.ylabel('Median Channel Noise [pA/rtHz]',fontsize = 14)
-    plotname = os.path.join(S.plot_dir, f'{ctime}_noise_vs_uc_atten_b{band}.png')
-    plt.savefig(plotname)
-    S.pub.register_file(plotname, 'noise_vs_atten', plot=True)
-    plt.close()
-
-    median_noise = np.asarray(median_noise)
-    med_min_arg = np.argmin(median_noise)
-    found_min = 'yes'
-    if med_min_arg == 0:
-        found_min = 'low'
-    if med_min_arg == (len(median_noise) - 1):
-        found_min = 'high'
-    return found_min, np.min(median_noise), attens[med_min_arg]
 
 
 def analyze_noise_psd(S, band, dat_file):
@@ -466,8 +392,10 @@ def analyze_noise_psd(S, band, dat_file):
     median_noise = np.median(np.asarray(wls))
     return median_noise, outdict
 
+
 def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
-                            frac_pp=None, lms_freq=None, make_plots=False):
+                            frac_pp=None, lms_freq=None, make_plots=True,
+                            meas_time=None):
     """
     Finds the drive power and uc attenuator value that minimizes the median noise within a band.
 
@@ -509,8 +437,9 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
     drive = dr_start
     attens = np.arange(30, -2, -2)
     checked_drives = []
-    while True:
-        print(f"Setting Drive to {drive}")
+    found_min = False
+    while not found_min:
+        cprint(f"Setting Drive to {drive}")
         ctime = S.get_timestamp()
         S.set_att_uc(band, 30)
         S.relock(band=band, drive=drive)
@@ -518,9 +447,13 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
         medians = []
         initial_median = None
         for atten in attens:
-            print(f'Setting UC atten to: {}')
+            cprint(f'Setting UC atten to: {atten}')
             S.set_att_uc(band, atten)
-            m = get_median_noise(S, cfg, band)
+
+            kwargs = {}
+            if meas_time is not None:
+                kwargs['meas_time'] = meas_time
+            m = get_median_noise(S, cfg, band, **kwargs)
             medians.append(m)
             # Checks to make sure noise doesn't go too far over original median
             if initial_median is None:
@@ -532,7 +465,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
 
         if make_plots:
             plt.figure()
-            plt.plot(attens, medians)
+            plt.plot(attens[:len(medians)], medians)
             plt.title(f'Drive = {drive} in Band {band}', fontsize=18)
             plt.xlabel('UC Attenuator Value', fontsize=14)
             plt.ylabel('Median Channel Noise [pA/rtHz]', fontsize=14)
