@@ -21,6 +21,9 @@ if __name__=='__main__':
     parser.add_argument('--meas-time', '-m', type=float,
                         help='Time (sec) to take data for noise PSD. If not'
                              'specified, defaults to 30 sec.')
+    parser.add_argument('--fix-drive', action='store_true',
+                        help="If specified, not vary drive to find global min.")
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
-    optimize_power_per_band(S, cfg, args.band, meas_time=args.meas_time)
+    optimize_power_per_band(S, cfg, args.band, meas_time=args.meas_time,
+                            fix_drive=args.fix_drive)
