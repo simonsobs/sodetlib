@@ -12,7 +12,7 @@ import sys
 #S = pysmurf.SmurfControl(make_logfile=False,setup=False,epics_root='smurf_server_s2',cfg_file='/data/pysmurf_cfg/experiment_fp29_smurfsrv03_noExtRef_lbOnlyBay0.cfg')
 
 import os
-fn_raw_data = os.path.join('./', '%s_fr_sweep_data.npy'%(S.get_timestamp()))
+fn_raw_data = f'{S.output_dir}/{S.get_timestamp()}_fr_sweep_data.npy'
 
 #######
 # [(None,None)] means don't change the amplitude or uc_att, but still retunes
@@ -24,15 +24,15 @@ amplitudes_and_uc_atts=[(None,None)]
 lmsGain=6
 hbInBay0=False
 relock=False 
-bands=[3]
+bands=[2]
 bias=None
 # no longer averaging as much or waiting as long between points in newer fw which has df filter
 wait_time=0.125
-Npts=3
+Npts=10
 #bias_low=-0.432
 #bias_high=0.432
-bias_low=-0.60
-bias_high=0.60
+bias_low=-0.08
+bias_high=0.08
 Nsteps=500
 #Nsteps=25
 bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
@@ -153,8 +153,9 @@ for (amplitude,uc_att) in amplitudes_and_uc_atts:
     S.log('Done taking flux ramp with amplitude={} and uc_att={}.'.format(amplitude,uc_att), S.LOG_USER)
 
     for band in bands:
-
-        fres=[S.channel_to_freq(band, ch) for ch in channels[band]]
+        fres = []
+        for ch in channels[band]:
+            fres.append(S.channel_to_freq(band,ch))
         raw_data[band][(amplitude,uc_att)]['fres']=np.array(fres) + (2e3 if hbInBay0 else 0)
         raw_data[band][(amplitude,uc_att)]['channels']=channels[band]
 
