@@ -53,7 +53,8 @@ if __name__=='__main__':
         good_resp_chans = S.which_on(band)
     
     #S.find_freq(band, subband=sbs_on,drive_power = 12,make_plot=True,show_plot=False,save_plot = True)
-    S.load_tune('/data/smurf_data/tune/1588116270_tune.npy')
+    #S.load_tune('/data/smurf_data/tune/1588116270_tune.npy')
+    S.load_tune('/data/smurf_data/tune/1592250732_tune.npy')
     S.setup_notches(band,drive=12,new_master_assignment=False) 
     for chan in S.which_on(band):
         if chan in good_resp_chans:
@@ -65,9 +66,9 @@ if __name__=='__main__':
     S.tracking_setup(band,reset_rate_khz=4,lms_freq_hz=20000,fraction_full_scale = frac_pp,make_plot=True,show_plot=False,channel=S.which_on(band),nsamp=2**18,feedback_start_frac=0.02,feedback_end_frac=0.94)
     #tunefile = S.tune_file
     plotdir = S.plot_dir
-    iv_file = S.slow_iv_all(band = band, channels = S.which_on(band),bias_groups=np.array([1]), overbias_voltage=ob_amp,bias_high=ob_amp, bias_step=step_size,wait_time=1, high_current_mode=False,overbias_wait=5, cool_wait=300,phase_excursion_min=.1,bias_low=0) 
+    iv_file = S.slow_iv_all(band = band, channels = S.which_on(band),bias_groups=np.asarray([bias_group]), overbias_voltage=ob_amp,bias_high=11.0, bias_step=step_size,wait_time=1, high_current_mode=False,overbias_wait=15, cool_wait=300,phase_excursion_min=.1,bias_low=3.5) 
     print(iv_file)
-    iv_file = iv_file.replace('_raw_data','')
+    #iv_file = iv_file.replace('_raw_data','')
     
 
     with open(args.out_file, 'a') as fname:

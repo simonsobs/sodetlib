@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
 band = 2
-fname = open('/data/sodetlib_data/20200428_IV_NISTv2_SPB2_90_to_200_mK_5mk_step.txt','r')
+fname = open('/data/sodetlib_data/20200623_IV_NIST_SPB_3_D_UHF_r3_105_to_200_mK_5mk_step.txt','r')
 Lines = fname.readlines()
 
 Temps = []
@@ -12,6 +12,7 @@ def gfit(T,k,n,Tc):
     return k*(Tc**n - T**n)
 
 for i,line in enumerate(Lines):
+    long_fn = 
     temp_dict = np.load(line.split('iv_file : ')[-1].split('\n')[0],allow_pickle = True)
     temp_dict = temp_dict.item()
     chans = np.fromiter(temp_dict[band].keys(),dtype = int)
@@ -22,7 +23,7 @@ for i,line in enumerate(Lines):
         Psat[chan].append(temp_dict[band][chan]['p_trans'])
 
 copy_temps = np.asarray(Temps)
-fit_temp = np.linspace(85,200,100)/1000
+fit_temp = np.linspace(105,200,100)/1000
 for chan in chans:
     iter_temp = copy_temps
     Psat_copy  = np.asarray(Psat[chan])
