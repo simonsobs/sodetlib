@@ -40,9 +40,11 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 
 
-def util_run(cmd, args=[], **run_kwargs):
-    cmd =f'docker-compose run --rm --entrypoint={cmd} '\
-         f'smurf-util {" ".join(args)}'
+def util_run(cmd, args=[], name=None, **run_kwargs):
+    cmd  = f'docker-compose run --entrypoint={cmd} '
+    if name is not None:
+        cmd += f'--name={name} '
+    cmd += f'smurf-util {" ".join(args)}'
     return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
 
 
@@ -156,10 +158,19 @@ def enter_pysmurf(slot, agg=False):
             agg (bool): if true, use the matplotlib agg backend.
     """
     print(f"Entering pysmurf on slot {slot}", flush=True)
-    util_run(
-        'python3',
-        args=f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}".split()
-    )
+    name = f'pysmurf-ipython-slot{slot}'
+    container_names = [c[2] for c in get_running_dockers()]
+    if name in container_names:
+        print(f"Container {name} is already running... Attaching to it now")
+        cmd = shlex.split(f'docker attach {name}')
+        subprocess.run(cmd, cwd=cwd)
+
+    else:
+        util_run(
+            'python3',
+            args=f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}".split(),
+            name=name
+        )
 
 
 def start_services(services, write_env=False):
