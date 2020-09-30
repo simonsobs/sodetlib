@@ -40,10 +40,12 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 
 
-def util_run(cmd, args=[], name=None, **run_kwargs):
+def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
     cmd  = f'docker-compose run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
+    if rm:
+        cmd += '--rm '
     cmd += f'smurf-util {" ".join(args)}'
     return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
 
@@ -63,7 +65,7 @@ def check_epics_connection(epics_server, retry=False):
         print(f"Waiting for epics connection to {epics_server}", end='', flush=True)
         while True:
             x = util_run(
-                'caget', args=['smurf_server_s2:AMCc:enable'],
+                'caget', args=[f'{epics_server}:AMCc:enable'],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT
             )
             if "True" in x.stdout.decode():
@@ -74,20 +76,23 @@ def check_epics_connection(epics_server, retry=False):
         return True
     else:
         x = util_run(
-            'caget', args=['smurf_server_s2:AMCc:enable'],
+            'caget', args=[f'{epics_server}:AMCc:enable'],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
         return "True" in x.stdout.decode()
 
 
-def get_running_dockers():
+def get_running_dockers(get_all=True):
     """
         Gets all currently running dockers. 
 
         Returns: 
             A list of tuples of the (cid, image, name)
     """
-    x = subprocess.run('docker ps -a'.split(), stdout=subprocess.PIPE)
+    cmd = 'docker ps '
+    if get_all:
+        cmd += '-a '
+    x = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
     containers=[]
     for line in x.stdout.decode().split('\n')[1:]:
         if not line:
@@ -163,16 +168,21 @@ def enter_pysmurf(slot, agg=False):
     print(f"Entering pysmurf on slot {slot}", flush=True)
     name = f'pysmurf-ipython-slot{slot}'
     container_names = [c[2] for c in get_running_dockers()]
-    if name in container_names:
+    active_container_names = [c[2] for c in get_running_dockers(get_all=False)]
+
+    if name in active_container_names:
         print(f"Container {name} is already running... Attaching to it now")
         cmd = shlex.split(f'docker attach {name}')
         subprocess.run(cmd, cwd=cwd)
-
     else:
+        if name in container_names:
+            print(f"Removing stopped docker {name}")
+            subprocess.run(f'docker rm {name}'.split())
+
         util_run(
             'python3',
             args=f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}".split(),
-            name=name
+            name=name, rm=False
         )
 
 
