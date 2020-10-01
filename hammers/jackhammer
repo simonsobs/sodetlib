@@ -366,6 +366,29 @@ def gui_func(args):
     subprocess.run(f'/home/cryo/sodetlib/hammers/scripts/run_gui.sh {server_port}'.split())
 
 
+# Entrypoint for jackhammer dump
+def dump_func(args):
+    dump_dir = os.path.join(
+        '/data/logs',
+        str(time.time())[:5],
+        str(int(time.time()))
+    )
+
+    if not os.path.exists(dump_dir):
+        os.makedirs(dump_dir)
+
+    docker_state_file = os.path.join(dump_dir, 'docker_state.log')
+    with open(docker_state_file, 'w') as f:
+        print(f"Saving 'docker ps' to {docker_state_file}")
+        subprocess.run('docker ps -a'.split(), stdout=f, stderr=f)
+
+    for cid, image, name in get_running_dockers(get_all=True):
+        log_file = os.path.join(dump_dir, f'{name}.log')
+        with open(log_file, 'w') as f:
+            print(f"Saving {name} logs to {log_file}")
+            subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
@@ -434,6 +457,11 @@ if __name__ == '__main__':
     gui_parser.add_argument('slot', nargs='?', type=int)
     gui_parser.add_argument('--port', '-p', type=int, help='gui server port')
     gui_parser.set_defaults(func=gui_func)
+
+
+    ########### Jackhammer dump parser ###########
+    dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
+    dump_parser.set_defaults(func=dump_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
