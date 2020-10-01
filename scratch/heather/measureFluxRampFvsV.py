@@ -12,7 +12,7 @@ import sys
 #S = pysmurf.SmurfControl(make_logfile=False,setup=False,epics_root='smurf_server_s2',cfg_file='/data/pysmurf_cfg/experiment_fp29_smurfsrv03_noExtRef_lbOnlyBay0.cfg')
 
 import os
-fn_raw_data = f'{S.output_dir}/{S.get_timestamp()}_fr_sweep_data.npy'
+fn_raw_data = os.path.join(S.output_dir, '%s_fr_sweep_data.npy'%(S.get_timestamp()))
 
 #######
 # [(None,None)] means don't change the amplitude or uc_att, but still retunes
@@ -31,8 +31,8 @@ wait_time=0.125
 Npts=10
 #bias_low=-0.432
 #bias_high=0.432
-bias_low=-0.08
-bias_high=0.08
+bias_low=-0.28288303069563764
+bias_high=0.28288303069563764
 Nsteps=500
 #Nsteps=25
 bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
