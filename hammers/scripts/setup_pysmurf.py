@@ -6,5 +6,5 @@ from sodetlib.det_config import DetConfig
 if __name__ == "__main__":
     cfg = DetConfig()
     cfg.parse_args()
-    S = cfg.get_smurf_control(setup=True, dump_configs=True)
+    S = cfg.get_smurf_control(setup=True, dump_configs=False, no_dir=True)
     S.set_stream_enable(0)

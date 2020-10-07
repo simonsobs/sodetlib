@@ -129,6 +129,7 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
         # conflicting names created by shawnhammer
         bad_names.append(f"pysmurf_s{slot}")
         bad_names.append(f"smurf_server_s{slot}")
+        bad_names.append(f"pysmurf-ipython-slot{slot}")
         if ocs:
             bad_names.append(f'ocs-pysmurf-s{slot}')
     if ocs:
