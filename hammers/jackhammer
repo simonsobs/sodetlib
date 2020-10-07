@@ -312,7 +312,7 @@ def hammer_func(args):
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
 
-    services = ['ocs-pysmurf-monitor', 'smurf-util']
+    services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
     for slot in sys_config['slot_order']:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
