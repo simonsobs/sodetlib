@@ -115,7 +115,7 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
         chan_df.append(df_std[ch])
     best_chan = chans_to_consider[np.argmin(
                 np.asarray(chan_df)*np.asarray(chan_noise))]
-    print(best_chan)
+    print(f'Channel chosen for lms_gain optimization: {best_chan}')
     
     #Store old downsample factor and filter parameters to reset at end
     prev_ds_factor = S.get_downsample_factor()
@@ -173,7 +173,7 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
             alpha = alpha*0.9
         print(f'lms_gain = {lms_gain}: f_3dB fit = {pars[1]} Hz')
     
-#Identify the lms_gain that produces a f3dB closest to the target
+    #Identify the lms_gain that produces a f3dB closest to the target
     f3dBs = np.asarray(f3dBs)
     idx_min = np.argmin(np.abs(f3dBs - BW_target))
     if f3dBs[idx_min] < BW_target:
@@ -181,6 +181,7 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
     else:
         opt_lms_gain = lms_gain_sweep[idx_min]
     print(f'Optimum lms_gain is: {opt_lms_gain}')
+
     #Save plots and data and register them with the ocs publisher
     if make_plot == True:
         ax1.set_ylim([10,100])
@@ -190,8 +191,9 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
         ax2.plot(lms_gain_sweep,f3dBs,'o--',label = 'Data')
         ax2.set_xlabel('lms_gain',fontsize = 18)
         ax2.set_ylabel('$f_{3dB}$ [Hz]',fontsize = 18)
-        ax2.axvline(opt_lms_gain,ls = 'k--',label = 'Optimized LMS Gain')
-        ax2.axhline(BW_target,ls = 'k--','Target $f_{3dB}$')
+        ax2.axvline(opt_lms_gain,ls = '--',color = 'r',label = 'Optimized LMS Gain')
+        ax2.axhline(BW_target,ls = '--',color = 'k',label = 'Target $f_{3dB}$')
+        ax2.legend(fontsize = 14)
         plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
         plt.savefig(plotpath)
         plt.show()
