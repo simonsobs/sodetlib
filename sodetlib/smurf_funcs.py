@@ -32,7 +32,7 @@ def cprint(msg, style=TermColors.OKBLUE):
     print(style + str(msg) + TermColors.ENDC)
 
 def lowpass_fit(x,scale,cutoff):
-    fs = 4.0e3
+    fs = 4e3
     b,a = signal.butter(1,2*cutoff/fs)
     w,h = signal.freqz(b,a)
     x_fit = (fs*0.5/np.pi)*w
@@ -41,7 +41,7 @@ def lowpass_fit(x,scale,cutoff):
     return interpolate.splev(x,splrep,der=0)
 
 def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
-                        reset_rate=None, frac_pp=None,
+                        reset_rate_khz=None, frac_pp=None,
                         lms_freq=None, meas_time=None,
                         make_plot = True):
     """
@@ -66,7 +66,10 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
     -------
 
     """
+    #Set the timestamp for plots and data outputs
     ctime = S.get_timestamp()
+
+    #Initialize params from device config
     band_cfg = cfg.dev.bands[band]
     if tunefile is 'devcfg':
         tunefile = cfg.dev.exp['tunefile']
@@ -77,9 +80,10 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
         frac_pp = band_cfg['frac_pp']
     if lms_freq is None:
         lms_freq = band_cfg['lms_freq_hz']
-    if reset_rate is None:
+    if reset_rate_khz is None:
         reset_rate_khz = band_cfg['flux_ramp_rate_khz']
-
+    
+    #Retune and setup tracking on band to optimize
     S.relock(band)
     for i in range(2):
         S.run_serial_gradient_descent(band)
@@ -89,45 +93,58 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
                     reset_rate_khz=reset_rate_khz,
                     lms_freq_hz = lms_freq,
                     fraction_full_scale = frac_pp,
-                    make_plot=True, show_plot=False,
+                    make_plot=False, show_plot=False,
                     channel = S.which_on(band), nsamp = 2**18,
                     feedback_start_frac = 0.02,
                     feedback_end_frac = 0.94,lms_gain=7,
                     return_data = True
                     )
+    
+    #Identify channel that has flux ramp modulation depth between
+    #40-120kHz and has the minimum noise and frequency tracking
+    #error. We will use this channel to optimize the lms_gain.
     df_std = np.std(df, 0)
     f_span = np.max(f,0) - np.min(f,0)
-    chans_to_consider_idx = np.where((f_span>40e3) & (f_span<120e3))
-    chans_to_consider = S.which_on(band)[chans_to_consider_idx]
+    chans_to_consider = np.where((f_span>.04) & (f_span<0.12))[0]
     datfile = S.take_stream_data(10)
-    _, outdict = analyze_noise_psd(band,datfile)
+    _, outdict = analyze_noise_psd(S,band,datfile)
     chan_noise = []
     chan_df = []
-    for ch in chans_to_consider:
+    for ch in list(chans_to_consider):
         chan_noise.append(outdict[ch]['white noise'])
         chan_df.append(df_std[ch])
     best_chan = chans_to_consider[np.argmin(
                 np.asarray(chan_df)*np.asarray(chan_noise))]
-
+    print(best_chan)
+    
+    #Store old downsample factor and filter parameters to reset at end
     prev_ds_factor = S.get_downsample_factor()
     prev_filt_param = S.get_filter_disable()
+    #Turn off downsampling + filtering to measure tracking BW
     S.set_downsample_factor(1)
     S.set_filter_disable(1)
 
-    nperseg = 2*12
-    fs = S.get_flux_ramp_freq()
+    #Setup parameters for PSDs
+    nperseg = 2**12
+    fs = S.get_flux_ramp_freq()*1e3
     detrend = 'constant'
+
+    #Initialize output parameters
     outdict = {}
     f3dBs = []
 
+    #Sweep over lms gain from 8 to 2 and calculate f3dB at each.
     lms_gain_sweep = [8,7,6,5,4,3,2]
     if make_plot == True:
-        fig, (ax1,ax2) = plt.subplots(1,2)
-        fig.suptitle('$f_{3dB} vs lms_gain')
+        fig, (ax1,ax2) = plt.subplots(1,2,figsize = (20,10))
+        fig.suptitle('$f_{3dB}$ vs lms_gain',fontsize = 32)
         alpha = 0.8
     for lms_gain in lms_gain_sweep:
         outdict[lms_gain] = {}
         S.set_lms_gain(band,lms_gain)
+        #for i in range(2):
+        #    S.run_serial_gradient_descent(band)
+        #    S.run_serial_eta_scan(band)
         S.tracking_setup(band,
                     reset_rate_khz=reset_rate_khz,
                     lms_freq_hz = lms_freq,
@@ -146,31 +163,47 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
                             nperseg = nperseg, fs=fs)
         Pxx = np.sqrt(Pxx)
         outdict[lms_gain]['f']=f
-        outdict[lms_gains]['Pxx']=Pxx
-        pars,covs = opt.curve_fit(lowpass_fit,f,Pxx)
+        outdict[lms_gain]['Pxx']=Pxx
+        pars,covs = opt.curve_fit(lowpass_fit,f,Pxx,bounds = ([0,0],[1e3,1999]))
         outdict[lms_gain]['fit_params'] = pars
         f3dBs.append(pars[1])
         if make_plot == True:
             ax1.loglog(f,Pxx,alpha = alpha,label = f'lms_gain: {lms_gain}')
-            ax1.loglog(f,lowpass_fit(f,pars[0],pars[1]),'--',label = 'fit lms_gain: {lms_gain}')
+            ax1.loglog(f,lowpass_fit(f,pars[0],pars[1]),'--',label = f'fit f3dB = {np.round(pars[1],2)} Hz')
             alpha = alpha*0.9
         print(f'lms_gain = {lms_gain}: f_3dB fit = {pars[1]} Hz')
+    
+#Identify the lms_gain that produces a f3dB closest to the target
+    f3dBs = np.asarray(f3dBs)
+    idx_min = np.argmin(np.abs(f3dBs - BW_target))
+    if f3dBs[idx_min] < BW_target:
+        opt_lms_gain = lms_gain_sweep[idx_min-1]
+    else:
+        opt_lms_gain = lms_gain_sweep[idx_min]
+    print(f'Optimum lms_gain is: {opt_lms_gain}')
+    #Save plots and data and register them with the ocs publisher
     if make_plot == True:
-        ax1.ylim(10,100)
-        ax1.legend()
-        ax1.xlabel('Frequency [Hz]')
-        ax1.ylabel('PSD')
-        ax2.plot(lms_gain_sweep,f3dBs,'o--')
-        ax2.xlabel('lms_gain')
-        ax2.ylabel('f_3dB [Hz]')
+        ax1.set_ylim([10,100])
+        ax1.legend(fontsize = 14)
+        ax1.set_xlabel('Frequency [Hz]',fontsize = 18)
+        ax1.set_ylabel('PSD',fontsize = 18)
+        ax2.plot(lms_gain_sweep,f3dBs,'o--',label = 'Data')
+        ax2.set_xlabel('lms_gain',fontsize = 18)
+        ax2.set_ylabel('$f_{3dB}$ [Hz]',fontsize = 18)
+        ax2.axvline(opt_lms_gain,ls = 'k--',label = 'Optimized LMS Gain')
+        ax2.axhline(BW_target,ls = 'k--','Target $f_{3dB}$')
         plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
-        plt.savefig(path)
+        plt.savefig(plotpath)
+        plt.show()
         S.pub.register_file(plotpath,'opt_lms_gain',plot=True)
     datpath = f'{S.output_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.pkl'
-    pkl.dump(outdict, datpath)
+    pkl.dump(outdict, open(datpath,'wb'))
     S.pub.register_file(datpath,'opt_lms_gain_data',format='pkl')
-
-    return outdict
+    
+    #Reset the downsampling filtering parameters
+    S.set_downsample_factor(prev_ds_factor)
+    S.set_filter_disable(prev_filt_param)
+    return opt_lms_gain, outdict
 
 def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     """
@@ -516,7 +549,7 @@ def analyze_noise_psd(S, band, dat_file):
     detrend = 'constant'
     timestamp, phase, mask = S.read_stream_data(datafile)
     phase *= S.pA_per_phi0/(2.*np.pi)
-    num_averages = S.config.get('smurf_to_mce')['num_averages']
+    num_averages = S.get_downsample_factor()
     fs = S.get_flux_ramp_freq()*1.0E3/num_averages
     wls = []
     for chan in S.which_on(band):
