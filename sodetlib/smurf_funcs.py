@@ -34,8 +34,7 @@ def cprint(msg, style=TermColors.OKBLUE):
     print(style + str(msg) + TermColors.ENDC)
 
 
-def lowpass_fit(x, scale, cutoff):
-    fs = 4e3
+def lowpass_fit(x, scale, cutoff, fs=4e3):
     b, a = signal.butter(1, 2*cutoff/fs)
     w, h = signal.freqz(b, a)
     x_fit = (fs*0.5/np.pi)*w
@@ -44,15 +43,15 @@ def lowpass_fit(x, scale, cutoff):
     return interpolate.splev(x, splrep, der=0)
 
 
-def identify_best_chan(f, df,  f_span_min=.04, f_span_max=.12):
+def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
     """
     Identifies the channel with the minimum noise and frequency tracking
 
     Args
-        f (array?):
-            help
-        df (array?):
-            help
+        f (array [nchannels x nsamples]):
+            Tracked frequency for each channel.
+        df (array [nchannesl x nsamples]):
+            Tracking frequency error for each channel.
         f_span_min (float):
             Minimum flux ramp modulation depth [MHz]. Defaults to 40 kHz.
         f_span_max (float):
@@ -79,9 +78,10 @@ def identify_best_chan(f, df,  f_span_min=.04, f_span_max=.12):
 def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
                       reset_rate_khz=None, frac_pp=None,
                       lms_freq=None, meas_time=None,
-                      make_plot=True, show_plot=True):
+                      make_plot=True):
     """
     Finds the drive power and uc attenuator value that minimizes the median noise within a band.
+
 
     Parameters
     ----------
@@ -136,7 +136,7 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         'return_data': True
     }
     f, df, _ = S.tracking_setup(band, **tracking_kwargs)
-    best_chan = identify_best_chan(f, df)
+    best_chan = identify_best_chan(S, band, f, df)
 
     print(f'Channel chosen for lms_gain optimization: {best_chan}')
 
@@ -182,8 +182,9 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
 
         outdict[lms_gain]['f'] = f
         outdict[lms_gain]['Pxx'] = Pxx
+        fit_func = lambda x, scale, cutoff: lowpass_fit(x, scale, cutoff, fs=fs)
         pars, covs = opt.curve_fit(
-            lowpass_fit, f, Pxx, bounds=([0, 0], [1e3, 1999]))
+            fit_func, f, Pxx, bounds=([0, 0], [1e3, fs-1]))
         outdict[lms_gain]['fit_params'] = pars
         f3dBs.append(pars[1])
         if make_plot:
@@ -218,8 +219,6 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         ax2.legend(fontsize=14)
         plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
         plt.savefig(plotpath)
-        if show_plot:
-            plt.show()
         S.pub.register_file(plotpath, 'opt_lms_gain', plot=True)
     datpath = f'{S.output_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.pkl'
     pkl.dump(outdict, open(datpath, 'wb'))
