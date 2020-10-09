@@ -5,6 +5,7 @@ from scipy import signal
 import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
+from pysmurf.util.pub import set_action
 
 try:
     import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ except Exception:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
 
 class TermColors:
     HEADER = '\n\033[95m'
@@ -31,19 +33,53 @@ def cprint(msg, style=TermColors.OKBLUE):
         style = TermColors.FAIL
     print(style + str(msg) + TermColors.ENDC)
 
-def lowpass_fit(x,scale,cutoff):
+
+def lowpass_fit(x, scale, cutoff):
     fs = 4e3
-    b,a = signal.butter(1,2*cutoff/fs)
-    w,h = signal.freqz(b,a)
+    b, a = signal.butter(1, 2*cutoff/fs)
+    w, h = signal.freqz(b, a)
     x_fit = (fs*0.5/np.pi)*w
     y_fit = scale*abs(h)
-    splrep = interpolate.splrep(x_fit,y_fit,s=0)
-    return interpolate.splev(x,splrep,der=0)
+    splrep = interpolate.splrep(x_fit, y_fit, s=0)
+    return interpolate.splev(x, splrep, der=0)
 
-def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
-                        reset_rate_khz=None, frac_pp=None,
-                        lms_freq=None, meas_time=None,
-                        make_plot = True):
+
+def identify_best_chan(f, df,  f_span_min=.04, f_span_max=.12):
+    """
+    Identifies the channel with the minimum noise and frequency tracking
+
+    Args
+        f (array?):
+            help
+        df (array?):
+            help
+        f_span_min (float):
+            Minimum flux ramp modulation depth [MHz]. Defaults to 40 kHz.
+        f_span_max (float):
+            Maximum flux ramp modulation depth [MHz]. Defaults to 120 kHz.
+    """
+    df_std = np.std(df, 0)
+    f_span = np.max(f, 0) - np.min(f, 0)
+    chans_to_consider = np.where(
+        (f_span > f_span_min) & (f_span < f_span_max))[0]
+
+    datfile = S.take_stream_data(10)
+    _, outdict = analyze_noise_psd(S, band, datfile)
+    chan_noise = []
+    chan_df = []
+    for ch in list(chans_to_consider):
+        chan_noise.append(outdict[ch]['white noise'])
+        chan_df.append(df_std[ch])
+
+    return chans_to_consider[
+        np.argmin(np.asarray(chan_df)*np.asarray(chan_noise))
+    ]
+
+@set_action
+def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
+                      reset_rate_khz=None, frac_pp=None,
+                      lms_freq=None, meas_time=None,
+                      make_plot=True, show_plot=True):
     """
     Finds the drive power and uc attenuator value that minimizes the median noise within a band.
 
@@ -66,10 +102,10 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
     -------
 
     """
-    #Set the timestamp for plots and data outputs
+    # Set the timestamp for plots and data outputs
     ctime = S.get_timestamp()
 
-    #Initialize params from device config
+    # Initialize params from device config
     band_cfg = cfg.dev.bands[band]
     if tunefile is 'devcfg':
         tunefile = cfg.dev.exp['tunefile']
@@ -82,98 +118,82 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
         lms_freq = band_cfg['lms_freq_hz']
     if reset_rate_khz is None:
         reset_rate_khz = band_cfg['flux_ramp_rate_khz']
-    
-    #Retune and setup tracking on band to optimize
+
+    # Retune and setup tracking on band to optimize
     S.relock(band)
     for i in range(2):
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
-    f,df,sync = S.tracking_setup(band,
-                    reset_rate_khz=reset_rate_khz,
-                    lms_freq_hz = lms_freq,
-                    fraction_full_scale = frac_pp,
-                    make_plot=False, show_plot=False,
-                    channel = S.which_on(band), nsamp = 2**18,
-                    feedback_start_frac = 0.02,
-                    feedback_end_frac = 0.94,lms_gain=7,
-                    return_data = True
-                    )
-    
-    #Identify channel that has flux ramp modulation depth between
-    #40-120kHz and has the minimum noise and frequency tracking
-    #error. We will use this channel to optimize the lms_gain.
-    df_std = np.std(df, 0)
-    f_span = np.max(f,0) - np.min(f,0)
-    chans_to_consider = np.where((f_span>.04) & (f_span<0.12))[0]
-    datfile = S.take_stream_data(10)
-    _, outdict = analyze_noise_psd(S,band,datfile)
-    chan_noise = []
-    chan_df = []
-    for ch in list(chans_to_consider):
-        chan_noise.append(outdict[ch]['white noise'])
-        chan_df.append(df_std[ch])
-    best_chan = chans_to_consider[np.argmin(
-                np.asarray(chan_df)*np.asarray(chan_noise))]
+    tracking_kwargs = {
+        'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
+        'lms_freq_hz': band_cfg['lms_freq_hz'],
+        'fraction_full_scale': band_cfg['frac_p'],
+        'make_plot': False, 'show_plot': False,
+        'channel': S.which_on(band), 'nsamp': 2**18,
+        'feedback_start_frac': 0.02,
+        'feedback_end_frac': 0.94, 'lms_gain': 7,
+        'return_data': True
+    }
+    f, df, _ = S.tracking_setup(band, **tracking_kwargs)
+    best_chan = identify_best_chan(f, df)
+
     print(f'Channel chosen for lms_gain optimization: {best_chan}')
-    
-    #Store old downsample factor and filter parameters to reset at end
+
+    # Store old downsample factor and filter parameters to reset at end
     prev_ds_factor = S.get_downsample_factor()
     prev_filt_param = S.get_filter_disable()
-    #Turn off downsampling + filtering to measure tracking BW
+    # Turn off downsampling + filtering to measure tracking BW
     S.set_downsample_factor(1)
     S.set_filter_disable(1)
 
-    #Setup parameters for PSDs
+    # Setup parameters for PSDs
     nperseg = 2**12
     fs = S.get_flux_ramp_freq()*1e3
     detrend = 'constant'
 
-    #Initialize output parameters
+    # Initialize output parameters
     outdict = {}
     f3dBs = []
 
-    #Sweep over lms gain from 8 to 2 and calculate f3dB at each.
-    lms_gain_sweep = [8,7,6,5,4,3,2]
-    if make_plot == True:
-        fig, (ax1,ax2) = plt.subplots(1,2,figsize = (20,10))
-        fig.suptitle('$f_{3dB}$ vs lms_gain',fontsize = 32)
+    # Sweep over lms gain from 8 to 2 and calculate f3dB at each.
+    lms_gain_sweep = np.arange(8, 1, -1)
+    if make_plot:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+        fig.suptitle('$f_{3dB}$ vs lms_gain', fontsize=32)
         alpha = 0.8
+
     for lms_gain in lms_gain_sweep:
         outdict[lms_gain] = {}
-        S.set_lms_gain(band,lms_gain)
-        #for i in range(2):
+        S.set_lms_gain(band, lms_gain)
+        # for i in range(2):
         #    S.run_serial_gradient_descent(band)
         #    S.run_serial_eta_scan(band)
-        S.tracking_setup(band,
-                    reset_rate_khz=reset_rate_khz,
-                    lms_freq_hz = lms_freq,
-                    fraction_full_scale = frac_pp,
-                    make_plot=True, show_plot=False,
-                    channel = best_chan, nsamp = 2**18,
-                    feedback_start_frac = 0.02,
-                    feedback_end_frac = 0.94,
-                    lms_gain=lms_gain,
-                    )
+        tracking_kwargs['lms_gain'] = lms_gain
+        S.tracking_setup(band, **tracking_kwargs)
+
         datafile = S.take_stream_data(20)
-        timestamp,phase,mask = S.read_stream_data(datafile)
+        timestamp, phase, mask = S.read_stream_data(datafile)
         phase *= S.pA_per_phi0/(2*np.pi)
-        ch_idx = mask[band,best_chan]
-        f,Pxx = signal.welch(phase[ch_idx],detrend = detrend,
-                            nperseg = nperseg, fs=fs)
+        ch_idx = mask[band, best_chan]
+        f, Pxx = signal.welch(phase[ch_idx], detrend=detrend,
+                              nperseg=nperseg, fs=fs)
         Pxx = np.sqrt(Pxx)
-        outdict[lms_gain]['f']=f
-        outdict[lms_gain]['Pxx']=Pxx
-        pars,covs = opt.curve_fit(lowpass_fit,f,Pxx,bounds = ([0,0],[1e3,1999]))
+
+        outdict[lms_gain]['f'] = f
+        outdict[lms_gain]['Pxx'] = Pxx
+        pars, covs = opt.curve_fit(
+            lowpass_fit, f, Pxx, bounds=([0, 0], [1e3, 1999]))
         outdict[lms_gain]['fit_params'] = pars
         f3dBs.append(pars[1])
-        if make_plot == True:
-            ax1.loglog(f,Pxx,alpha = alpha,label = f'lms_gain: {lms_gain}')
-            ax1.loglog(f,lowpass_fit(f,pars[0],pars[1]),'--',label = f'fit f3dB = {np.round(pars[1],2)} Hz')
+        if make_plot:
+            ax1.loglog(f, Pxx, alpha=alpha, label=f'lms_gain: {lms_gain}')
+            ax1.loglog(f, lowpass_fit(f, pars[0], pars[1]), '--',
+                       label=f'fit f3dB = {np.round(pars[1],2)} Hz')
             alpha = alpha*0.9
         print(f'lms_gain = {lms_gain}: f_3dB fit = {pars[1]} Hz')
-    
-    #Identify the lms_gain that produces a f3dB closest to the target
+
+    # Identify the lms_gain that produces a f3dB closest to the target
     f3dBs = np.asarray(f3dBs)
     idx_min = np.argmin(np.abs(f3dBs - BW_target))
     if f3dBs[idx_min] < BW_target:
@@ -182,30 +202,34 @@ def optimize_lms_gain(S, cfg, band, BW_target,tunefile=None,
         opt_lms_gain = lms_gain_sweep[idx_min]
     print(f'Optimum lms_gain is: {opt_lms_gain}')
 
-    #Save plots and data and register them with the ocs publisher
+    # Save plots and data and register them with the ocs publisher
     if make_plot == True:
-        ax1.set_ylim([10,100])
-        ax1.legend(fontsize = 14)
-        ax1.set_xlabel('Frequency [Hz]',fontsize = 18)
-        ax1.set_ylabel('PSD',fontsize = 18)
-        ax2.plot(lms_gain_sweep,f3dBs,'o--',label = 'Data')
-        ax2.set_xlabel('lms_gain',fontsize = 18)
-        ax2.set_ylabel('$f_{3dB}$ [Hz]',fontsize = 18)
-        ax2.axvline(opt_lms_gain,ls = '--',color = 'r',label = 'Optimized LMS Gain')
-        ax2.axhline(BW_target,ls = '--',color = 'k',label = 'Target $f_{3dB}$')
-        ax2.legend(fontsize = 14)
+        ax1.set_ylim([10, 100])
+        ax1.legend(fontsize=14)
+        ax1.set_xlabel('Frequency [Hz]', fontsize=18)
+        ax1.set_ylabel('PSD', fontsize=18)
+
+        ax2.plot(lms_gain_sweep, f3dBs, 'o--', label='Data')
+        ax2.set_xlabel('lms_gain', fontsize=18)
+        ax2.set_ylabel('$f_{3dB}$ [Hz]', fontsize=18)
+        ax2.axvline(opt_lms_gain, ls='--', color='r',
+                    label='Optimized LMS Gain')
+        ax2.axhline(BW_target, ls='--', color='k', label='Target $f_{3dB}$')
+        ax2.legend(fontsize=14)
         plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
         plt.savefig(plotpath)
-        plt.show()
-        S.pub.register_file(plotpath,'opt_lms_gain',plot=True)
+        if show_plot:
+            plt.show()
+        S.pub.register_file(plotpath, 'opt_lms_gain', plot=True)
     datpath = f'{S.output_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.pkl'
-    pkl.dump(outdict, open(datpath,'wb'))
-    S.pub.register_file(datpath,'opt_lms_gain_data',format='pkl')
-    
-    #Reset the downsampling filtering parameters
+    pkl.dump(outdict, open(datpath, 'wb'))
+    S.pub.register_file(datpath, 'opt_lms_gain_data', format='pkl')
+
+    # Reset the downsampling filtering parameters
     S.set_downsample_factor(prev_ds_factor)
     S.set_filter_disable(prev_filt_param)
     return opt_lms_gain, outdict
+
 
 def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     """
@@ -234,7 +258,8 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         The set voltages can be read with S.get_amplifier_biases().
     """
     if amp_name not in ['hemt', '50K']:
-        raise ValueError(cprint(f"amp_name must be either 'hemt' or '50K'", False))
+        raise ValueError(
+            cprint(f"amp_name must be either 'hemt' or '50K'", False))
 
     for _ in range(max_iter):
         amp_biases = S.get_amplifier_biases(write_log=True)
@@ -245,7 +270,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         if 0 <= delta < 0.5:
             return True
 
-        if amp_name=='hemt':
+        if amp_name == 'hemt':
             step = np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
         else:
             step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.001)
@@ -253,7 +278,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         Vg_next = Vg + step
         if not (vg_min < Vg_next < vg_max):
             cprint(f"Vg adjustment would go out of range ({vg_min}, {vg_max}). "
-                         f"Unable to change {amp_name}_Id to desired value", False)
+                   f"Unable to change {amp_name}_Id to desired value", False)
             return False
 
         if amp_name == 'hemt':
@@ -315,13 +340,13 @@ def health_check(S, cfg, bay0, bay1):
         print(f"Final hemt current = {amp_biases['hemt_Id']}")
         print(f"Desired hemt current = {amp_hemt_Id}")
         cprint(f"hemt current within range of desired value: "
-                            f" {Id_hemt_in_range}",Id_hemt_in_range)
+               f" {Id_hemt_in_range}", Id_hemt_in_range)
         print(f"Final hemt gate voltage is {amp_biases['hemt_Vg']}")
 
         print(f"Final 50K current = {amp_biases['50K_Id']}")
         print(f"Desired 50K current = {amp_50K_Id}")
         cprint(f"50K current within range of desired value:"
-                            f"{Id_50K_in_range}", Id_50K_in_range)
+               f"{Id_50K_in_range}", Id_50K_in_range)
         print(f"Final 50K gate voltage is {amp_biases['50K_Vg']}")
     else:
         cprint("Both amplifiers could not be biased... skipping bias voltage scan", False)
@@ -340,11 +365,13 @@ def health_check(S, cfg, bay0, bay1):
         if jesd_tx0:
             cprint(f"bay 0 jesd_tx connection working", True)
         else:
-            cprint(f"bay 0 jesd_tx connection NOT working. Rest of script may not function", False)
+            cprint(
+                f"bay 0 jesd_tx connection NOT working. Rest of script may not function", False)
         if jesd_rx0:
             cprint(f"bay 0 jesd_rx connection working", True)
         else:
-            cprint(f"bay 0 jesd_rx connection NOT working. Rest of script may not function", False)
+            cprint(
+                f"bay 0 jesd_rx connection NOT working. Rest of script may not function", False)
     if not bay0:
         jesd_tx0, jesd_rx0 = False, False
         print("Bay 0 not enabled. Skipping connection check")
@@ -354,11 +381,13 @@ def health_check(S, cfg, bay0, bay1):
         if jesd_tx1:
             cprint(f"bay 1 jesd_tx connection working", True)
         else:
-            cprint(f"bay 1 jesd_tx connection NOT working. Rest of script may not function", False)
+            cprint(
+                f"bay 1 jesd_tx connection NOT working. Rest of script may not function", False)
         if jesd_rx1:
             cprint(f"bay 1 jesd_rx connection working", True)
         else:
-            cprint(f"bay 1 jesd_rx connection NOT working. Rest of script may not function", False)
+            cprint(
+                f"bay 1 jesd_rx connection NOT working. Rest of script may not function", False)
     if not bay1:
         jesd_tx1, jesd_rx1 = False, False
         print("Bay 1 not enabled. Skipping connection check")
@@ -379,12 +408,13 @@ def health_check(S, cfg, bay0, bay1):
         if -band_width/2 < f < band_width/2:
             resp_inband.append(r)
     # If the mean is > 1, say response received
-    if np.mean(resp_inband) > 1: #LESS THAN CHANGE
+    if np.mean(resp_inband) > 1:  # LESS THAN CHANGE
         resp_check = True
         cprint("Full band response check passed", True)
     else:
         resp_check = False
-        cprint("Full band response check failed - maybe something isn't plugged in?", False)
+        cprint(
+            "Full band response check failed - maybe something isn't plugged in?", False)
 
     # Check if ADC is clipping. Probably should be a different script, after
     # characterizing system to know what peak data amplitude to simulate
@@ -402,18 +432,23 @@ def health_check(S, cfg, bay0, bay1):
     cprint("Health check finished! Final status", TermColors.HEADER)
     cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
     cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
-    print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
+    print(
+        f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
     cprint(f" - 50K biased: \t\t{biased_50K}", biased_50K)
     cprint(f" - 50K Id in range: \t{Id_50K_in_range}", Id_50K_in_range)
-    print(f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
+    print(
+        f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
     cprint(f" - Response check: \t{resp_check}", resp_check)
 
     if bay0:
-        cprint(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}", jesd_tx0 and jesd_rx0)
+        cprint(
+            f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}", jesd_tx0 and jesd_rx0)
     if bay1:
-        cprint(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}", jesd_tx1 and jesd_rx1)
+        cprint(
+            f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}", jesd_tx1 and jesd_rx1)
 
-    status_bools = [biased_hemt, biased_50K, Id_hemt_in_range, Id_50K_in_range, resp_check]
+    status_bools = [biased_hemt, biased_50K,
+                    Id_hemt_in_range, Id_50K_in_range, resp_check]
     if bay0:
         status_bools.extend([jesd_tx0, jesd_rx0])
     if bay1:
@@ -466,10 +501,10 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
                     subband=subband)
         if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
             cprint(f'Find freqs could not find resonators in '
-            f'band : {band} and subbands : {subband}', False)
+                   f'band : {band} and subbands : {subband}', False)
             continue
         S.setup_notches(band, drive=band_cfg['drive'],
-                    new_master_assignment=new_master_assignment)
+                        new_master_assignment=new_master_assignment)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
@@ -479,7 +514,7 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
     if not tune_file:
         cprint("Find freqs was unsuccessful! could not find resonators in the\
                 specified bands + subbands", False)
-        return False 
+        return False
     print(f"Total num resonators on: {num_resonators_on}")
     print(f"Tune file: {tune_file}")
 
@@ -558,15 +593,16 @@ def analyze_noise_psd(S, band, dat_file):
         if chan < 0:
             continue
         ch_idx = mask[band, chan]
-        f, Pxx = signal.welch(phase[ch_idx], nperseg=nperseg,fs=fs, detrend=detrend)
+        f, Pxx = signal.welch(
+            phase[ch_idx], nperseg=nperseg, fs=fs, detrend=detrend)
         Pxx = np.sqrt(Pxx)
         popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx)
-        wl,n,f_knee = popt
+        wl, n, f_knee = popt
         wls.append(wl)
         outdict[chan] = {}
-        outdict[chan]['fknee']=f_knee
-        outdict[chan]['noise index']=n
-        outdict[chan]['white noise']=wl
+        outdict[chan]['fknee'] = f_knee
+        outdict[chan]['noise index'] = n
+        outdict[chan]['white noise'] = wl
     median_noise = np.median(np.asarray(wls))
     return median_noise, outdict
 
@@ -657,7 +693,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
             S.pub.register_file(plotname, 'noise_vs_atten', plot=True)
             plt.close()
 
-        medians= np.asarray(medians)
+        medians = np.asarray(medians)
         min_arg = np.argmin(medians)
         checked_drives.append(drive)
         if (0 < min_arg < len(medians)-1) or fixed_drive:
@@ -666,8 +702,8 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
             min_atten = attens[min_arg]
             min_drive = drive
             if not (0 < min_arg < len(medians) - 1):
-               cprint("Minimum is on the boundary! May not be a global minimum!",
-                      style=TermColors.WARNING)
+                cprint("Minimum is on the boundary! May not be a global minimum!",
+                       style=TermColors.WARNING)
         else:
             drive += 1 if min_arg == 0 else -1
             if drive in checked_drives:
@@ -681,7 +717,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                style=True)
         S.set_att_uc(band, min_atten)
         S.load_tune(tunefile)
-        S.relock(band=band,drive=drive)
+        S.relock(band=band, drive=drive)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
