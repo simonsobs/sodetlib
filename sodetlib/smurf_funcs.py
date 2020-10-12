@@ -2,13 +2,11 @@ import numpy as np
 import os
 import time
 from scipy import signal
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
-try:
-    import matplotlib.pyplot as plt
-except Exception:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+from pysmurf.client.util.pub import set_action
 
 class TermColors:
     HEADER = '\n\033[95m'
@@ -27,6 +25,70 @@ def cprint(msg, style=TermColors.OKBLUE):
     elif style == False:
         style = TermColors.FAIL
     print(style + str(msg) + TermColors.ENDC)
+
+
+@set_action()
+def find_subbands(S, cfg, spur_width=5):
+    """
+    Do a noise sweep to find the coarse position of resonators. 
+    Return active bands and a dictionary of active subbands.
+    ----------
+    S : pysmurf.client.SmurfControl
+        Smurf control object
+    cfg : DetConfig
+        sodetlib config object
+    spur_width: float
+        Will throw out any resonators which are within ``spur_width`` MHz 
+        from a multiple of 500 MHz to avoid picking up spurs.
+
+    Returns
+    -------
+    bands : int array
+        Active bands
+
+    subband_dict : dict
+        A dictionary of {band:[list of subbands]} for each resonator in MHz.
+    """
+    bands=np.array([])
+    subband_dict = {}
+
+    AMC=S.which_bays()
+    bands = []
+    if 0 in AMC:
+        bands += [0, 1, 2, 3]
+    if 1 in AMC:
+        bands += [4, 5, 6, 7]
+    if not bands:
+        print('No active AMC')
+        return bands, subband_dict
+
+    for band in bands:
+        band_cfg = cfg.dev.bands[band]
+        freq, resp = S.full_band_resp(band)
+        peaks = S.find_peak(freq, resp, make_plot=True,show_plot=False, band=band)
+        fs_ = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)  
+
+        # Drops channels that are too close to 500 MHz multiple
+        fs = [f for f in fs_ if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
+        bad_fs = list(set(fs_) - set(fs))
+        bad_fs = [f for f in fs_ if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
+
+        if bad_fs:
+            cprint(f"Dropping frequencies {bad_fs} because they are too close to a " 
+                    "500 MHz interval", style=TermColors.WARNING)
+
+        subbands=sorted(list(set([S.freq_to_subband(band,f)[0] for f in fs])))
+        subband_dict[band] = subbands
+        
+        subband_strings = []
+        for i,b in enumerate(subbands):
+            subband_strings.append(f"{b} ({fs[i]:.2f}MHz)")
+
+        cprint(f"Subbands detected for band {band}:\n{subband_strings}", 
+                style=TermColors.OKBLUE)
+        cfg.dev.update_band(band, {'active_subbands': subbands})
+
+    return bands, subband_dict
 
 
 def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
