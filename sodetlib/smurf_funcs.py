@@ -28,7 +28,7 @@ def cprint(msg, style=TermColors.OKBLUE):
 
 
 @set_action()
-def find_bands(S, cfg, spur_width=5):
+def find_subbands(S, cfg, spur_width=5):
     """
     Do a noise sweep to find the coarse position of resonators. 
     Return active bands and a dictionary of active subbands.
@@ -71,6 +71,7 @@ def find_bands(S, cfg, spur_width=5):
         # Drops channels that are too close to 500 MHz multiple
         fs = [f for f in fs_ if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
         bad_fs = list(set(fs_) - set(fs))
+        bad_fs = [f for f in fs_ if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
 
         if bad_fs:
             cprint(f"Dropping frequencies {bad_fs} because they are too close to a " 
