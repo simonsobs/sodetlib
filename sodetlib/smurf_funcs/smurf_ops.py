@@ -22,9 +22,9 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
 			frac_pp=None,lms_freq=None,reset_rate_khz=None,
 			lms_gain=None):
     """
-    Adapted from script by SWH: shawn@slac.stanford.edu (can still see original in 
-    pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
-    
+    Adapted from script by SWH: shawn@slac.stanford.edu (can still see original
+    in pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
+
     Takes data in open loop (only slow integral tracking) and steps through flux
     values to trace out a SQUID curve. This can be compared against the tracked
     SQUID curve which might not perfectly replicate this if these curves are
@@ -214,11 +214,10 @@ def find_subbands(S, cfg, spur_width=5):
     subband_dict : dict
         A dictionary containing the list of subbands in each band.
     """
-    bands = np.array([])
     subband_dict = {}
+    bands = []
 
     amc = S.which_bays()
-    bands = []
     if 0 in amc:
         bands += [0, 1, 2, 3]
     if 1 in amc:
@@ -228,7 +227,6 @@ def find_subbands(S, cfg, spur_width=5):
         return bands, subband_dict
 
     for band in bands:
-        band_cfg = cfg.dev.bands[band]
         freq, resp = S.full_band_resp(band)
         peaks = S.find_peak(freq, resp, make_plot=True,show_plot=False, band=band)
         fs_ = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
