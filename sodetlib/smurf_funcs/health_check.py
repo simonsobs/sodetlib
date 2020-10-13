@@ -75,10 +75,10 @@ def health_check(S, cfg):
 
     Parameters
     ----------
-    bay0 : bool
-        Whether or not bay 0 is active
-    bay1 : bool
-        Whether or not bay 1 is active
+    S : pysmurf.client.SmurfControl
+        Smurf control object
+    cfg : DetConfig
+        sodetlib config object
 
     Returns
     -------
