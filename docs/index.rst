@@ -9,3 +9,4 @@ Contents
 .. toctree::
    configs
    det_config
+   smurf_funcs
