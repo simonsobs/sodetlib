@@ -26,7 +26,8 @@ if __name__ == '__main__':
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
     
-    if not args.bands:
+    if args.bands is None:
+        args.bands = []
         bays = S.which_bays()
         if 0 in bays:
             args.bands.extend([0,1,2,3])
