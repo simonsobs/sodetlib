@@ -37,7 +37,7 @@ directory. For example::
    from sodetlib.det_config import DetConfig
 
    cfg = DetConfig()
-   cfg.lod_config_files(slot=2)
+   cfg.load_config_files(slot=2)
    S = cfg.get_smurf_control(dump_configs=True)
 
 
