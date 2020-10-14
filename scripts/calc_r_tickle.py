@@ -10,7 +10,7 @@ from scipy import signal
 import os
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs import take_tickle, analyze_tickle
+from sodetlib.smurf_funcs.tickle import take_tickle, analyze_tickle
 
 if __name__=='__main__':
 	cfg = DetConfig()
