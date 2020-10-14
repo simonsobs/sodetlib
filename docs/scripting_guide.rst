@@ -93,7 +93,7 @@ band::
 
 Inside this loop, we'll want to update the device config with the new
 information. We'll set the ``active_subbands`` field to be the list of 
-subbands that was found. See the `det_config`_ section for more info::
+subbands that was found. See :ref:`det_config` for more info::
 
     cfg.dev.update_band(band, {'active_subbands': subbands})
 

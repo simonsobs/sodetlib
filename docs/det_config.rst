@@ -1,3 +1,6 @@
+
+.. _det_config:
+
 The DetConfig System
 =====================
 
