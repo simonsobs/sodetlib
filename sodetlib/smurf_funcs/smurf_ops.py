@@ -116,7 +116,7 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
             subband = default_subbands
         elif not subband:
             continue
-        S.find_freq(band, drive_power=band_cfg['drive'],
+        S.find_freq(band, tone_power=band_cfg['drive'],
                     make_plot=band_cfg['make_plot'],
                     save_plot=band_cfg['save_plot'],
                     subband=subband)
@@ -124,7 +124,7 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
             cprint(f'Find freqs could not find resonators in '
             f'band : {band} and subbands : {subband}', False)
             continue
-        S.setup_notches(band, drive=band_cfg['drive'],
+        S.setup_notches(band, tone_power=band_cfg['drive'],
                     new_master_assignment=new_master_assignment)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
