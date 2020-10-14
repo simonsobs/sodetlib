@@ -3,6 +3,67 @@ Module for smurf and ocs health_check operations.
 """
 from sodetlib.util import TermColors, cprint
 from pysmurf.client.util.pub import set_action
+import numpy as np
+import time
+
+@set_action()
+def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
+    """
+    Scans through bias voltage for hemt or 50K amplifier to get the correct
+    gate voltage for a target current.
+
+    Parameters
+    -----------
+    S (pysmurf.client.SmurfControl):
+        PySmurf control object
+    target_Id (float):
+        Target amplifier current
+    vg_min (float):
+        Minimum allowable gate voltage
+    vg_max (float):
+        Maximum allowable gate voltage
+    amp_name (str):
+        Name of amplifier. Must be either "hemt" or "50K'.
+    max_iter (int):
+        Maximum number of iterations to find voltage. Defaults to 30.
+
+    Returns
+    --------
+    success (bool):
+        Returns a boolean signaling whether voltage scan has been successful.
+        The set voltages can be read with S.get_amplifier_biases().
+    """
+    if amp_name not in ['hemt', '50K']:
+        raise ValueError(cprint(f"amp_name must be either 'hemt' or '50K'", False))
+
+    for _ in range(max_iter):
+        amp_biases = S.get_amplifier_biases(write_log=True)
+        Vg = amp_biases[f"{amp_name}_Vg"]
+        Id = amp_biases[f"{amp_name}_Id"]
+        delta = target_Id - Id
+        # Id should be within 0.5 from target without going over.
+        if 0 <= delta < 0.5:
+            return True
+
+        if amp_name=='hemt':
+            step = np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
+        else:
+            step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.001)
+
+        Vg_next = Vg + step
+        if not (vg_min < Vg_next < vg_max):
+            cprint(f"Vg adjustment would go out of range ({vg_min}, {vg_max}). "
+                         f"Unable to change {amp_name}_Id to desired value", False)
+            return False
+
+        if amp_name == 'hemt':
+            S.set_hemt_gate_voltage(Vg_next)
+        else:
+            S.set_50k_amp_gate_voltage(Vg_next)
+        time.sleep(0.2)
+    cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
+           f"Unable to get target Id for {amp_name}.", False)
+    return False
 
 
 @set_action()
@@ -83,7 +144,7 @@ def health_check(S, cfg):
     # Return connections for both bays, or passes if bays not active
     cprint("Checking JESD Connections", TermColors.HEADER)
     if bay0:
-        jesd_tx0, jesd_rx0 = S.check_jesd(0)
+        jesd_tx0, jesd_rx0, status = S.check_jesd(0)
         if jesd_tx0:
             cprint(f"bay 0 jesd_tx connection working", True)
         else:
@@ -99,7 +160,7 @@ def health_check(S, cfg):
         print("Bay 0 not enabled. Skipping connection check")
 
     if bay1:
-        jesd_tx1, jesd_rx1 = S.check_jesd(1)
+        jesd_tx1, jesd_rx1, status = S.check_jesd(1)
         if jesd_tx1:
             cprint(f"bay 1 jesd_tx connection working", True)
         else:
