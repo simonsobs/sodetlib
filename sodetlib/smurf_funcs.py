@@ -789,7 +789,7 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current, c
 			#Makes scatter plot to show which channels we identified as detectors
 			plt.figure(2)
 			plt.semilogx(amp_check/I_command,S.channel_to_freq(band,c),plot_style)
-		if amp_check < I_command*(S.R_sh/(S.R_sh + 1000e-3)):
+		if amp_check < I_command*(S.R_sh/(S.R_sh + 340e-3)):
 			#This checks if you see no response (i.e. just noise), it rejects
 			#all responses whose peak to peak shift of its timestream is less
 			#than what would be present w/ a 500 mOhm bolo which is 50 times
