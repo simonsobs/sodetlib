@@ -132,9 +132,9 @@ def analyze_iv(phase,v_bias,R_sh,pA_per_phi0,bias_line_resistance,high_current_m
         real_turn_idx = None
 
     if real_turn_idx is not None:
-        p_sat = v_tes[real_turn_idx] * i_tes[real_turn_idx]
+        p_turn = v_tes[real_turn_idx] * i_tes[real_turn_idx]
     else: 
-        p_sat = np.nan
+        p_turn = np.nan
 
     #remove responsivity calculation, come back to this later
 
@@ -144,8 +144,58 @@ def analyze_iv(phase,v_bias,R_sh,pA_per_phi0,bias_line_resistance,high_current_m
     iv_dict['trans idxs'] = np.array([sc_idx,nb_idx])
     iv_dict['p_tes'] = p_tes
     iv_dict['p_trans'] = p_trans_median
-    iv_dict['p_sat'] = p_sat
+    iv_dict['p_turn'] = p_turn
     iv_dict['v_bias'] = v_bias_bin
     iv_dict['v_tes'] = v_tes
     iv_dict['i_tes'] = i_tes
+        
+    return iv_dict
+
+def plot_iv(iv_dict):
+
+    R = iv_dict['R']
+    R_n = iv_dict['R_n']
+    sc_idx,nb_idx = iv_dict['trans idxs']
+    p_tes = iv_dict['p_tes']
+    p_trans_median = iv_dict['p_trans']
+    p_turn = iv_dict['p_turn']
+    v_bias = iv_dict['v_bias']
+    v_tes = iv_dict['v_tes']
+    i_tes = iv_dict['i_tes']
+
+    plt.figure()
+    plt.plot(i_tes,v_bias)
+    plt.show()
+
+
+if __name__=='__main__':
+
+    iv_info = np.load('/data/smurf_data/20201014/1602712157/outputs/1602713162_iv_info.npy',allow_pickle=True).item()
     
+    parser = argparse.ArgumentParser()
+
+    # Arguments that are needed to create Pysmurf object
+    parser.add_argument('--setup', action='store_true')
+    parser.add_argument('--config-file', required=True)
+    parser.add_argument('--epics-root', default='smurf_server_s2')
+
+    args = parser.parse_args()
+
+    S = pysmurf.client.SmurfControl(
+            epics_root = args.epics_root,
+            cfg_file = args.config_file,
+            setup = args.setup,make_logfile=False
+    )
+
+    iv_raw_data = np.load(iv_info['iv_file'], allow_pickle = True).item()
+
+    timestamp, phase, mask, tes_bias = S.read_stream_data(iv_raw_data['datafile'],return_tes_bias=True)
+                
+
+    v_bias = 2 * tes_bias[1] * S._rtm_slow_dac_bit_to_volt
+
+    iv_dict = analyze_iv(
+                phase[mask[2,23]],v_bias,iv_info['Rsh'],iv_info['pA_per_phi0'],iv_info['bias_line_resistance'],
+                False,iv_info['high_low_ratio']) 
+
+    plot_iv(iv_dict)    
