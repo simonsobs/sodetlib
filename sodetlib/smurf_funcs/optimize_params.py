@@ -79,7 +79,7 @@ def analyze_noise_psd(S, band, dat_file):
     detrend = 'constant'
     timestamp, phase, mask = S.read_stream_data(datafile)
     phase *= S.pA_per_phi0/(2.*np.pi)
-    num_averages = S.config.get('smurf_to_mce')['num_averages']
+    num_averages = S.get_downsample_factor()
     fs = S.get_flux_ramp_freq()*1.0E3/num_averages
     wls = []
     for chan in S.which_on(band):
