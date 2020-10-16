@@ -9,10 +9,33 @@ from scipy import signal
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import scipy.optimize as opt
+from scipy import interpolate
+import pickle as pkl
 
 from pysmurf.client.util.pub import set_action
 
 def lowpass_fit(x, scale, cutoff, fs=4e3):
+    """
+    This function takes in a scaling and cutoff frequency and outputs
+    a 1st order butterworth lowpass filter per the scipy.butter 
+    package. There's a spline interpolation applied to match the 
+    outputs of scipy.freqz package to the input x array.
+
+    Args
+    x (float array):
+    Input frequency array
+
+    scale (float):
+    Scaling of lowpass filter function to match data
+
+    cutoff (float):
+    f3dB frequency in Hz of the lowpass filter
+
+    fs (float):
+    Data sampling rate in Hz.
+
+    """
     b, a = signal.butter(1, 2*cutoff/fs)
     w, h = signal.freqz(b, a)
     x_fit = (fs*0.5/np.pi)*w
@@ -24,6 +47,7 @@ def lowpass_fit(x, scale, cutoff, fs=4e3):
 def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
     """
     Identifies the channel with the minimum noise and frequency tracking
+    error.
 
     Args
         f (array [nchannels x nsamples]):
@@ -34,6 +58,9 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
             Minimum flux ramp modulation depth [MHz]. Defaults to 40 kHz.
         f_span_max (float):
             Maximum flux ramp modulation depth [MHz]. Defaults to 120 kHz.
+    
+    Returns
+    Channel identified as the lowest product of noise and tracking error
     """
     df_std = np.std(df, 0)
     f_span = np.max(f, 0) - np.min(f, 0)
@@ -52,7 +79,7 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
         np.argmin(np.asarray(chan_df)*np.asarray(chan_noise))
     ]
 
-@set_action
+@set_action()
 def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
                       reset_rate_khz=None, frac_pp=None,
                       lms_freq=None, meas_time=None,
@@ -78,6 +105,13 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
 
     Returns
     -------
+    opt_lms_gain: (int)
+    Optimized value of the lms gain parameter
+
+    outdict: (dictionary)
+    dictionary containing a key for each lms_gain swept through.
+    For each lms gain there is the frequency and PSD array 
+    as well as the single pole low pass filter fit parameters.
 
     """
     # Set the timestamp for plots and data outputs
@@ -106,7 +140,7 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
     tracking_kwargs = {
         'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
-        'fraction_full_scale': band_cfg['frac_p'],
+        'fraction_full_scale': band_cfg['frac_pp'],
         'make_plot': False, 'show_plot': False,
         'channel': S.which_on(band), 'nsamp': 2**18,
         'feedback_start_frac': 0.02,

@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs import optimize_lms_gain
+from sodetlib.smurf_funcs.optimize_params import optimize_lms_gain
 
 
 if __name__=='__main__':
@@ -19,8 +19,7 @@ if __name__=='__main__':
                         help='Target readout bandwidth to optimize lms_gain')
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
-    optimize_lms_gain(S, cfg, band = args.band,
-                        BW_target = args.BW_target,
+    optimize_lms_gain(S, cfg,args.band, args.BW_target,
                         tunefile=None, reset_rate_khz=None,
                         frac_pp=None, lms_freq=None,
                         meas_time=None, make_plot = True)
