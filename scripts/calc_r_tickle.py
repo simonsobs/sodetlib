@@ -33,6 +33,8 @@ if __name__=='__main__':
 				help='Channels that you want to calculate the tickle response of')
 
 	parser.add_argument('--make-channel-plots', action = 'store_true')
+	parser.add_argument('--R-threshold',default = 100,
+				help = 'Resistance threshold for determining detector channel')
 
 	# Parse command line arguments
 	args = cfg.parse_args(parser)
@@ -49,4 +51,5 @@ if __name__=='__main__':
 			over_bias = args.over_bias)
 	analyze_tickle(S, band = args.band, data_file = data_file, dc_level = cur_dc, 
 			tickle_voltage = args.tickle_voltage, high_current = args.high_current, 
-			channels = channels, make_channel_plots = args.make_channel_plots)
+			channels = channels, make_channel_plots = args.make_channel_plots,
+			R_threshold = args.R_threshold)
