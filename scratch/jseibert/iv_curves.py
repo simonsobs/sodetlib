@@ -10,9 +10,10 @@ import glob
 from scipy import signal
 import scipy.optimize as opt
 pi = np.pi
-
+from pysmurf.client.util.pub import set_action
 
 if __name__=='__main__':    
+    
     parser = argparse.ArgumentParser()
 
     # Arguments that are needed to create Pysmurf object
@@ -74,7 +75,7 @@ if __name__=='__main__':
             cfg_file = args.config_file,
             setup = args.setup,make_logfile=False
     )
-
+    
     iv_file = S.run_iv(bias_groups=bias_groups, wait_time=wait_time, bias=None,
                bias_high=bias_high, bias_low=bias_low, bias_step=bias_step,
                show_plot=False, overbias_wait=overbias_wait, cool_wait=cool_wait,
@@ -100,7 +101,9 @@ if __name__=='__main__':
     np.save(fp,iv_info)   
     S.pub.register_file(fp, 'iv_info',format='npy')
  
-    # need to report bias_line_resistance and R_sh that were used when the IV was taken
+   
+
+ # need to report bias_line_resistance and R_sh that were used when the IV was taken
     # and pA per phi0
     # and high_low_current_ratio
 
