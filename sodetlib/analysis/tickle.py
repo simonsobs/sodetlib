@@ -184,18 +184,23 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current, c
 			ss_tot = np.sum((pnew - np.mean(pnew))**2)
 			r2 = 1 - (ss_res / ss_tot)
 			print(f"Possible channel: {c}, r2={r2}")
+			I_bolo = (S.pA_per_phi0*popt[1]/(2*np.pi))*1e-12
+			V_bolo = (I_command - I_bolo)*S.R_sh
+			R_fit = V_bolo/I_bolo
 			channel_data = {
 				'detector_channel': True, 
 				'failure_statement': None,
 				'popts': popt,
 				'pcov': pcov,
 				'rms_error' : rms_error,
-				'r2': r2
+				'r2': r2,
+				'R_fit' : R_fit
 			}
 			if r2 < 0.9:
 				channel_data['detector_channel'] = False
 				channel_data['failure_statement'] = f"Poor Fit (R2={r2:.2f})"
-				
+		if not(channel_data['detector_channel']):
+			channel_data['R_fit'] = 0	
 		channel_data['R_guess'] = R_pp
 		channel_data['amplitude'] = amp_check
 		channel_data['res_freq'] = S.channel_to_freq(band, c)
@@ -232,12 +237,14 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current, c
 	# Saves tsv file
 	tsv_file = os.path.join(S.output_dir, 'tickle_summary.tsv')
 	with open(tsv_file, 'w') as f:
-		f.write("#" + "\t".join(["Chan", "det", "R_guess", "r2"]) + "\n")
+		f.write("#" + "\t".join(["Chan", "det", "R_fit","R_guess", "r2"]) + "\n")
 		for c in channels:
 			cdict = tick_dict[c]
 			f.write("\t".join([
 				str(c), str(int(cdict['detector_channel'])), 
-				f'{cdict["R_guess"]:.3f}', f'{cdict.get("r2", 0.):.2f}'
+				f'{cdict["R_fit"]/1e-3:.3f}', 
+				f'{cdict["R_guess"]/1e-3:.3f}', 
+				f'{cdict.get("r2",0.):.5f}'
 			]) + "\n")
 	S.pub.register_file(tsv_file, 'tickle', format='tsv')
 
@@ -271,7 +278,7 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current, c
 	ys = [tick_dict[c]['R_guess']/1e-3 for c in dets]
 	ax.scatter(xs, ys)
 	ax.set_xlabel("Detector Frequency [MHz]", fontsize = 14)
-	ax.set_ylabel("Resistance [M$\Omega$]",fontsize = 14)
+	ax.set_ylabel("Resistance [m$\Omega$]",fontsize = 14)
 	ax.set_title(f'Bolo resistance at DC Bias = {np.round(dc_level,2)} V',fontsize = 16)
 	fig_name = f'{S.plot_dir}/{ctime}_tickle_resistance_b{band}.png'
 	fig.savefig(fig_name)
