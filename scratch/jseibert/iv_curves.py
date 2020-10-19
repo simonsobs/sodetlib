@@ -88,23 +88,22 @@ if __name__=='__main__':
         fname.write(f'plotdir : {S.plot_dir}, outdir : {S.output_dir}, Rsh : {S.R_sh}, bias_line_resistance : {S.bias_line_resistance}, high_low_ratio : {S.high_low_current_ratio}, pA_per_phi0 : {S.pA_per_phi0}, iv_file : {iv_file}\n')
     '''
 
-    output_file = {}
-    output_file['plot_dir'] = S.plot_dir
-    output_file['output_dir'] = S.output_dir
-    output_file['Rsh'] = S.R_sh
-    output_file['bias_line_resistance'] = S.bias_line_resistance
-    output_file['high_low_ratio'] = S.high_low_current_ratio
-    output_file['pA_per_phi0'] = S.pA_per_phi0
-    output_file['iv_file'] = iv_file
-    fp = os.path.join(S.output_dir,f'{S.get_timestamp()}_iv_info.npy')    
-    print(fp)
-    
-    S.log(f'Writing information about the IV curves to {fp}.')
-    np.save(fp,output_file)
-    S.pub.register_file(fp, 'iv_info', format='npy')
-   
+    iv_info = {}
+    iv_info['plot_dir'] = S.plot_dir
+    iv_info['output_dir'] = S.output_dir
+    iv_info['Rsh'] = S.R_sh
+    iv_info['bias_line_resistance'] = S.bias_line_resistance
+    iv_info['high_low_ratio'] = S.high_low_current_ratio
+    iv_info['pA_per_phi0'] = S.pA_per_phi0
+    iv_info['iv_file'] = iv_file
+    fp = os.path.join(S.output_dir,f'{S.get_timestamp()}_iv_info.npy')
+    S.log(f'Writing IV information to {fp}.')
+    np.save(fp,iv_info)   
+    S.pub.register_file(fp, 'iv_info',format='npy')
  
-    # need to report bias_line_resistance and R_sh that were used when the IV was taken
+   
+
+ # need to report bias_line_resistance and R_sh that were used when the IV was taken
     # and pA per phi0
     # and high_low_current_ratio
 
