@@ -11,3 +11,4 @@ Contents
    det_config
    scripting_guide
    smurf_funcs
+   analysis
