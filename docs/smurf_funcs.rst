@@ -19,3 +19,6 @@ Smurf Operations
    :members: find_subbands, find_and_tune_freq 
    :noindex:
 
+.. automodule:: sodetlib.smurf_funcs.tickle
+   :members: take_tickle
+
