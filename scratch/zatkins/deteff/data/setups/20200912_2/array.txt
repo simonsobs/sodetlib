@@ -1,0 +1,4 @@
+File: prototype.csv
+Type: MF-F
+Center: 0, 0, -137.795
+Pin direction: 71.8817, -7.5587
