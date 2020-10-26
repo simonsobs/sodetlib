@@ -30,8 +30,10 @@ freq_mult_key = {
     'K1706.txt': 100*c,
     'K1674.txt': 100*c,
     'W1180.txt': 100*c,
-    'MF-1.txt': 1e9,
-    'MF-2.txt': 1e9
+    'W1319_scaled.txt': 100*c,
+    'W1236.txt': 100*c,
+    'MF_1.txt': 1e9,
+    'MF_2.txt': 1e9
 }
 
 # repo data folder for loading
@@ -172,7 +174,7 @@ class Array:
         self.beam = Beam(beam_name, **beam_kwargs)
         self.coldload = ColdLoad(setupname, **coldload_kwargs)
         self.filters = FilterStack(setupname, **filterstack_kwargs)
-        self.type = self.beam.name.split('-')[0]
+        self.type = self.beam.name.split('_')[0]
         
         self.bandfunc_dict = {}
         self.add_to_bandfunc_dict('1', **filterstack_kwargs)
@@ -213,7 +215,7 @@ class Array:
         band_id = str(band_id)
         assert band_id in ('1', '2')
 
-        band_name = f'{self.type}-{band_id}'
+        band_name = f'{self.type}_{band_id}'
         band_fn = band_name + '.txt'
         band_freq_mult = freq_mult_key[band_fn]
 
@@ -379,7 +381,7 @@ class SPB(Array):
         self.beam = Beam(beam_name, **beam_kwargs)
         self.coldload = ColdLoad(setupname, **coldload_kwargs)
         self.filters = FilterStack(setupname, **filterstack_kwargs)
-        self.type = self.beam.name.split('-')[0]
+        self.type = self.beam.name.split('_')[0]
 
         self.bandfunc_dict = {}
         self.add_to_bandfunc_dict('1', **filterstack_kwargs)

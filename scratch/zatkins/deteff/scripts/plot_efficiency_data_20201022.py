@@ -13,19 +13,19 @@ import efficiency as eff
 import argparse
 
 databand = 3
-optband = 1
+optband = 3
 tbath = 70.0
 exclude_temps = (0.,)
 T_err = 0.3
 setupname = '20200912'
 arrayname = 'array'
-beam_name = 'MF-F'
+beam_name = 'MF_F'
 
 # get defaults
 bandlims = {
     1: {
         'b': (70e9, 120e9),
-        't': (78e9, 106e9)
+        't': (77e9, 105e9)
     },
     3: {
         'b': (120e9, 180e9),
@@ -65,8 +65,8 @@ gc = mgc[databand][tbath]
 bmin, bmax = bandlims[optband]['b']
 tmin, tmax = bandlims[optband]['t']
 b = bandband[optband]
-with open(bandpix[optband]) as f:
-    pix = np.array(f.readline().split(',')).astype(int)
+with open(bandpix[optband]) as fn:
+    pix = np.array(fn.readline().split(',')).astype(int)
 T_errs = np.full(len(Ts), T_err)
 
 # get arrays
@@ -106,7 +106,7 @@ for c in gc:
     if c not in badpix[databand]:
         p.append(c)
 
-s = det.SPB(setupname, (x,y,z), beam_name, pixel_ids=gc)
+s = det.SPB(setupname, (x,y,z), beam_name, pixel_ids=p)
 
 dbnoscat = f(s, databand, T_errs = T_errs, gpk = dict(band = b, min = bmin, max = bmax))
 dbscat = f(s, databand, T_errs = T_errs, oe = p_optsb_std, gpk = dict(band = b, min = bmin, max = bmax))

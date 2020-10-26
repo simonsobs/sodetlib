@@ -20,20 +20,20 @@ fpath = pathlib.Path(__file__).parent.parent / 'data/beams'
 
 # properties of beam files
 fname_key = {
-    'MF-F' : 'MF_SO_mag.csv',
-    'UHF-F' : 'UHF_SO_mag.csv',
+    'MF_F' : 'MF_SO_mag.csv',
+    'UHF_F' : 'UHF_SO_mag.csv',
     'deprecated-lenslet': 'deprecated_lenslet.csv'
 }
 
 regex_key = {
-    'MF-F': r"mag\(rEL3X\) \[V\] - Freq='(.+)GHz' Phi='(.+)deg'",
-    'UHF-F': r"mag\(rEL3X\) \[V\] - Freq='(.+)GHz' Phi='(.+)deg'",
+    'MF_F': r"mag\(rEL3X\) \[V\] - Freq='(.+)GHz' Phi='(.+)deg'",
+    'UHF_F': r"mag\(rEL3X\) \[V\] - Freq='(.+)GHz' Phi='(.+)deg'",
     'deprecated-lenslet': r"RealizedGainTotal \[\] - Freq='(.+)GHz' LensMachineAngle='90' LR='0.48' Phi='(.+)deg'"
 }
 
 kwargs_key = {
-    'MF-F': dict(phi = 'both', mag = True, freq_mult = 1e9),
-    'UHF-F': dict(phi = 'both', mag = True, freq_mult = 1e9),
+    'MF_F': dict(phi = 'both', mag = True, freq_mult = 1e9),
+    'UHF_F': dict(phi = 'both', mag = True, freq_mult = 1e9),
     'deprecated-lenslet': dict(phi = 'both', mag = False, freq_mult = 1e9)
 }
 
@@ -59,7 +59,7 @@ class Beam:
         Parameters
         ----------
         name : str
-            The key associated with the desired metadata, e.g. 'MF-F' for MF feedhorn.
+            The key associated with the desired metadata, e.g. 'MF_F' for MF feedhorn.
         N : int, optional
             The number of samples to draw over theta, for each frequency in the beam simulation,
             by default int(4e5)
