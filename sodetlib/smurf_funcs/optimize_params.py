@@ -12,12 +12,12 @@ import matplotlib.pyplot as plt
 import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
+from sodetlib.util import cprint, TermColors
 
 from pysmurf.client.util.pub import set_action
 
-def optimize_tracking(S, cfg, band, init_fracpp = None,
-                        phi0_number = 5, reset_rate_khz = None,
-                        lms_gain = None):
+def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
+                      reset_rate_khz=None, lms_gain=None):
     """
     This starts with some default parameters and optimizes the amplitude
     of the flux ramp and tracking frequency used in the tracking algorithm
@@ -48,7 +48,6 @@ def optimize_tracking(S, cfg, band, init_fracpp = None,
             Tracking frequency lock loop feedback loop gain. Default is
             taken from device config file.
     """
-    frac_pp_optimize = False
     band_cfg = cfg.dev.bands[band]
     if lms_gain == None:
         lms_gain = band_cfg['lms_gain']
@@ -57,6 +56,13 @@ def optimize_tracking(S, cfg, band, init_fracpp = None,
     if init_fracpp == None:
         init_fracpp = band_cfg['frac_pp']
 
+    cprint("Loading tune and running initial tracking setup")
+    S.load_tune()
+    S.relock(band)
+    for _ in range(2):
+        S.run_serial_gradient_descent(band)
+        S.run_serial_eta_scan(band)
+
     tracking_kwargs = {'band': band,'reset_rate_khz': reset_rate_khz,
                        'lms_freq_hz': None, 'nsamp': 2**17,
                        'fraction_full_scale': init_fracpp, 'lms_gain': lms_gain,
@@ -64,61 +70,67 @@ def optimize_tracking(S, cfg, band, init_fracpp = None,
                        'save_plot': False, 'meas_lms_freq': True,
                        'return_data': True}
 
-    while not(frac_pp_optimize):
-        # run tracking_setup one time
+    f, _, _ = S.tracking_setup(**tracking_kwargs)
 
-        f,df,sync = S.tracking_setup(band=band,reset_rate_khz=reset_rate_khz,
-                        lms_freq_hz=None, nsamp = 2**17,
-                        fraction_full_scale=init_fracpp,
-                        lms_gain = lms_gain, make_plot=False,show_plot=False,
-                        save_plot=False, meas_lms_freq=True,
-                        return_data = True)
+    # Turns off bad channels to get better estimate of tracking frequency
+    f_span = np.max(f, 0) - np.min(f, 0)
+    for c, fs in enumerate(f_span):
+        if fs < 0.03 or fs > 0.14:
+            S.channel_off(band, c)
 
-        df_std = np.std(df,0)
-        f_span = np.max(f,0) - np.min(f,0)
+    # Reruns to get re-estimate of tracking freq
+    S.tracking_setup(**tracking_kwargs)
 
-        for c in S.which_on(band):
-            if f_span[c] < 0.03:
-                S.channel_off(band,c)
-            if f_span[c] > 0.14:
-                S.channel_off(band,c)
+    lms_meas = S.lms_freq_hz[band]
+    frac_pp_per_phi0 = init_fracpp * reset_rate_khz * 1e3 / lms_meas
 
-        S.tracking_setup(band=band,reset_rate_khz=reset_rate_khz,
-                        lms_freq_hz=None, nsamp = 2**17,
-                        fraction_full_scale=init_fracpp,
-                        lms_gain = lms_gain, make_plot=False,show_plot=False,
-                        save_plot=False, meas_lms_freq=True,
-                        return_data = False)
+    if phi0_number is None:
+        # Optimizes for Nphi0 with lowest noise
+        cprint("Optimizing noise wrt Nphi0")
+        nphi0s = np.arange(0, 10)
+        wls = np.full_like(nphi0s, np.nan)
+        for i, nphi0 in enumerate(nphi0s):
+            frac_pp = frac_pp_per_phi0 * nphi0
+            if frac_pp >= 1:
+                break
+            tracking_kwargs['fraction_full_scale'] = frac_pp
+            S.tracking_setup(**tracking_kwargs)
+            datafile = S.take_stream_data(10)
+            median_noise, _ = analyze_noise_psd(S, band, datafile)
+            print(f"Nphi0: {nphi0}\tmedian_noise: {median_noise}")
+            wls[i] = median_noise
 
-        lms_meas = S.lms_freq_hz[band]
-        frac_pp = init_fracpp*(reset_rate_khz*1e3*phi0_number/lms_meas)
+        idx = np.argmin(wls)
+        nphi0_opt = nphi0s[idx]
+        fname = os.path.join(S.output_dir, f'{S.get_timestamp()}_wls_vs_nphi0.txt')
+        np.savetxt(fname, np.array([nphi0s, wls]).T, header='Nphi0\twl')
+    else:
+        nphi0_opt = phi0_number
+        if phi0_number * frac_pp_per_phi0 > 1:
+            raise ValueError("Requested value for nphi0 results in frac_pp > 1")
 
-        if (frac_pp >=0.99):
-            print(f'Fraction full scale of {phi0_number} Phi0 <0.99 fraction_full_scale')
-            print(f'Rerunning optimization for {phi0_number - 1} Phi0 ')
-            phi0_number -= 1
-        if (frac_pp < 0.99):
-            print(f'Fraction full scale of {phi0_number} Phi0',
-            f'= {np.round(frac_pp*100,3)}% full scale')
-            frac_pp_optimize = True
+    lms_freq_opt = nphi0_opt*reset_rate_khz*1e3
+    frac_pp_opt  = frac_pp_per_phi0 * nphi0_opt
+    cprint("Optimal parameters:", TermColors.HEADER)
+    print(f"Nphi0: {nphi0_opt}")
+    print(f"lms_freq: {lms_freq_opt}")
+    print(f"frac_pp: {frac_pp_opt}")
 
     S.load_tune()
     S.relock(band)
-    for i in range(2):
+    for _ in range(2):
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
-    lms_freq_opt = phi0_number*reset_rate_khz*1e3
-
-    f,df,sync = S.tracking_setup(band=band,reset_rate_khz=reset_rate_khz,
-                    lms_freq_hz=lms_freq_opt, lms_gain = lms_gain,
-                    fraction_full_scale=frac_pp, nsamp = 2**17,
-                    make_plot=True,show_plot=False,save_plot=True,
-                    meas_lms_freq=False,channel=S.which_on(band),
-                    return_data = True)
+    tracking_kwargs['lms_freq_hz'] = lms_freq_opt
+    tracking_kwargs['fraction_full_scale'] = frac_pp_opt
+    f,df, _ = S.tracking_setup(**tracking_kwargs)
 
     df_std = np.std(df,0)
     f_span = np.max(f,0) - np.min(f,0)
+
+    out_file = os.path.join(S.output_dir,
+                            f'{S.get_timestamp()}_optimize_tracking.txt')
 
     bad_track_chans = []
     outdict = {}
@@ -126,21 +138,20 @@ def optimize_tracking(S, cfg, band, init_fracpp = None,
         outdict[c] = {}
         outdict[c]['df_pp'] = f_span[c]
         outdict[c]['df_err'] = df_std[c]
-        outdict[c]['bad track chan'] = False
-        if f_span[c] < 0.03:
+        outdict[c]['tracking'] = True
+        if f_span[c] < 0.03 or f_span[c] > 0.14:
             bad_track_chans.append(c)
-            print('Low df_pp Cut')
+            outdict[c]['tracking'] = False
             S.channel_off(band,c)
-            outdict[c]['bad track chan'] = True
-        if f_span[c] > 0.14:
-            bad_track_chans.append(c)
-            print('High df_pp Cut')
-            S.channel_off(band,c)
-            outdict[c]['bad track chan'] = True
-    pkl.dump(outdict,open(f'{S.output_dir}/{S.get_timestamp()}_optimize_tracking.pkl','wb'))
+
+    fname = os.path.join(S.output_dir,
+                         f'{S.get_timestamp()}_optimize_tracking.pkl')
+    pkl.dump(outdict, open(fname, 'wb'))
+    S.pub.register_file(fname, 'tracking_optimization', format='pkl')
+
     print(f'Number of bad tracking channels {len(bad_track_chans)}')
-    print(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq_opt}')
-    return lms_freq_opt, frac_pp, bad_track_chans, outdict
+    print(f'Optimized frac_pp: {frac_pp_opt} for lms_freq = {lms_freq_opt}')
+    return lms_freq_opt, frac_pp_opt, bad_track_chans, outdict
 
 def lowpass_fit(x, scale, cutoff, fs=4e3):
     """
