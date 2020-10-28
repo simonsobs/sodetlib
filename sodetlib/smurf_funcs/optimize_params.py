@@ -12,6 +12,7 @@ from scipy import interpolate
 import pickle as pkl
 from sodetlib.util import cprint, TermColors
 
+
 from pysmurf.client.util.pub import set_action
 
 
@@ -404,16 +405,16 @@ def get_median_noise(S, cfg, band, meas_time=30):
 
     Parameters
     ------------
-    S:  (pysmurf.client.SmurfControl)
+    S:  pysmurf.client.SmurfControl
         Pysmurf control instance
-    cfg: (DetConfig)
+    cfg: DetConfig
         Detector config object
-    band : (int)
+    band: int
         band to get median noise for.
 
     Returns
     ---------
-    median_noise: (float)
+    median_noise: float
         Median noise for the specified band.
     """
     band_cfg = cfg.dev.bands[band]
@@ -441,22 +442,29 @@ def analyze_noise_psd(S, band, dat_file):
 
     Parameters
     ----------
-    band : int
+    band: int
         band to optimize noise on
-    dat_file : str
+    dat_file: str
         filepath to timestream data to analyze
-    ctime : str
+    ctime: str
         ctime used for saved data/plot titles
 
     Returns
     -------
-    median_noise : float
+    median_noise: float
         median white noise level of all channels analyzed in pA/rtHz
 
-    outdict : dict of{int:dict of{str:float}}
-        dictionary with each key a channel number and each channel number
-        another dictionary containing the fitted 1/f knee, 1/f exponent, and
-        white noise level in pA/rtHz
+    outdict: dict
+        Dictionary containing noise information for each channel.
+        Formatted like::
+
+            outdict = {
+                chan_number: {
+                    'fknee': <fitted 1/f knee>,
+                    'noise index': <fitted 1/f exponent>,
+                    'whie noise': <white noise level in pA/rtHz>
+                }
+            }
     """
     outdict = {}
     datafile = dat_file
@@ -493,17 +501,17 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
 
     Parameters
     -----------
-    S (pysmurf.client.SmurfControl):
+    S: pysmurf.client.SmurfControl
         PySmurf control object
-    target_Id (float):
+    target_Id: float
         Target amplifier current
-    vg_min (float):
+    vg_min: float
         Minimum allowable gate voltage
-    vg_max (float):
+    vg_max: float
         Maximum allowable gate voltage
-    amp_name (str):
+    amp_name: str
         Name of amplifier. Must be either "hemt" or "50K'.
-    max_iter (int):
+    max_iter: int, optional
         Maximum number of iterations to find voltage. Defaults to 30.
 
     Returns
@@ -513,8 +521,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         The set voltages can be read with S.get_amplifier_biases().
     """
     if amp_name not in ['hemt', '50K']:
-        raise ValueError(
-            cprint(f"amp_name must be either 'hemt' or '50K'", False))
+        raise ValueError("amp_name must be either 'hemt' or '50K'")
 
     for _ in range(max_iter):
         amp_biases = S.get_amplifier_biases(write_log=True)
@@ -556,17 +563,17 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
 
     Parameters
     ----------
-    band: (int)
+    band: int
         band to optimize noise on
-    tunefile: (str)
+    tunefile: str
         filepath to the tunefile for the band to be optimized
-    dr_start: (int)
+    dr_start: int
         drive power to start all channels with, default is 12
-    frac_pp: (float)
+    frac_pp: float
         fraction full scale of the FR DAC used for tracking_setup
-    lms_freq: (float)
+    lms_freq: float
         tracking frequency used for tracking_setup
-    make_plots: (bool)
+    make_plots: bool
         If true, will make median noise plots
 
     Returns
