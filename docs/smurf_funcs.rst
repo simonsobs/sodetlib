@@ -10,7 +10,7 @@ Optimization Functions
 ------------------------
 .. automodule:: sodetlib.smurf_funcs
    :members: get_median_noise, analyze_noise_psd, optimize_bias,
-            optimize_power_per_band,
+            optimize_power_per_band, optimize_tracking
    :noindex:
 
 Smurf Operations
