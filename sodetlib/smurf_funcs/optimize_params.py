@@ -87,7 +87,7 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
     if phi0_number is None:
         # Optimizes for Nphi0 with lowest noise
         cprint("Optimizing noise wrt Nphi0")
-        nphi0s = np.arange(0, 10)
+        nphi0s = np.arange(1, 10)
         wls = np.full_like(nphi0s, np.nan)
         for i, nphi0 in enumerate(nphi0s):
             frac_pp = frac_pp_per_phi0 * nphi0
