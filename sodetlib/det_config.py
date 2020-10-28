@@ -125,8 +125,16 @@ class DeviceConfig:
                 If true will overwrite existing file. Defaults to false.
         """
         if os.path.exists(path) and not clobber:
-            raise FileExistsError(f"Can't dump device config! Path {path} already "
-                                  "exists!!")
+            raise FileExistsError(f"Can't dump device config! Path {path}"
+                                   "already exists!!")
+
+        def _format_yml(val):
+            """Converts np dtypes to python types for yaml files"""
+            if hasattr(val, 'dtype'):
+                return val.item()
+            else:
+                return val
+
         data = YamlReps.Odict()
         data['experiment'] = self.exp
         data['bias_groups'] = {
@@ -135,9 +143,12 @@ class DeviceConfig:
         }
         data['bands'] = YamlReps.Odict([
             (f'AMC[{i}]', {
-                k: YamlReps.FlowSeq([b[k] for b in self.bands[4*i:4*i+4]])
+                k: YamlReps.FlowSeq([
+                    _format_yml(b[k]) for b in self.bands[4*i:4*i+4]
+                ])
                 for k in self.bands[0].keys()
             }) for i in [0, 1]])
+
         with open(path, 'w') as f:
             yaml.dump(data, f)
 
