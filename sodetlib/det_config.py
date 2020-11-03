@@ -266,11 +266,8 @@ class DetConfig:
                 will create its own.
             args (list, optional):
                 List of command line arguments to parse.
-                Defaults to the empty list.
+                Defaults to the command line args.
         """
-        if args is None:
-            args = []
-
         self._argparse_args = args
         parser = make_parser(parser)
         self._parser = parser
