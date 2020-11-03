@@ -129,9 +129,7 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
         # conflicting names created by shawnhammer
         bad_names.append(f"pysmurf_s{slot}")
         bad_names.append(f"smurf_server_s{slot}")
-
         bad_names.append(f"pysmurf-ipython-slot{slot}")
-
         if ocs:
             bad_names.append(f'ocs-pysmurf-s{slot}')
     if ocs:
@@ -181,7 +179,7 @@ def enter_pysmurf(slot, agg=False):
 
         util_run(
             'python3',
-            args=f"/sodetlib/hammers/scripts/start_pysmurf_ipython.py -N {slot}".split(),
+            args=f"/sodetlib/scripts/start_pysmurf_ipython.py -N {slot}".split(),
             name=name, rm=False
         )
 
@@ -315,7 +313,7 @@ def hammer_func(args):
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
 
-    services = ['ocs-pysmurf-monitor', 'smurf-util']
+    services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
     for slot in sys_config['slot_order']:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
@@ -335,7 +333,7 @@ def hammer_func(args):
             print(f"Configuring pysmurf on slot {slot}...")
 
             util_run('python3',
-                     args=f'/sodetlib/hammers/scripts/setup_pysmurf.py -N {slot}'.split())
+                     args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
         print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
@@ -363,7 +361,7 @@ def gui_func(args):
             server_port = 9000 + 2 * args.slot
         else:
             server_port = 9099
-    subprocess.run(f'/home/cryo/sodetlib/hammers/scripts/run_gui.sh {server_port}'.split())
+    subprocess.run(f'/home/cryo/sodetlib/hammers/run_gui.sh {server_port}'.split())
 
 
 # Entrypoint for jackhammer dump
@@ -377,6 +375,7 @@ def dump_func(args):
     if not os.path.exists(dump_dir):
         os.makedirs(dump_dir)
 
+    cprint(f"Dumping docker logs to {dump_dir}", style=TermColors.HEADER)
     docker_state_file = os.path.join(dump_dir, 'docker_state.log')
     with open(docker_state_file, 'w') as f:
         print(f"Saving 'docker ps' to {docker_state_file}")
@@ -387,6 +386,18 @@ def dump_func(args):
         with open(log_file, 'w') as f:
             print(f"Saving {name} logs to {log_file}")
             subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
+
+    dump_script = '/sodetlib/scripts/dump_rogue_state.py'
+    for slot in sys_config['slot_order']:
+        if check_epics_connection(f'smurf_server_s{slot}', retry=False):
+            out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
+            cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
+            util_run('python3', args=[dump_script, str(slot), out_file],
+                     name=f'rogue_dump_s{slot}')
+        else:
+            print(f"Could not connect to epics for slot {slot}")
+
+            
 
 
 if __name__ == '__main__':

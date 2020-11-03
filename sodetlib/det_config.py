@@ -125,8 +125,16 @@ class DeviceConfig:
                 If true will overwrite existing file. Defaults to false.
         """
         if os.path.exists(path) and not clobber:
-            raise FileExistsError(f"Can't dump device config! Path {path} already "
-                                  "exists!!")
+            raise FileExistsError(f"Can't dump device config! Path {path}"
+                                   "already exists!!")
+
+        def _format_yml(val):
+            """Converts np dtypes to python types for yaml files"""
+            if hasattr(val, 'dtype'):
+                return val.item()
+            else:
+                return val
+
         data = YamlReps.Odict()
         data['experiment'] = self.exp
         data['bias_groups'] = {
@@ -135,9 +143,12 @@ class DeviceConfig:
         }
         data['bands'] = YamlReps.Odict([
             (f'AMC[{i}]', {
-                k: YamlReps.FlowSeq([b[k] for b in self.bands[4*i:4*i+4]])
+                k: YamlReps.FlowSeq([
+                    _format_yml(b[k]) for b in self.bands[4*i:4*i+4]
+                ])
                 for k in self.bands[0].keys()
             }) for i in [0, 1]])
+
         with open(path, 'w') as f:
             yaml.dump(data, f)
 
@@ -194,6 +205,26 @@ class DeviceConfig:
             self.exp[k] = v
 
 
+def make_parser(parser=None):
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
+    parser.add_argument_group("DetConfig Options")
+    parser.add_argument('--sys-file',
+                        help="Path to sys-config file. "
+                             "Defaults to ``$OCS_CONFIG_DIR/sys_config.yml``")
+    parser.add_argument('--dev-file',
+                        help="Path to device-config file. "
+                             "Defaults to the path specified in the sys_config.")
+    parser.add_argument('--pysmurf-file',
+                        help="Path to Pysmurf config file. "
+                        "Defaults to the path specified in the sys_config.")
+    parser.add_argument('--slot', '-N', type=int, help="Smurf slot")
+    parser.add_argument('--dump-configs', '-D', action='store_true',
+                        help="If true, all config info will be written to "
+                             "the pysmurf output directory")
+    return parser
+
 class DetConfig:
     """
     General Configuration class for SODETLIB.
@@ -210,15 +241,18 @@ class DetConfig:
             file specified in the sys_config or specified by the ``--dev-file``
             command line argument
     """
-    def __init__(self, sys_file=None, dev_file=None, pysmurf_file=None):
+    def __init__(self, slot=None, sys_file=None, dev_file=None, pysmurf_file=None):
         self.sys_file = sys_file
         self.dev_file = dev_file
         self.pysmurf_file = pysmurf_file
+        self.slot = slot
         self.sys = None
         self.dev: DeviceConfig = None
         self.dump = None  # Whether config files should be dumped
+
         self._parser: argparse.ArgumentParser = None
         self._argparse_args = None
+
 
     def parse_args(self, parser=None, args=None):
         """
@@ -231,27 +265,25 @@ class DetConfig:
                 custom argparse parser to parse args with. If not specified,
                 will create its own.
             args (list, optional):
-                If specified, argparse will read arguments from this list
-                instead of the command line.
+                List of command line arguments to parse.
+                Defaults to the empty list.
         """
+        if args is None:
+            args = []
+
         self._argparse_args = args
-
-        if parser is None:
-            parser = argparse.ArgumentParser()
-
-        parser.add_argument_group("DetConfig Options")
-        parser.add_argument('--sys-file', help="Path to sys-config file",
-                            default=self.sys_file)
-        parser.add_argument('--dev-file', help="Path to device-config file",
-                            default=self.dev_file)
-        parser.add_argument('--pysmurf-file', help="Path to Pysmurf config file",
-                            default=self.pysmurf_file)
-        parser.add_argument('--slot', '-N', type=int, help="Smurf slot")
-        parser.add_argument('--dump-configs', '-D', action='store_true',
-                            help="If true, all config info will be written to "
-                                 "the pysmurf output directory")
+        parser = make_parser(parser)
         self._parser = parser
+
         args = parser.parse_args(args=args)
+
+        if args.sys_file is None:
+            args.sys_file = self.sys_file
+        if args.pysmurf_file is None:
+            args.pysmurf_file = self.pysmurf_file
+        if args.dev_file is None:
+            args.dev_file = self.dev_file
+
         self.load_config_files(args.slot, args.sys_file, args.dev_file,
                                args.pysmurf_file)
 
@@ -300,9 +332,9 @@ class DetConfig:
 
         slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
         if dev_file is None:
-            self.dev_file = os.path.expandvars(slot_cfg['device_config'])
+            self.dev_file = os.path.abspath(os.path.expandvars(slot_cfg['device_config']))
         else:
-            self.dev_file = dev_file
+            self.dev_file = os.path.abspath(os.path.expandvars(dev_file))
         self.dev = DeviceConfig.from_yaml(self.dev_file)
 
         # Gets the pysmurf config file
