@@ -22,9 +22,9 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
 			frac_pp=None,lms_freq=None,reset_rate_khz=None,
 			lms_gain=None):
     """
-    Adapted from script by SWH: shawn@slac.stanford.edu (can still see original in 
-    pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
-    
+    Adapted from script by SWH: shawn@slac.stanford.edu (can still see original
+    in pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
+
     Takes data in open loop (only slow integral tracking) and steps through flux
     values to trace out a SQUID curve. This can be compared against the tracked
     SQUID curve which might not perfectly replicate this if these curves are
@@ -196,6 +196,8 @@ def find_subbands(S, cfg, spur_width=5):
     """
     Do a noise sweep to find the coarse position of resonators.
     Return active bands and a dictionary of active subbands.
+
+    Parameters
     ----------
     S : pysmurf.client.SmurfControl
         Smurf control object
@@ -209,15 +211,13 @@ def find_subbands(S, cfg, spur_width=5):
     -------
     bands : int array
         Active bands
-
     subband_dict : dict
-        A dictionary of {band:[list of subbands]} for each resonator in MHz.
+        A dictionary containing the list of subbands in each band.
     """
-    bands = np.array([])
     subband_dict = {}
+    bands = []
 
     amc = S.which_bays()
-    bands = []
     if 0 in amc:
         bands += [0, 1, 2, 3]
     if 1 in amc:
@@ -227,15 +227,16 @@ def find_subbands(S, cfg, spur_width=5):
         return bands, subband_dict
 
     for band in bands:
-        band_cfg = cfg.dev.bands[band]
         freq, resp = S.full_band_resp(band)
         peaks = S.find_peak(freq, resp, make_plot=True,show_plot=False, band=band)
         fs_ = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
 
         # Drops channels that are too close to 500 MHz multiple
-        fs = [f for f in fs_ if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
+        fs = [f for f in fs_
+              if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
         bad_fs = list(set(fs_) - set(fs))
-        bad_fs = [f for f in fs_ if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
+        bad_fs = [f for f in fs_
+                  if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
 
         if bad_fs:
             cprint(f"Dropping frequencies {bad_fs} because they are too close "
@@ -262,28 +263,16 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
 
     Parameters
     ----------
-    S:  (pysmurf.client.SmurfControl)
+    S: pysmurf.client.SmurfControl
         Pysmurf control instance
-    cfg: (DetConfig)
+    cfg: DetConfig
         Detector config object
-    bands : [int]
+    bands : List[int]
         bands to find tuned frequencies on. In range [0,7].
-
-    Optional parameters
-    ----------
-    new_master_assignment : bool
+    new_master_assignment : bool, optional
         Whether to create a new master assignment (tuning)
         file. This file defines the mapping between resonator frequency
         and channel number. Default True.
-
-    Optional parameters from cfg file
-    ----------
-    drive : int
-        The drive amplitude.  If none given, takes from cfg.
-    make_plot : bool
-        make the plot frequency sweep. Default False.
-    save_plot : bool
-        save the plot. Default True.
     """
     num_resonators_on = 0
     default_subbands = np.arange(13, 115)
