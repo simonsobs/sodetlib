@@ -361,7 +361,10 @@ def gui_func(args):
             server_port = 9000 + 2 * args.slot
         else:
             server_port = 9099
-    subprocess.run(f'/home/cryo/sodetlib/hammers/run_gui.sh {server_port}'.split())
+
+    sodetlib_root = os.environ.get('SODETLIB_ROOT', '/home/cryo/sodetlib')
+    script_path = os.path.join(sodetlib_root, 'hammers', 'run_gui.sh')
+    subprocess.run(f'sh {script_path} {server_port}'.split())
 
 
 # Entrypoint for jackhammer dump
