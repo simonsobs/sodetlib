@@ -1,5 +1,5 @@
 # sodetlib dockerfile.
-FROM tidair/pysmurf-client:v4.0.0
+FROM tidair/pysmurf-client:v4.1.0
 
 WORKDIR /usr/local/src
 RUN git clone https://github.com/simonsobs/ocs.git
@@ -14,5 +14,6 @@ COPY . /sodetlib
 
 WORKDIR /sodetlib
 
+RUN pip3 install jupyterlab
 RUN pip3 install -e .
 
