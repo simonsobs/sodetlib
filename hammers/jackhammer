@@ -245,7 +245,7 @@ def softreset_func(args):
     print("Running docker-compose up....")
 
     services = ['ocs-pysmurf-monitor', 'smurf-util']
-    for slot in sys_config['slot_order']:
+    for slot in args.slots:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
