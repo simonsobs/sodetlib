@@ -254,6 +254,12 @@ def softreset_func(args):
     for slot in args.slots:
         check_epics_connection(f'smurf_server_s{slot}', retry=True)
 
+    for slot in sys_config['slot_order']:
+        print(f"Configuring pysmurf on slot {slot}...")
+
+        util_run('python3',
+                 args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
+
     enter_pysmurf(args.slots[0])
 
 
