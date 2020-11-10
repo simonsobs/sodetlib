@@ -17,6 +17,20 @@ import pickle as pkl
 matplotlib.use('Agg')
 
 
+def clear_cfg(cfg, dump=True):
+    cfg.dev.exp['tunefile'] = None
+    for band in range(8):
+        cfg.dev.update_band(band, {
+            'optimized_tracking': False,
+            'active_subbands': []
+        })
+    if dump:
+        cfg_path = os.path.abspath(os.path.expandvars(cfg.dev_file))
+        cfg.dev.dump(cfg_path, clobber=True)
+
+    return
+
+
 if __name__ == '__main__':
     cfg = DetConfig()
     parser = argparse.ArgumentParser()
@@ -54,18 +68,23 @@ if __name__ == '__main__':
 
     parser.add_argument('--channels', type=int, nargs='+', default=None,
                         help='Channels that you want to calculate the tickle response of')
-
     parser.add_argument('--make-channel-plots', action='store_true')
 
     parser.add_argument('--R-threshold', default=100,
                         help='Resistance threshold for determining detector channel')
+    parser.add_argument('--all', '-a', action='store_true',
+                        help="If set will run all possible optimizations.")
 
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
+    relock_flag = True
 
     channels = args.channels
 
     cfg_path = os.path.abspath(os.path.expandvars(cfg.dev_file))
+
+    if args.all:
+        clear_cfg(cfg, dump=True)
 
     # Turns on amps and adjust/returns "optimal bias" and then does a few
     # system health checks.
@@ -88,39 +107,82 @@ if __name__ == '__main__':
     cfg.dev.dump(cfg_path, clobber=True)
 
     # Now tune on those bands/find_subbands
-    cprint('Tuning', style=TermColors.HEADER)
-    ctime_prev = ctime_now
-    num_chans_tune, tune_file = so.find_and_tune_freq(S, cfg, bands)
-    ctime_now = time.time()
-    cprint(f'Find and tune freq took {ctime_now - ctime_prev} sec')
-    cfg.dev.dump(cfg_path, clobber=True)
+    tunefile = cfg.dev.exp['tunefile']
+    if tunefile is None:
+        relock_flag = False
+        cprint('Tuning', style=TermColors.HEADER)
+        ctime_prev = ctime_now
+        num_chans_tune, tune_file = so.find_and_tune_freq(S, cfg, bands)
+        ctime_now = time.time()
+        cprint(f'Find and tune freq took {ctime_now - ctime_prev} sec')
+        cfg.dev.dump(cfg_path, clobber=True)
+    else:
+        cprint(f"Loading Tunefile {tunefile} from device config",
+               style=TermColors.HEADER)
+        S.load_tune(tunefile)
 
     # Now setup tracking
     ctime_prev = ctime_now
     optimize_dict = {}
     for band in bands:
+        if 'resonances' not in S.freq_resp[band]:
+            cprint(f"No resonators in band {band}", False)
+            continue
+
+        cprint("Relocking")
+        if relock_flag:
+                        S.relock(band)
+        for _ in range(2):
+            S.run_serial_gradient_descent(band)
+            S.run_serial_eta_scan(band)
+
         optimize_dict[band] = {}
-        cprint(f'Optimizing tracking for band {band}')
-        lms_freq, frac_pp, bad_chans, params = op.optimize_tracking(S, cfg, band)
 
-        cprint(f'UC attenuator for band {band}')
-        median, atten, drive = op.optimize_power_per_band(S, cfg, band)
+        band_cfg = cfg.dev.bands[band]
+        if band_cfg.get('optimized_tracking', False):
+            cprint(f"Tracking for band {band} has already been optimized",
+                   True)
+        else:
+            cprint(f'Optimizing tracking for band {band}',
+                   style=TermColors.HEADER)
+            lms_freq, frac_pp, tracking_dict = op.optimize_tracking(
+                S, cfg, band, relock=False)
+            cfg.dev.dump(cfg_path, clobber=True)
+            optimize_dict.update({
+                'lms_freq': lms_freq,
+                'frac_pp': frac_pp,
+                'tracking_dict': tracking_dict
+            })
 
-        cprint(f'Optimizing lms_gain for band {band}')
-        lms_gain, lms_gain_dict = op.optimize_lms_gain(S, cfg, band,
-                                                       BW_target=args.BW_target)
+        if not band_cfg.get('optimized_drive', False):
+            cprint(f'UC attenuator for band {band}', style=TermColors.HEADER)
+            noise, atten, drive = op.optimize_power_per_band(S, cfg, band, meas_time=1)
+            cfg.dev.dump(cfg_path, clobber=True)
+            optimize_dict.update({
+                'atten': atten, 'drive': drive
+            })
+        else:
+            cprint(f"Drive and atten for band {band} has already been "
+                    "optimized", True)
 
-        # Might need to add more to this
-        optimize_dict[band] = {
-            'lms_freq': lms_freq,
-            'lms_gain': lms_gain,
-            'frac_pp': frac_pp,
-            'drive': drive,
-        }
+        if not band_cfg.get('optimized_lms_gain', False):
+            cprint(f'Optimizing lms_gain for band {band}',
+                   style=TermColors.HEADER)
+            lms_gain, lms_gain_dict = op.optimize_lms_gain(S, cfg, band,
+                                                           BW_target=args.BW_target)
+            cfg.dev.dump(cfg_path, clobber=True)
+            optimize_dict.update({
+                'lms_gain': lms_gain,
+                'lms_gain_dict': lms_gain_dict
+            })
+        else:
+            cprint(f"LMS Gain for band {band} has already been optimized",
+                   True)
+
         # Right now lms_gain doesn't set you to that after completion...we need
         # to add this
     ctime_now = time.time()
-    cprint(f'Otpimizing tracking, atten, lms gain took '
+    cprint(f'Optimizing tracking, atten, lms gain took '
            f'{ctime_now - ctime_prev} sec')
     cfg.dev.dump(cfg_path, clobber=True)
 
@@ -174,6 +236,6 @@ if __name__ == '__main__':
     ctime_now = time.time()
     cprint(f'Tickle took {ctime_now - ctime_prev} sec')
     cfg.dev.dump(cfg_path, clobber=True)
-    pkl.dump(optimize_dict,open('/sodetlib/tests/demo_script.pkl','wb'))
+    pkl.dump(optimize_dict,open('/sodetlib/tests/demo_script.pkl', 'wb'))
     cprint("Finished!", True)
 

@@ -22,10 +22,13 @@ if __name__ == '__main__':
         help='Whether to create a new master assignment file. This file '
              'defines the mapping between resonator frequency and channel '
              'number. Default True.')
+    parser.add_argument('--amp-cut', '-a', type=float, default=0.1,
+                        help='The fractional distance from the median value '
+                        'to decide whether there is a resonance')
 
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
-    
+
     if args.bands is None:
         args.bands = []
         bays = S.which_bays()
