@@ -51,7 +51,7 @@ def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
             PSD in pA/sqrt(Hz)
     """
     if fs is None:
-        fs = 1/np.diff(times).mean()
+        fs = 1/np.diff(times/1e9).mean()
     current = phases * S.pA_per_phi0 / (2 * np.pi)
     f, Pxx = signal.welch(current, detrend=detrend, nperseg=nperseg, fs=fs)
     Pxx = np.sqrt(Pxx)

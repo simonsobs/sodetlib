@@ -386,6 +386,10 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         opt_lms_gain = lms_gain_sweep[idx_min]
     print(f'Optimum lms_gain is: {opt_lms_gain}')
 
+    S.set_lms_gain(band, opt_lms_gain)
+    tracking_kwargs['lms_gain'] = opt_lms_gain
+    S.tracking_setup(band, **tracking_kwargs)
+
     # Save plots and data and register them with the ocs publisher
     if make_plot:
         ax1.set_ylim([10, 100])
@@ -468,7 +472,7 @@ def get_median_noise(S, cfg, band, meas_time=30, make_plots=False):
 
 
 @set_action()
-def analyze_noise_psd(S, band, dat_file, chans=None):
+def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True):
     """
     Finds the white noise level, 1/f knee, and 1/f polynomial exponent of a
     noise timestream and returns the median white noise level of all channels
@@ -507,20 +511,22 @@ def analyze_noise_psd(S, band, dat_file, chans=None):
     datafile = dat_file
     nperseg = 2**16
     detrend = 'constant'
-    timestamp, phase, mask = S.read_stream_data(datafile)
-    phase *= S.pA_per_phi0/(2.*np.pi)
-    num_averages = S.get_downsample_factor()
-    fs = S.get_flux_ramp_freq()*1.0E3/num_averages
+    times, phase, mask = S.read_stream_data(datafile)
+    f, Pxx = get_psd(S, times, phase, detrend=detrend, nperseg=nperseg)
+    wl_mask = (f > 5) & (f < 100)
     wls = []
     for chan in chans:
         if chan < 0:
             continue
         ch_idx = mask[band, chan]
-        f, Pxx = signal.welch(
-            phase[ch_idx], nperseg=nperseg, fs=fs, detrend=detrend)
-        Pxx = np.sqrt(Pxx)
-        popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx)
-        wl, n, f_knee = popt
+        if fit_curve:
+            popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx[ch_idx])
+            wl, n, f_knee = popt
+        else:
+            wl = np.nanmedian(Pxx[ch_idx][wl_mask])
+            n = None
+            f_knee = None
+
         wls.append(wl)
         outdict[chan] = {}
         outdict[chan]['fknee'] = f_knee
@@ -755,3 +761,4 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
             'uc_att': min_atten, 'drive': drive, 'optimized_drive': True
         })
         return min_median, min_atten, drive
+

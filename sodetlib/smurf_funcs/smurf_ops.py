@@ -19,8 +19,8 @@ from pysmurf.client.util.pub import set_action
 
 @set_action()
 def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
-			frac_pp=None,lms_freq=None,reset_rate_khz=None,
-			lms_gain=None):
+                         frac_pp=None,lms_freq=None,reset_rate_khz=None,
+                         lms_gain=None):
     """
     Adapted from script by SWH: shawn@slac.stanford.edu (can still see original
     in pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
