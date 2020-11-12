@@ -1,14 +1,19 @@
+"""
+Module for smurf detector operations.
+"""
+from sodetlib.util import cprint, TermColors
 import numpy as np
 import os
 import time
 from scipy import signal
+import scipy.optimize as opt
+from scipy import interpolate
+import pickle as pkl
+import sys
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import scipy.optimize as opt
-import pickle as pkl
-pi = np.pi
-
 from pysmurf.client.util.pub import set_action
 
 def take_tickle(S,band,bias_group, high_current, tickle_voltage, over_bias):
@@ -72,4 +77,49 @@ def take_tickle(S,band,bias_group, high_current, tickle_voltage, over_bias):
     S.stream_data_off()
     return data_file, cur_dc
 
-
+@set_action()
+def take_iv(S,band=None,channels=None,bias_groups=None,high_current_mode=False,wait_time=0.1,bias_high=19.9,bias_low=0.0,bias_step=0.1,overbias_volt=19.9,overbias_wait=2.0,cool_wait=30.0):
+    
+    if bias_groups is None:
+        bias_groups = S._all_groups
+    bias_groups = np.array(bias_groups)
+    
+    start_time = S.get_timestamp()
+    
+    iv_file = S.run_iv(bias_groups=bias_groups, wait_time=wait_time, bias=None,
+               bias_high=bias_high, bias_low=bias_low, bias_step=bias_step,
+               show_plot=False, overbias_wait=overbias_wait, cool_wait=cool_wait,
+               make_plot=True, save_plot=True, plotname_append='',
+               channels=None, band=band, high_current_mode=high_current_mode,
+               overbias_voltage=overbias_volt, grid_on=True,
+               phase_excursion_min=0.1, bias_line_resistance=None, do_analysis = False)
+    
+    stop_time = S.get_timestamp()
+    
+    iv_raw_file = np.load(iv_file,allow_pickle=True).item()
+    
+    iv_info = {}
+    iv_info['plot_dir'] = S.plot_dir
+    iv_info['output_dir'] = S.output_dir
+    iv_info['Rsh'] = S.R_sh
+    iv_info['bias_line_resistance'] = S.bias_line_resistance
+    iv_info['high_low_ratio'] = S.high_low_current_ratio
+    iv_info['pA_per_phi0'] = S.pA_per_phi0
+    iv_info['high_current_mode'] = high_current_mode
+    iv_info['iv_file'] = iv_file
+    iv_info['start_time'] = start_time
+    iv_info['stop_time'] = stop_time
+    iv_info['basename'] = iv_raw_file['basename']
+    iv_info['datafile'] = iv_raw_file['datafile']
+    
+    # load mask, to save into dict
+    mask_fp = os.path.join(S.output_dir,f'{iv_info["basename"]}_mask.txt')
+    mask_arr = np.loadtxt(mask_fp)
+    
+    iv_info['mask'] = mask_arr
+    
+    
+    fp = os.path.join(S.output_dir,f'{iv_info["basename"]}_iv_info.npy')
+    S.log(f'Writing IV information to {fp}.')
+    np.save(fp,iv_info)   
+    S.pub.register_file(fp, 'iv_info',format='npy')
