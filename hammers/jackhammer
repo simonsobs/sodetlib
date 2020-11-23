@@ -108,12 +108,12 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
     """
         Kills relevant dockers for a given set of slots.
 
-        Args: 
+        Args:
             slots (list of ints):
                 list of slots which we should kill related dockers
-            ocs (bool): 
+            ocs (bool):
                 If true, will also kill ocs-related dockers
-            names (list of strings): 
+            names (list of strings):
                 List of additional docker names we should kill
             images (list of strings):
     """
@@ -272,7 +272,20 @@ def hardreset_func(args):
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
-    slots = sys_config['slot_order']
+    if args.slots is None:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+        for s in slots:
+            if s not in sys_config['slot_order']:
+                raise ValueError(
+                    f"Slot {s} is not valid for this system! Can only use "
+                    f"slots in: {sys_config['slot_order']}")
+
+    reboot = not (args.no_reboot)
+
+    cprint(f"Hammering for slots {slots}", True)
+
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
     kill_bad_dockers(slots, ocs=True)
 
@@ -284,16 +297,13 @@ def hammer_func(args):
 
     # Sets fan levels on crate
     cprint("Setting fan levels", style=TermColors.HEADER)
-    if sys_config['startup']['set_crate_fans_to_full']:
-        cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
-        cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
+    cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
+    cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
+    print("Setting crate fans to full...")
+    run_on_shelf_manager(cmd)
 
-        print("Setting crate fans to full...")
-        run_on_shelf_manager(cmd)
-
-    if sys_config['startup']['reboot'] and (not args.no_reboot):
-        cprint("Rebooting all slots", style=TermColors.HEADER)
-
+    if reboot:
+        cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
         deactivate_commands = []
         activate_commands = []
         for slot in slots:
@@ -309,18 +319,18 @@ def hammer_func(args):
         print(f"Activating carriers: {slots}")
         run_on_shelf_manager('; '.join(activate_commands))
 
-        print("Waiting for carriers to come back online (this takes a bit)")        
+        print("Waiting for carriers to come back online (this takes a bit)")
         for slot in slots:
             ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
             subprocess.run(['ping_carrier', ip])
     else:
         print("Skipping reboot process")
-    
+
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
 
     services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
-    for slot in sys_config['slot_order']:
+    for slot in slots:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
@@ -332,15 +342,12 @@ def hammer_func(args):
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
-    print("All streamers have started!")
-    if sys_config['startup']['configure_pysmurf']:
-        cprint("Configuring pysmurf", style=TermColors.HEADER)
-        for slot in sys_config['slot_order']:
-            print(f"Configuring pysmurf on slot {slot}...")
-
-            util_run('python3',
-                     args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
-        print("Finished configuring pysmurf!")
+    cprint("Configuring pysmurf", style=TermColors.HEADER)
+    for slot in slots:
+        print(f"Configuring pysmurf on slot {slot}...")
+        util_run('python3',
+                 args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
+    print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
@@ -460,7 +467,9 @@ if __name__ == '__main__':
     ########### Jackhammer hammer parser ############
     hammer_parser = subparsers.add_parser("hammer")
     hammer_parser.set_defaults(func=hammer_func)
-    hammer_parser.add_argument('--no-reboot', '-n', action='store_true')
+    hammer_parser.add_argument('slots', nargs='+', default=None,
+                               help="Specifies the slots to hammer")
+    hammer_parser.add_argument('--no-reboot', '--soft', '-n', action='store_true')
     hammer_parser.add_argument('--agg', action='store_true')
 
     ########### Jackhammer logs parser ############
