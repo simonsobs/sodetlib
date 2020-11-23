@@ -350,7 +350,7 @@ def log_func(args):
 
 # Entrypoint for jackhamer util
 def util_func(args):
-    util_run('bash')
+    util_run('bash', rm=(not args.detached))
 
 
 def gui_func(args):
@@ -461,6 +461,7 @@ if __name__ == '__main__':
 
     ########### Jackhammer util parser ############
     util_parser = subparsers.add_parser('util')
+    util_parser.add_argument('--detached', '-d', action='store_true')
     util_parser.set_defaults(func=util_func)
 
     ########### Jackhammer gui parser ###########

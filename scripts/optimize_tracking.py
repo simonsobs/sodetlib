@@ -13,7 +13,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--band', '-b', type=int, required=True,
                         help='band (must be in range [0,7])')
-    parser.add_argument('--phi0-number', type=float,
+    parser.add_argument('--phi0-number', '--Nphi0', type=int, default=5,
                         help='Periods per flux ramp.')
     parser.add_argument('--plot', '-p', action='store_true',
                         help='Make channel tracking plots')

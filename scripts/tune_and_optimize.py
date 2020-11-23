@@ -2,19 +2,255 @@ from sodetlib.analysis.tickle import analyze_tickle
 from sodetlib.smurf_funcs import tickle
 import sodetlib.smurf_funcs.optimize_params as op
 import sodetlib.smurf_funcs.smurf_ops as so
-import sodetlib.smurf_funcs.health_check as hc
+from sodetlib.smurf_funcs.health_check import health_check
 from sodetlib.det_config import DetConfig
-from sodetlib.util import cprint, TermColors
+from sodetlib.util import cprint, TermColors, SectionTimer
 
 import time
 import os
 import numpy as np
 import argparse
 import pysmurf.client
+from pysmurf.client.util.pub import set_action
 import matplotlib.pyplot as plt
 import matplotlib
 import pickle as pkl
 matplotlib.use('Agg')
+
+
+@set_action()
+def full_optimize(S, cfg, args):
+    timer = SectionTimer()
+    cfg_path = os.path.abspath(os.path.expandvars(cfg.dev_file))
+
+    ##############################################################
+    # Health Check
+    ##############################################################
+    timer.start_section('Health Check')
+    cprint("HealthCheck", style=TermColors.HEADER)
+
+    if not health_check(S, cfg):
+        raise Exception("Health Check Failed!")
+
+    cfg.dev.dump(cfg_path, clobber=True)
+
+    ##############################################################
+    # Find bands and subbands
+    ##############################################################
+    timer.start_section("Find subbands")
+    cprint("Find Subbands", style=TermColors.HEADER)
+    bands, subband_dict = so.find_subbands(S, cfg)
+    cfg.dev.dump(cfg_path, clobber=True)
+
+    ##############################################################
+    # Tuning
+    ##############################################################
+    timer.start_section("Tuning")
+    cprint("Tuning", style=TermColors.HEADER)
+
+    tunefile = cfg.dev.exp['tunefile']
+    if tunefile is None:
+        relock_flag = False
+        num_chans_tune, tunefile = so.find_and_tune_freq(S, cfg, bands)
+        cfg.dev.dump(cfg_path, clobber=True)
+    else:
+        relock_flag = True
+        S.load_tune(tunefile)
+
+    # Find which bands have resonators
+    active_bands = []
+    if args.bands is not None:
+        active_bands = args.bands
+    else:
+        active_bands = []
+        for k, resp in S.freq_resp.items():
+            if 'resonances' in resp:
+                active_bands.append(int(k))
+            else:
+                cprint(f"No resonators in band {k}", False)
+
+    optimize_dict = {}
+    # Start band-specific operations
+    for band in active_bands:
+        timer.start_section(f"Relock (b{band})")
+        cprint(f"Relock (b{band})", style=TermColors.HEADER)
+
+        out = {}
+        band_cfg = cfg.dev.bands[band]
+        if relock_flag:
+            S.relock(band)
+        for _ in range(2):
+            S.run_serial_gradient_descent(band)
+            S.run_serial_eta_scan(band)
+        # Running tracking setup with existing dev_config args
+        S.tracking_setup(
+            band, reset_rate_khz=4, make_plot=True, save_plot=True,
+            show_plot=False, channel=[], nsamp=2**18, feedback_start_frac=0.02,
+            feedback_end_frac=0.94, return_data=False,
+            lms_freq_hz=band_cfg['lms_freq_hz'],
+            fraction_full_scale=band_cfg['frac_pp'],
+            lms_gain=band_cfg['lms_gain']
+        )
+
+        ##############################################################
+        # Tracking optimization
+        ##############################################################
+        timer.start_section(f"Optimize Tracking (b{band})")
+        cprint(f"Optimize Tracking (b{band})", style=TermColors.HEADER)
+
+        if band_cfg.get('optimized_tracking', False):
+            cprint(f"Tracking for band {band} has already been optimized",
+                   True)
+            out.update({
+                'lms_freq_hz': band_cfg['lms_freq_hz'],
+                'frac_pp': band_cfg['frac_pp'],
+                'optimize_tracking_out': None
+            })
+        else:
+            lms_freq, frac_pp, tracking_out = op.optimize_tracking(
+                S, cfg, band, relock=False
+            )
+            out.update({
+                'lms_freq_hz': lms_freq, 'frac_pp': frac_pp,
+                'optimize_tracking_out': tracking_out
+            })
+            cfg.dev.dump(cfg_path, clobber=True)
+
+        ##############################################################
+        # Input power optimization
+        ##############################################################
+        timer.start_section(f"Optimize Input Power (b{band})")
+        cprint(f"Optimize Input Power (b{band})", style=TermColors.HEADER)
+
+        if band_cfg.get('optimized_drive', False):
+            cprint(f"Drive and atten for band {band} has already been "
+                   "optimized", True)
+            out.update({
+                'uc_att': band_cfg['uc_att'], 'drive': band_cfg['drive'],
+            })
+        else:
+            noise, uc_atten, drive = op.optimize_power_per_band(
+                S, cfg, band, meas_time=1
+            )
+            cfg.dev.dump(cfg_path, clobber=True)
+            out.update({
+                'uc_att': uc_atten, 'drive': drive
+            })
+
+        ##############################################################
+        # LMS Gain optimization
+        ##############################################################
+        timer.start_section(f"Optimize LMS Gain (b{band})")
+        cprint(f"Optimize LMS Gain (b{band})", style=TermColors.HEADER)
+        if band_cfg.get('optimized_lms_gain', False):
+            cprint(f"LMS Gain for band {band} has already been optimized",
+                   True)
+            out.update({'lms_gain': band_cfg['lms_gain'],
+                        'optimize_lms_gain_out': None})
+        else:
+            lms_gain, lms_gain_out = op.optimize_lms_gain(
+                S, cfg, band, BW_target=args.BW_target
+            )
+            out.update({
+                'lms_gain': lms_gain, 'optimize_lms_gain_out': lms_gain_out
+            })
+            cfg.dev.dump(cfg_path, clobber=True)
+
+        optimize_dict[band] = out
+
+        # Rerun tracking setup with optimal params
+        timer.start_section(f"Tracking setup (b{band})")
+        cprint(f"Rerunning tracking setup for band {band}",
+               style=TermColors.HEADER)
+
+        S.tracking_setup(
+            band, reset_rate_khz=band_cfg['flux_ramp_rate_khz'],
+            make_plot=True, save_plot=True, show_plot=False, channel=[],
+            nsamp=2**18, feedback_start_frac=0.02, feedback_end_frac=0.94,
+            return_data=False, lms_freq_hz=out['lms_freq_hz'],
+            fraction_full_scale=out['frac_pp'], lms_gain=out['lms_gain']
+        )
+
+    ##############################################################
+    # Optimized Noise Calculation
+    ##############################################################
+    timer.start_section("Optimized Noise Analysis")
+    cprint("Optimized Noise Analysis", style=TermColors.HEADER)
+
+    datafile = S.take_stream_data(20, register_file=False)
+
+    cols, rows = len(active_bands) % 4, 1 + len(active_bands) // 4
+    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 5*rows), squeeze=False)
+    for i, band in enumerate(active_bands):
+        median_noise, noise_dict = op.analyze_noise_psd(S, band, datafile,
+                                                        fit_curve=False)
+        wls = np.array([chan['white noise'] for chan in noise_dict.values()])
+        optimize_dict[band].update({
+            'wls': wls,
+            'median_noise': median_noise,
+            'noise_dict': noise_dict,
+        })
+
+        cprint(f"Median noise for band {band}: {median_noise}", True)
+        ax = axes[i // 4, i % 4]
+        ax.hist(wls, bins=40, range=(0, median_noise*3), alpha=0.8,
+                label=f'Band {band}', edgecolor='black')
+        ax.axvline(median_noise, color='C1')
+        ax.set(title=f'Band {band}', xlabel="White Noise (pA/rt(Hz))",
+               ylabel="Number of channels")
+    path = os.path.join(S.plot_dir, f'{S.get_timestamp()}_wl_histogram.png')
+    fig.savefig(path)
+    S.pub.register_file(path, 'wl_hist', plot=True)
+
+    ##############################################################
+    # Tickle Calculation
+    ##############################################################
+    timer.start_section("Tickle Calculation")
+    cprint("Identifying detector channels and calculating resistance",
+           style=TermColors.HEADER)
+    tickle_files = {}
+    for band in active_bands:
+        tickle_files[band], cur_dc = tickle.take_tickle(
+            S, band=band, bias_group=args.biasgroup,
+            tickle_voltage=args.tickle_voltage, high_current=args.high_current,
+            over_bias=args.over_bias)
+        tick_dict = analyze_tickle(
+            S, band=band, data_file=tickle_files[band], dc_level=cur_dc,
+            tickle_voltage=args.tickle_voltage, high_current=args.high_current,
+            channels=args.channels, make_channel_plots=True,
+            R_threshold=args.R_threshold)
+
+        det_chans = [
+            int(c) for c, d in tick_dict.items() if d['detector_channel']
+        ]
+
+        cprint(f"Detectors found: {det_chans}", True)
+        optimize_dict[band]['tickle_dict'] = tick_dict
+        optimize_dict[band]['detector_chans'] = det_chans
+        cfg.dev.update_band(band, {'detectors': det_chans})
+        cfg.dev.dump(cfg_path, clobber=True)
+
+    pkl.dump(optimize_dict, open('/sodetlib/tests/demo_script.pkl', 'wb'))
+
+    ##############################################################
+    # Summary
+    ##############################################################
+    summary = ''
+    for b in active_bands:
+        out = optimize_dict[b]
+        summary += "-"*60 + "\n" + f"Band {b} Summary\n" + "-"*60 + "\n"
+        for key in ['lms_freq_hz', 'frac_pp', 'drive', 'uc_att',
+                    'lms_gain', 'median_noise', 'detector_chans']:
+            summary += f'{key:20s}:\t{out[key]}\n'
+    cprint(summary, True)
+
+    timer.stop()
+    time_file = os.path.join(
+        S.output_dir, f"{S.get_timestamp()}_optimize_time_summary.txt"
+    )
+    cprint(timer.summary(), True)
+    with open(time_file, 'w') as f:
+        f.write(timer.summary())
 
 
 def clear_cfg(cfg, dump=True):
@@ -22,6 +258,8 @@ def clear_cfg(cfg, dump=True):
     for band in range(8):
         cfg.dev.update_band(band, {
             'optimized_tracking': False,
+            'optimized_drive': False,
+            'optimized_lms_gain': False,
             'active_subbands': []
         })
     if dump:
@@ -30,247 +268,47 @@ def clear_cfg(cfg, dump=True):
     return
 
 
-if __name__ == '__main__':
-    cfg = DetConfig()
-    parser = argparse.ArgumentParser()
+def make_parser(parser=None):
+    if parser is None:
+        parser = argparse.ArgumentParser()
 
-    # Required argparse arguments
-    parser.add_argument('--biasgroup', type=int, nargs='+', required=True,
-                        help='bias group that you want to run tickles on')
-
-    # Typically just use default values for argparse arguments
-    parser.add_argument('--BW-target', '-m', type=float, default=500,
-                        help='Target readout bandwidth to optimize lms_gain')
-
-    parser.add_argument('--wait-time', type=float, default=0.1,
-                        help='Time to wait between flux steps in seconds.')
-
-    parser.add_argument('--Npts', type=int, default=3,
-                        help='Number of points to average')
-
-    parser.add_argument('--NPhi0s', type=int, default=4,
-                        help='Number of periods in your squid curve.')
-
-    parser.add_argument('--Nsteps', type=int, default=500,
-                        help='Number of points in your squid curve.')
-
-    parser.add_argument('--relock', action='store_true',
-                        help='If specified will run relock.')
-
-    parser.add_argument('--tickle-voltage', type=float, default=0.1,
-                        help='Amplitude (not peak-peak) of your tickle in '
-                             'volts')
-
-    parser.add_argument('--high-current', action='store_true')
-
-    parser.add_argument('--over-bias', action='store_true')
-
-    parser.add_argument('--channels', type=int, nargs='+', default=None,
-                        help='Channels that you want to calculate the tickle response of')
-    parser.add_argument('--make-channel-plots', action='store_true')
-
-    parser.add_argument('--R-threshold', default=100,
-                        help='Resistance threshold for determining detector channel')
     parser.add_argument('--all', '-a', action='store_true',
                         help="If set will run all possible optimizations.")
+    parser.add_argument('--bands', '-b', default=None, nargs='+', type=int,
+                        help="Bands to optimize")
+    parser.add_argument('--BW-target', '--bw', type=float, default=500,
+                        help='Target readout bandwidth to optimize lms_gain')
 
+    tickle_group = parser.add_argument_group('tickle', "Tickle Arguments")
+    tickle_group.add_argument('--biasgroup', '--bg', type=int, nargs='+',
+                              help='bias group that you want to run tickles '
+                                   'on')
+    tickle_group.add_argument('--tickle-voltage', type=float, default=0.1,
+                              help='Amplitude (not peak-peak) of your tickle '
+                                   'in volts')
+    tickle_group.add_argument('--high-current', action='store_true',
+                              help="Whether to run tickle in high current "
+                                   "mode")
+    tickle_group.add_argument('--over-bias', action='store_true',
+                              help='Whether or not to bias in high current '
+                                   'mode before taking tickle')
+    tickle_group.add_argument('--channels', type=int, nargs='+', default=None,
+                              help='Channels that you want to calculate the '
+                                   'tickle response of')
+    tickle_group.add_argument('--R-threshold', default=100,
+                              help='Resistance threshold for determining '
+                                   'detector channel')
+    return parser
+
+
+if __name__ == '__main__':
+    cfg = DetConfig()
+    parser = make_parser()
     args = cfg.parse_args(parser)
     S = cfg.get_smurf_control(dump_configs=True)
 
-    channels = args.channels
-
     cfg_path = os.path.abspath(os.path.expandvars(cfg.dev_file))
-
     if args.all:
         clear_cfg(cfg, dump=True)
 
-    # Turns on amps and adjust/returns "optimal bias" and then does a few
-    # system health checks.
-    cprint('Running system health check.', style=TermColors.HEADER)
-    ctime_prev = time.time()
-    health_check_success = hc(S, cfg)
-    ctime_now = time.time()
-    health_check_time = ctime_now - ctime_prev
-    cprint(f'Health check took {health_check_time} sec')
-    cfg.dev.dump(cfg_path, clobber=True)
-
-    if not health_check_success:
-        raise Exception("Health Check Failed!")
-
-    # Next find which bands and subbands have resonators attached
-    cprint('Identifying active bands and subbands', style=TermColors.HEADER)
-    ctime_prev = ctime_now
-    bands, subband_dict = so.find_subbands(S, cfg)
-    ctime_now = time.time()
-    find_subband_time = ctime_now - ctime_prev
-    cprint(f'Find subbands took {find_subband_time} sec')
-    cfg.dev.dump(cfg_path, clobber=True)
-
-    # Now tune on those bands/find_subbands
-    tunefile = cfg.dev.exp['tunefile']
-    if tunefile is None:
-        relock_flag = False
-        cprint('Tuning', style=TermColors.HEADER)
-        start = time.time()
-        num_chans_tune, tunefile = so.find_and_tune_freq(S, cfg, bands)
-        stop = time.time()
-        tune_time = stop - start
-        cprint(f'Find and tune freq took {tune_time} sec')
-        cfg.dev.dump(cfg_path, clobber=True)
-    else:
-        relock_flag = True
-        cprint(f"Loading Tunefile {tunefile} from device config",
-               style=TermColors.HEADER)
-        start = time.time()
-        S.load_tune(tunefile)
-        stop = time.time()
-        tune_time = stop - start
-
-    # Now setup tracking
-    ctime_prev = ctime_now
-    optimize_dict = {}
-
-    active_bands = []
-    for band in bands:
-        if 'resonances' in S.freq_resp[band]:
-            active_bands.append(band)
-        else:
-            cprint(f"No resonators in band {band}", False)
-
-    for band in active_bands:
-        cprint("Relocking")
-        if relock_flag:
-            S.relock(band)
-        for _ in range(2):
-            S.run_serial_gradient_descent(band)
-            S.run_serial_eta_scan(band)
-
-        optimize_dict[band] = {}
-
-        band_cfg = cfg.dev.bands[band]
-        if band_cfg.get('optimized_tracking', False):
-            cprint(f"Tracking for band {band} has already been optimized",
-                   True)
-        else:
-            cprint(f'Optimizing tracking for band {band}',
-                   style=TermColors.HEADER)
-            start = time.time()
-            lms_freq, frac_pp, tracking_dict = op.optimize_tracking(
-                S, cfg, band, relock=False)
-            stop = time.time()
-            cprint(f"Optimize tracking band {band} took {stop - start} sec")
-            cfg.dev.dump(cfg_path, clobber=True)
-            optimize_dict.update({
-                'lms_freq': lms_freq,
-                'frac_pp': frac_pp,
-                'tracking_dict': tracking_dict,
-                'tracking_time': stop - start
-            })
-
-        if not band_cfg.get('optimized_drive', False):
-            cprint(f'UC attenuator for band {band}', style=TermColors.HEADER)
-            start = time.time()
-            noise, atten, drive = op.optimize_power_per_band(S, cfg, band, meas_time=1)
-            stop = time.time()
-            cprint(f"Optimize input power for band {band} took {stop - start} sec")
-            cfg.dev.dump(cfg_path, clobber=True)
-            optimize_dict.update({
-                'atten': atten, 'drive': drive,
-                'input_power_time': stop - start
-            })
-        else:
-            cprint(f"Drive and atten for band {band} has already been "
-                    "optimized", True)
-
-        if not band_cfg.get('optimized_lms_gain', False):
-            cprint(f'Optimizing lms_gain for band {band}',
-                   style=TermColors.HEADER)
-            start = time.time()
-            lms_gain, lms_gain_dict = op.optimize_lms_gain(S, cfg, band,
-                                                           BW_target=args.BW_target)
-            stop = time.time()
-            cprint(f"Optimize lms_gain for band {band} took {stop - start} sec")
-            cfg.dev.dump(cfg_path, clobber=True)
-            optimize_dict.update({
-                'lms_gain': lms_gain,
-                'lms_gain_dict': lms_gain_dict,
-                'lms_gain_time': stop - start
-            })
-        else:
-
-            cprint(f"LMS Gain for band {band} has already been optimized",
-                   True)
-            print("Running tracking kwargs with optimal args.")
-            tracking_kwargs = {
-                'reset_rate_khz': 4, 'lms_freq_hz': band_cfg['lms_freq_hz'],
-                'fraction_full_scale': band_cfg['frac_pp'], 'make_plot': True, 'save_plot': True, 'show_plot': False,
-                'channel': [], 'nsamp': 2**18,
-                'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
-                'lms_gain': band_cfg['lms_gain'], 'return_data': True
-            }
-            S.tracking_setup(band, **tracking_kwargs)
-
-    # Right now lms_gain doesn't set you to that after completion...we need
-    # to add this
-    cfg.dev.dump(cfg_path, clobber=True)
-
-    cprint('Taking and analyzing optimized noise', style=TermColors.HEADER)
-    datafile = S.take_stream_data(20)
-    fig, ax = plt.subplots()
-    for band in active_bands:
-        start = time.time()
-        median_noise, noise_dict = op.analyze_noise_psd(S, band, datafile,
-                                                        fit_curve=False)
-        stop = time.time()
-        cprint(f"Averaging noise for band {band} took {stop - start} sec")
-        wls = np.array([c['white noise'] for c in noise_dict.values()])
-        print(wls)
-        optimize_dict[band].update({
-            'wls': wls,
-            'median_noise': median_noise,
-            'noise_dict': noise_dict,
-            'noise_time': stop - start
-        })
-        ax.hist(wls, bins=40, range=(0, 200), alpha=0.5, label=f'Band {band}')
-    ax.set(xlabel="White Noise (pA/rt(Hz))", ylabel="Number of channels")
-    ax.legend()
-    path = os.path.join(S.plot_dir, f'{S.get_timestamp()}_wl_histogram.png')
-    print(f"Saving figure to {path}")
-    fig.savefig(path)
-    S.pub.register_file(path, 'wl_hist', plot=True)
-
-    cfg.dev.dump(cfg_path, clobber=True)
-
-    # Need to add a function that identifies which biasgroups are connected so
-    # that we don't need to pass a biasgroup argument.
-    cprint('Identifying channels w/ detectors and calculating resistance.',
-           style=TermColors.HEADER)
-    ctime_prev = ctime_now
-    tickle_files = {}
-    for band in active_bands:
-        tickle_files[band], cur_dc = tickle.take_tickle(
-            S, band=band, bias_group=args.biasgroup,
-            tickle_voltage=args.tickle_voltage, high_current=args.high_current,
-            over_bias=args.over_bias)
-        optimize_dict[band]['tickle_dict'] = analyze_tickle(
-            S, band=band, data_file=tickle_files[band], dc_level=cur_dc,
-            tickle_voltage=args.tickle_voltage, high_current=args.high_current,
-            channels=channels, make_channel_plots=True,
-            R_threshold=args.R_threshold)
-
-    ctime_now = time.time()
-    cprint(f'Tickle took {ctime_now - ctime_prev} sec')
-    cfg.dev.dump(cfg_path, clobber=True)
-    pkl.dump(optimize_dict, open('/sodetlib/tests/demo_script.pkl', 'wb'))
-
-    summary = '-'*40 + '\n'
-    summary += "Optimization summary\n"
-    summary += '-'*40 + '\n'
-    summary += f"Health Check: {health_check_success} ({health_check_time} sec)\n"
-    summary += f"Find Subbands: ({find_subband_time} sec)"
-
-    cprint(summary, True)
-
-
-
-
+    full_optimize(S, cfg, args)

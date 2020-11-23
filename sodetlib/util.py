@@ -4,6 +4,7 @@ scripts.
 """
 import numpy as np
 from scipy import signal
+import time
 
 
 class TermColors:
@@ -56,3 +57,38 @@ def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
     f, Pxx = signal.welch(current, detrend=detrend, nperseg=nperseg, fs=fs)
     Pxx = np.sqrt(Pxx)
     return f, Pxx
+
+
+class SectionTimer:
+    def __init__(self):
+        self.sections = []
+        self.start_time = None
+        self.stop_time = None
+
+    def start_section(self, name):
+        if self.start_time is None:
+            self.start_time = time.time()
+        self.sections.append((time.time(), name))
+
+    def stop(self):
+        self.stop_time = time.time()
+        self.sections.append((time.time(), 'STOP'))
+
+    def reset(self):
+        self.sections = []
+        self.start_time = None
+        self.stop_time = None
+
+    def summary(self):
+        out = "="*80 + '\nTiming Summary\n' + '-'*80 + '\n'
+        out += f"Total time: {self.stop_time - self.start_time} sec\n"
+        out += 'name\tdur\tstart\n' + '='*80 + '\n'
+
+        name_len = max([len(name) for t, name in self.sections])
+
+        for i in range(len(self.sections) - 1):
+            t, name = self.sections[i]
+            dur = self.sections[i+1][0] - t
+            out += f'{name:{name_len}s}\t{dur:.2f}\t{t:.0f}\n'
+
+        return out

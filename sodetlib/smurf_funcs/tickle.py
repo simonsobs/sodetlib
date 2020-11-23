@@ -21,10 +21,10 @@ def take_tickle(S,band,bias_group, high_current, tickle_voltage, over_bias):
         band to optimize noise on
     bias_group : int
         tes bias [0,11] to apply tickle on
-    tickle_voltage : float
-        voltage amplitude of tickle
     high_current : bool
         whether or not to take the tickle in high current mode
+    tickle_voltage : float
+        voltage amplitude of tickle
     over_bias : bool
         whether or not to overbias in high current mode before taking tickle
 
