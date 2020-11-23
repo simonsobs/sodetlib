@@ -338,7 +338,7 @@ def hammer_func(args):
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
-    for slot in sys_config['slot_order']:
+    for slot in slots:
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
@@ -467,7 +467,7 @@ if __name__ == '__main__':
     ########### Jackhammer hammer parser ############
     hammer_parser = subparsers.add_parser("hammer")
     hammer_parser.set_defaults(func=hammer_func)
-    hammer_parser.add_argument('slots', nargs='+', default=None,
+    hammer_parser.add_argument('slots', nargs='+', default=None, type=int,
                                help="Specifies the slots to hammer")
     hammer_parser.add_argument('--no-reboot', '--soft', '-n', action='store_true')
     hammer_parser.add_argument('--agg', action='store_true')
