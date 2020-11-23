@@ -232,43 +232,6 @@ def pysmurf_func(args):
     enter_pysmurf(slot, agg=args.agg)
 
 
-# Entrypoint for jackhammer soft_reset
-def softreset_func(args):
-    containers = get_running_dockers()
-
-    # If no slots are specified reset all slots
-    if not args.slots:
-        args.slots = sys_config['slot_order']
-
-    kill_bad_dockers(args.slots, ocs=args.ocs)
-
-    print("Running docker-compose up....")
-
-    services = ['ocs-pysmurf-monitor', 'smurf-util']
-    for slot in args.slots:
-        services.append(f'smurf-streamer-s{slot}')
-        services.append(f'ocs-pysmurf-s{slot}')
-
-    start_services(services, write_env=True)
-
-    for slot in args.slots:
-        check_epics_connection(f'smurf_server_s{slot}', retry=True)
-
-    for slot in sys_config['slot_order']:
-        print(f"Configuring pysmurf on slot {slot}...")
-
-        util_run('python3',
-                 args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
-
-    enter_pysmurf(args.slots[0])
-
-
-# Entrypoint for jackhammer hard_reset
-def hardreset_func(args):
-    print("Not implemented....")
-    pass
-
-
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
@@ -413,55 +376,29 @@ def dump_func(args):
         else:
             print(f"Could not connect to epics for slot {slot}")
 
-            
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
 
     ########### Jackhammer pysmurf parser ############
-    pysmurf_parser = subparsers.add_parser('pysmurf', 
+    pysmurf_parser = subparsers.add_parser('pysmurf',
         help="Drops user into ipython session with pysmurf already initialized"
     )
     pysmurf_parser.set_defaults(func=pysmurf_func)
-    pysmurf_parser.add_argument('slot', type=int, nargs="?", 
+    pysmurf_parser.add_argument('slot', type=int, nargs="?",
         help="Slot number of pysmurf to connect to. If left blank it will "
              "try to figure it out from the sys_config file."
     )
-    pysmurf_parser.add_argument('--config-file', '-c', 
+    pysmurf_parser.add_argument('--config-file', '-c',
         help="Pysmurf config file. Defaults to what is specified in sys config file."
     )
-    pysmurf_parser.add_argument('--setup', '-s', action='store_true', 
+    pysmurf_parser.add_argument('--setup', '-s', action='store_true',
         help="If specified, pysmurf will start with setup=True."
     )
-    pysmurf_parser.add_argument('--agg', action='store_true', 
+    pysmurf_parser.add_argument('--agg', action='store_true',
         help="If specified, matplotlib will use the agg backend. This can be "
              "helpful if you are connecting over ssh without a display."
-    )
-
-    ########### Jackhammer soft_reset parser ############
-    softreset_parser = subparsers.add_parser('soft_reset', 
-        help="Resets the smurf_server backends and makes sure ocs dockers are running."
-    )
-    softreset_parser.set_defaults(func=softreset_func)
-    softreset_parser.add_argument('slots', nargs="*", 
-        help="Slots to reset. If not specified, will reset all of them."
-    )
-    softreset_parser.add_argument('--ocs', action='store_true',
-        help="If specified, ocs agents will also be restarted. If not, they will "
-             "be left running."
-    )
-
-    ########### Jackhammer hard_reset parser ############
-    hardreset_parser = subparsers.add_parser('hard_reset')
-    hardreset_parser.set_defaults(func=hardreset_func)
-    hardreset_parser.add_argument('slots', nargs="*", 
-        help="Slots to reset. If not specified, will reset all of them."
-    )
-    hardreset_parser.add_argument('--ocs', action='store_true',
-        help="If specified, ocs agents will also be restarted. If not, they will "
-             "be left running."
     )
 
     ########### Jackhammer hammer parser ############
@@ -469,12 +406,15 @@ if __name__ == '__main__':
     hammer_parser.set_defaults(func=hammer_func)
     hammer_parser.add_argument('slots', nargs='*', type=int,
                                help="Specifies the slots to hammer")
-    hammer_parser.add_argument('--no-reboot', '--soft', '-n', action='store_true')
+    hammer_parser.add_argument('--no-reboot', '--soft', '-n',
+                               action='store_true',
+                               help="If True, will not reboot slots.")
     hammer_parser.add_argument('--agg', action='store_true')
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
-    log_parser.add_argument('log_args', nargs="*", type=str, help="args passed to docker-compose logs")
+    log_parser.add_argument('log_args', nargs="*", type=str,
+                            help="args passed to docker-compose logs")
     log_parser.set_defaults(func=log_func)
 
     ########### Jackhammer util parser ############
@@ -487,7 +427,6 @@ if __name__ == '__main__':
     gui_parser.add_argument('--port', '-p', type=int, help='gui server port')
     gui_parser.set_defaults(func=gui_func)
 
-
     ########### Jackhammer dump parser ###########
     dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
     dump_parser.set_defaults(func=dump_func)
@@ -497,4 +436,3 @@ if __name__ == '__main__':
         args.func(args)
     else:
         parser.print_help()
-
