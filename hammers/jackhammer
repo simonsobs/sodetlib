@@ -108,12 +108,12 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
     """
         Kills relevant dockers for a given set of slots.
 
-        Args: 
+        Args:
             slots (list of ints):
                 list of slots which we should kill related dockers
-            ocs (bool): 
+            ocs (bool):
                 If true, will also kill ocs-related dockers
-            names (list of strings): 
+            names (list of strings):
                 List of additional docker names we should kill
             images (list of strings):
     """
@@ -232,47 +232,23 @@ def pysmurf_func(args):
     enter_pysmurf(slot, agg=args.agg)
 
 
-# Entrypoint for jackhammer soft_reset
-def softreset_func(args):
-    containers = get_running_dockers()
-
-    # If no slots are specified reset all slots
-    if not args.slots:
-        args.slots = sys_config['slot_order']
-
-    kill_bad_dockers(args.slots, ocs=args.ocs)
-
-    print("Running docker-compose up....")
-
-    services = ['ocs-pysmurf-monitor', 'smurf-util']
-    for slot in args.slots:
-        services.append(f'smurf-streamer-s{slot}')
-        services.append(f'ocs-pysmurf-s{slot}')
-
-    start_services(services, write_env=True)
-
-    for slot in args.slots:
-        check_epics_connection(f'smurf_server_s{slot}', retry=True)
-
-    for slot in sys_config['slot_order']:
-        print(f"Configuring pysmurf on slot {slot}...")
-
-        util_run('python3',
-                 args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
-
-    enter_pysmurf(args.slots[0])
-
-
-# Entrypoint for jackhammer hard_reset
-def hardreset_func(args):
-    print("Not implemented....")
-    pass
-
-
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
-    slots = sys_config['slot_order']
+    if not args.slots:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+        for s in slots:
+            if s not in sys_config['slot_order']:
+                raise ValueError(
+                    f"Slot {s} is not valid for this system! Can only use "
+                    f"slots in: {sys_config['slot_order']}")
+
+    reboot = not (args.no_reboot)
+
+    cprint(f"Hammering for slots {slots}", True)
+
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
     kill_bad_dockers(slots, ocs=True)
 
@@ -284,16 +260,13 @@ def hammer_func(args):
 
     # Sets fan levels on crate
     cprint("Setting fan levels", style=TermColors.HEADER)
-    if sys_config['startup']['set_crate_fans_to_full']:
-        cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
-        cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
+    cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
+    cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
+    print("Setting crate fans to full...")
+    run_on_shelf_manager(cmd)
 
-        print("Setting crate fans to full...")
-        run_on_shelf_manager(cmd)
-
-    if sys_config['startup']['reboot'] and (not args.no_reboot):
-        cprint("Rebooting all slots", style=TermColors.HEADER)
-
+    if reboot:
+        cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
         deactivate_commands = []
         activate_commands = []
         for slot in slots:
@@ -309,18 +282,18 @@ def hammer_func(args):
         print(f"Activating carriers: {slots}")
         run_on_shelf_manager('; '.join(activate_commands))
 
-        print("Waiting for carriers to come back online (this takes a bit)")        
+        print("Waiting for carriers to come back online (this takes a bit)")
         for slot in slots:
             ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
             subprocess.run(['ping_carrier', ip])
     else:
         print("Skipping reboot process")
-    
+
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
 
     services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
-    for slot in sys_config['slot_order']:
+    for slot in slots:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
 
@@ -328,19 +301,16 @@ def hammer_func(args):
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
-    for slot in sys_config['slot_order']:
+    for slot in slots:
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
-    print("All streamers have started!")
-    if sys_config['startup']['configure_pysmurf']:
-        cprint("Configuring pysmurf", style=TermColors.HEADER)
-        for slot in sys_config['slot_order']:
-            print(f"Configuring pysmurf on slot {slot}...")
-
-            util_run('python3',
-                     args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
-        print("Finished configuring pysmurf!")
+    cprint("Configuring pysmurf", style=TermColors.HEADER)
+    for slot in slots:
+        print(f"Configuring pysmurf on slot {slot}...")
+        util_run('python3',
+                 args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
+    print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
@@ -406,66 +376,45 @@ def dump_func(args):
         else:
             print(f"Could not connect to epics for slot {slot}")
 
-            
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
 
     ########### Jackhammer pysmurf parser ############
-    pysmurf_parser = subparsers.add_parser('pysmurf', 
+    pysmurf_parser = subparsers.add_parser('pysmurf',
         help="Drops user into ipython session with pysmurf already initialized"
     )
     pysmurf_parser.set_defaults(func=pysmurf_func)
-    pysmurf_parser.add_argument('slot', type=int, nargs="?", 
+    pysmurf_parser.add_argument('slot', type=int, nargs="?",
         help="Slot number of pysmurf to connect to. If left blank it will "
              "try to figure it out from the sys_config file."
     )
-    pysmurf_parser.add_argument('--config-file', '-c', 
+    pysmurf_parser.add_argument('--config-file', '-c',
         help="Pysmurf config file. Defaults to what is specified in sys config file."
     )
-    pysmurf_parser.add_argument('--setup', '-s', action='store_true', 
+    pysmurf_parser.add_argument('--setup', '-s', action='store_true',
         help="If specified, pysmurf will start with setup=True."
     )
-    pysmurf_parser.add_argument('--agg', action='store_true', 
+    pysmurf_parser.add_argument('--agg', action='store_true',
         help="If specified, matplotlib will use the agg backend. This can be "
              "helpful if you are connecting over ssh without a display."
-    )
-
-    ########### Jackhammer soft_reset parser ############
-    softreset_parser = subparsers.add_parser('soft_reset', 
-        help="Resets the smurf_server backends and makes sure ocs dockers are running."
-    )
-    softreset_parser.set_defaults(func=softreset_func)
-    softreset_parser.add_argument('slots', nargs="*", 
-        help="Slots to reset. If not specified, will reset all of them."
-    )
-    softreset_parser.add_argument('--ocs', action='store_true',
-        help="If specified, ocs agents will also be restarted. If not, they will "
-             "be left running."
-    )
-
-    ########### Jackhammer hard_reset parser ############
-    hardreset_parser = subparsers.add_parser('hard_reset')
-    hardreset_parser.set_defaults(func=hardreset_func)
-    hardreset_parser.add_argument('slots', nargs="*", 
-        help="Slots to reset. If not specified, will reset all of them."
-    )
-    hardreset_parser.add_argument('--ocs', action='store_true',
-        help="If specified, ocs agents will also be restarted. If not, they will "
-             "be left running."
     )
 
     ########### Jackhammer hammer parser ############
     hammer_parser = subparsers.add_parser("hammer")
     hammer_parser.set_defaults(func=hammer_func)
-    hammer_parser.add_argument('--no-reboot', '-n', action='store_true')
+    hammer_parser.add_argument('slots', nargs='*', type=int,
+                               help="Specifies the slots to hammer")
+    hammer_parser.add_argument('--no-reboot', '--soft', '-n',
+                               action='store_true',
+                               help="If True, will not reboot slots.")
     hammer_parser.add_argument('--agg', action='store_true')
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
-    log_parser.add_argument('log_args', nargs="*", type=str, help="args passed to docker-compose logs")
+    log_parser.add_argument('log_args', nargs="*", type=str,
+                            help="args passed to docker-compose logs")
     log_parser.set_defaults(func=log_func)
 
     ########### Jackhammer util parser ############
@@ -478,7 +427,6 @@ if __name__ == '__main__':
     gui_parser.add_argument('--port', '-p', type=int, help='gui server port')
     gui_parser.set_defaults(func=gui_func)
 
-
     ########### Jackhammer dump parser ###########
     dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
     dump_parser.set_defaults(func=dump_func)
@@ -488,4 +436,3 @@ if __name__ == '__main__':
         args.func(args)
     else:
         parser.print_help()
-
