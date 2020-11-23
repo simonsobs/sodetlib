@@ -272,7 +272,7 @@ def hardreset_func(args):
 # Entrypoint for jackhammer hammer
 def hammer_func(args):
     # here we go....
-    if args.slots is None:
+    if not args.slots:
         slots = sys_config['slot_order']
     else:
         slots = args.slots
@@ -467,7 +467,7 @@ if __name__ == '__main__':
     ########### Jackhammer hammer parser ############
     hammer_parser = subparsers.add_parser("hammer")
     hammer_parser.set_defaults(func=hammer_func)
-    hammer_parser.add_argument('slots', nargs='+', default=None, type=int,
+    hammer_parser.add_argument('slots', nargs='*', type=int,
                                help="Specifies the slots to hammer")
     hammer_parser.add_argument('--no-reboot', '--soft', '-n', action='store_true')
     hammer_parser.add_argument('--agg', action='store_true')
