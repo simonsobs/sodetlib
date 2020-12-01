@@ -19,8 +19,8 @@ from pysmurf.client.util.pub import set_action
 
 @set_action()
 def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
-			frac_pp=None,lms_freq=None,reset_rate_khz=None,
-			lms_gain=None):
+                         frac_pp=None,lms_freq=None,reset_rate_khz=None,
+                         lms_gain=None):
     """
     Adapted from script by SWH: shawn@slac.stanford.edu (can still see original
     in pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
@@ -256,7 +256,7 @@ def find_subbands(S, cfg, spur_width=5):
     return bands, subband_dict
 
 
-def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
+def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
@@ -273,6 +273,9 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
         Whether to create a new master assignment (tuning)
         file. This file defines the mapping between resonator frequency
         and channel number. Default True.
+    amp_cut : float
+        The fractiona distance from the median value to decide whether there
+        is a resonance.
     """
     num_resonators_on = 0
     default_subbands = np.arange(13, 115)
@@ -284,9 +287,9 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True):
         elif not subband:
             continue
         S.find_freq(band, tone_power=band_cfg['drive'],
-                    make_plot=band_cfg['make_plot'],
-                    save_plot=band_cfg['save_plot'],
-                    subband=subband)
+                    make_plot=True,
+                    save_plot=True,
+                    subband=subband, amp_cut=amp_cut)
         if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
             cprint(f'Find freqs could not find resonators in '
             f'band : {band} and subbands : {subband}', False)

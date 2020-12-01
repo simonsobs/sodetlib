@@ -166,9 +166,10 @@ class DeviceConfig:
         band = self.bands[band_index]
         for k, v in data.items():
             if k not in band.keys():
-                raise ValueError(
-                    f"{k} is not a valid key for band {band_index}. "
-                    f"Check dev-cfg file for available keys.")
+                print(f"{k} is not an existing key! Adding it with the value "
+                      "None for all bands")
+                for b in self.bands:
+                    b[k] = None
             band[k] = v
 
     def update_bias_group(self, bg_index, data):

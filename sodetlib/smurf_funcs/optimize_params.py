@@ -10,14 +10,119 @@ import matplotlib.pyplot as plt
 import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
-from sodetlib.util import cprint, TermColors
-
+from sodetlib.util import cprint, TermColors, get_psd, make_filename
 
 from pysmurf.client.util.pub import set_action
 
 
-def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
-                      reset_rate_khz=None, lms_gain=None, relock=True):
+def optimize_nphi0(S, cfg, band):
+    """
+    Optimizes the Nphi0 parameter for a given band. Loops through Nphi in
+    the range [3, 6] and finds the one which results in the lowest white noise
+    level.
+
+    Args:
+        S: pysmurf.client.SmurfControl
+            Smurf control object
+        cfg : DetConfig
+            Detector Config object
+        band : int
+            band number
+
+    Returns:
+        lms_freq_opt : float
+            Optimal LMS frequency (Hz)
+        frac_pp_opt : float
+            Optimal frac_pp
+        nphi0_opt : int
+            Optimal value of Nphi0
+    """
+
+    band_cfg = cfg.dev.bands[band]
+
+    fr_rate = band_cfg['reset_rate_khz'] * 1e3
+    tracking_kwargs = {'band': band,
+                       'reset_rate_khz': band_cfg['reset_rate_khz'],
+                       'lms_freq_hz': None, 'nsamp': 2**17,
+                       'fraction_full_scale': band_cfg['frac_pp'],
+                       'lms_gain': band_cfg['lms_gain'],
+                       'make_plot': True, 'channel': [],
+                       'show_plot': False, 'save_plot': True,
+                       'meas_lms_freq': True, 'return_data': True}
+
+    cur_nphi0 = fr_rate / band_cfg['lms_freq_hz']
+    frac_pp_per_phi0 = band_cfg['frac_pp'] / cur_nphi0
+
+    chans = S.which_on(band)
+
+    nphi0s = np.arange(3, 7)
+    wls = np.full_like(nphi0s, np.nan, dtype=float)
+    fspans = np.full_like(nphi0s, np.nan, dtype=float)
+    for i, nphi0 in enumerate(nphi0s):
+        frac_pp = frac_pp_per_phi0 * nphi0
+        if frac_pp >= 1:
+            break
+        tracking_kwargs['fraction_full_scale'] = frac_pp
+        tracking_kwargs['lms_freq_hz'] = nphi0 * fr_rate
+        f, df, _ = S.tracking_setup(**tracking_kwargs)
+        datafile = S.take_stream_data(10)
+        median_noise, _ = analyze_noise_psd(S, band, datafile)
+        cprint(f"Nphi0: {nphi0}\tmedian_noise: {median_noise}")
+        wls[i] = median_noise
+        fspans[i] = np.median((np.max(f, 0) - np.min(f, 0))[chans])
+
+    idx = np.argmin(wls)
+    nphi0_opt = nphi0s[idx]
+    fname = os.path.join(S.output_dir,
+                         f'{S.get_timestamp()}_wls_vs_nphi0.txt')
+    with open(fname, 'w') as f:
+        f.write("# Nphi0\tfrac_pp\twl\n")
+        for nphi0, wl in zip(nphi0s, wls):
+            f.write(f"{nphi0}\t{nphi0*frac_pp_per_phi0:0.4f}\t{wl:0.4f}\n")
+    S.pub.register_file(fname, 'tracking_optimization', format='txt')
+
+    fig, ax = plt.subplots()
+    ax2 = ax.twinx()
+
+    ax.plot(nphi0s, wls)
+    ax.set(xlabel='Nphi0', ylabel="Median White Noise Level")
+    ax2.plot(nphi0s, fspans)
+    ax2.set(ylabel="f span")
+    figname = os.path.join(S.plot_dir,
+                           f"{S.get_timestamp()}_wls_vs_nphi0.png")
+    fig.savefig(figname)
+    S.pub.register_file(figname, 'tracking_optimization', plot=True)
+
+    lms_freq_opt = nphi0_opt * fr_rate
+    frac_pp_opt = frac_pp_per_phi0 * nphi0_opt
+
+    cprint("Optimal parameters:", TermColors.HEADER)
+    cprint(f"Nphi0: {nphi0_opt}", True)
+    cprint(f"lms_freq: {lms_freq_opt}", True)
+    cprint(f"frac_pp: {frac_pp_opt}", True)
+
+    S.load_tune()
+    S.relock(band)
+    for _ in range(2):
+        S.run_serial_gradient_descent(band)
+        S.run_serial_eta_scan(band)
+
+    tracking_kwargs['lms_freq_hz'] = lms_freq_opt
+    tracking_kwargs['fraction_full_scale'] = frac_pp_opt
+    f, df, _ = S.tracking_setup(**tracking_kwargs)
+
+    cfg.dev.update_band(band, {'frac_pp': frac_pp_opt,
+                               'lms_freq_hz': lms_freq_opt,
+                               'nphi0': nphi0_opt})
+    cfg.dev.dump(os.path.abspath(os.path.expandvars(cfg.dev_file)),
+                 clobber=True)
+
+    return lms_freq_opt, frac_pp_opt, nphi0_opt
+
+
+def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=5,
+                      reset_rate_khz=None, lms_gain=None, relock=True,
+                      tunefile=None, make_plots=False):
     """
     This starts with some default parameters and optimizes the amplitude
     of the flux ramp and tracking frequency used in the tracking algorithm
@@ -41,8 +146,6 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
             for phi0_number*reset_rate_khz. This defaults to 5 but if
             you do not have enough dynamic range it will decrease this
             to maximum allowing number given your FR DAC dynamic range.
-            If set to None (which is the default), this function will loop
-            over Nphi0=2-6 to find the optimal number to use.
         reset_rate_khz:
             Rate of the flux ramp in kHz. Default is taken from device
             config file.
@@ -52,6 +155,8 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
         relock:
             If True, will run reload the most recent tune file, relock, and
             run serial gradient descent and eta scan. Defaults to True
+        tunefile: str
+            Tunefile to use when relocking. Defaults to None
     """
     band_cfg = cfg.dev.bands[band]
     if lms_gain is None:
@@ -60,10 +165,13 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
         reset_rate_khz = band_cfg['flux_ramp_rate_khz']
     if init_fracpp is None:
         init_fracpp = band_cfg['frac_pp']
+    if tunefile is None:
+        tunefile = cfg.dev.exp['tunefile']
 
+    print(reset_rate_khz)
     cprint("Loading tune and running initial tracking setup")
     if relock:
-        S.load_tune()
+        S.load_tune(tunefile)
         S.relock(band)
         for _ in range(2):
             S.run_serial_gradient_descent(band)
@@ -72,72 +180,38 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
     tracking_kwargs = {'band': band, 'reset_rate_khz': reset_rate_khz,
                        'lms_freq_hz': None, 'nsamp': 2**17,
                        'fraction_full_scale': init_fracpp,
-                       'lms_gain': lms_gain, 'make_plot': False,
-                       'show_plot': False, 'save_plot': False,
+                       'lms_gain': lms_gain, 'make_plot': True, 'channel': [],
+                       'show_plot': False, 'save_plot': True,
                        'meas_lms_freq': True, 'return_data': True}
+
+    if make_plots:
+        tracking_kwargs['channel'] = S.which_on(band)
 
     f, _, _ = S.tracking_setup(**tracking_kwargs)
     f_span = np.max(f, 0) - np.min(f, 0)
 
     for c in S.which_on(band):
-        if not 0.03 < f_span[c] < 0.14:
+        if not 0.03 < f_span[c] < 0.25:
             S.channel_off(band, c)
 
     # Reruns to get re-estimate of tracking freq
     S.tracking_setup(**tracking_kwargs)
 
     lms_meas = S.lms_freq_hz[band]
-    frac_pp_per_phi0 = init_fracpp * reset_rate_khz * 1e3 / lms_meas
-    cprint(f"frac_pp_per_phi0: {frac_pp_per_phi0:0.3f}")
+    lms_freq = phi0_number * reset_rate_khz * 1e3
+    frac_pp = init_fracpp * lms_freq / lms_meas
 
-    if phi0_number is None:
-        # Optimizes for Nphi0 with lowest noise
-        cprint("Optimizing noise wrt Nphi0")
-        nphi0s = np.arange(2, 7)
-        wls = np.full_like(nphi0s, np.nan)
-        for i, nphi0 in enumerate(nphi0s):
-            frac_pp = frac_pp_per_phi0 * nphi0
-            if frac_pp >= 1:
-                break
-            print(nphi0)
-            tracking_kwargs['fraction_full_scale'] = frac_pp
-            S.tracking_setup(**tracking_kwargs)
-            datafile = S.take_stream_data(10)
-            median_noise, _ = analyze_noise_psd(S, band, datafile)
-            print(f"Nphi0: {nphi0}\tmedian_noise: {median_noise}")
-            wls[i] = median_noise
+    tracking_kwargs['meas_lms_freq'] = False
+    tracking_kwargs['fraction_full_scale'] = frac_pp
+    tracking_kwargs['lms_freq_hz'] = lms_freq
 
-        idx = np.argmin(wls)
-        nphi0_opt = nphi0s[idx]
-        fname = os.path.join(S.output_dir,
-                             f'{S.get_timestamp()}_wls_vs_nphi0.txt')
-        with open(fname, 'w') as f:
-            f.write("# Nphi0\tfrac_pp\twl\n")
-            for nphi0, wl in zip(nphi0s, wls):
-                f.write(f"{nphi0}\t{nphi0*frac_pp_per_phi0:0.4f}\t{wl:0.4f}\n")
-        S.pub.register_file(fname, 'tracking_optimization', format='txt')
-    else:
-        nphi0_opt = phi0_number
-        if phi0_number * frac_pp_per_phi0 > 1:
-            raise ValueError("Requested value for nphi0 results in frac_pp>1")
-
-    lms_freq_opt = nphi0_opt*reset_rate_khz*1e3
-    frac_pp_opt = frac_pp_per_phi0 * nphi0_opt
-    cprint("Optimal parameters:", TermColors.HEADER)
-    print(f"Nphi0: {nphi0_opt}")
-    print(f"lms_freq: {lms_freq_opt}")
-    print(f"frac_pp: {frac_pp_opt}")
-
-    S.load_tune()
+    S.load_tune(tunefile)
     S.relock(band)
     for _ in range(2):
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
-    tracking_kwargs['lms_freq_hz'] = lms_freq_opt
-    tracking_kwargs['fraction_full_scale'] = frac_pp_opt
     f, df, _ = S.tracking_setup(**tracking_kwargs)
-
     df_std = np.std(df, 0)
     f_span = np.max(f, 0) - np.min(f, 0)
 
@@ -148,10 +222,6 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
         outdict[c]['df_pp'] = f_span[c]
         outdict[c]['df_err'] = df_std[c]
         outdict[c]['tracking'] = True
-        if f_span[c] < 0.03 or f_span[c] > 0.14:
-            bad_track_chans.append(c)
-            outdict[c]['tracking'] = False
-            S.channel_off(band, c)
 
     fname = os.path.join(S.output_dir,
                          f'{S.get_timestamp()}_optimize_tracking.pkl')
@@ -159,14 +229,15 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=None,
     S.pub.register_file(fname, 'tracking_optimization', format='pkl')
 
     print(f'Number of bad tracking channels {len(bad_track_chans)}')
-    print(f'Optimized frac_pp: {frac_pp_opt} for lms_freq = {lms_freq_opt}')
+    print(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
 
-    cfg.dev.update_band(band, {'frac_pp': frac_pp_opt,
-                               'lms_freq_hz': lms_freq_opt})
+    cfg.dev.update_band(band, {'frac_pp': frac_pp,
+                               'lms_freq_hz': lms_freq,
+                               'optimized_tracking': True})
     cfg.dev.dump(os.path.abspath(os.path.expandvars(cfg.dev_file)),
                  clobber=True)
 
-    return lms_freq_opt, frac_pp_opt, outdict
+    return lms_freq, frac_pp, outdict
 
 
 def lowpass_fit(x, scale, cutoff, fs=4e3):
@@ -218,27 +289,32 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
     """
     df_std = np.std(df, 0)
     f_span = np.max(f, 0) - np.min(f, 0)
-    chans_to_consider = np.where(
-        (f_span > f_span_min) & (f_span < f_span_max))[0]
+
+    chans_to_consider = [c for c in S.which_on(band)
+                         if f_span_min < f_span[c] < f_span_max]
 
     datfile = S.take_stream_data(10)
-    _, outdict = analyze_noise_psd(S, band, datfile)
+    _, outdict = analyze_noise_psd(S, band, datfile, chans=chans_to_consider)
     chan_noise = []
     chan_df = []
     for ch in list(chans_to_consider):
         chan_noise.append(outdict[ch]['white noise'])
         chan_df.append(df_std[ch])
 
-    return chans_to_consider[
+    best_chan = chans_to_consider[
         np.argmin(np.asarray(chan_df)*np.asarray(chan_noise))
     ]
+    cprint(f'best_chan: {best_chan}\tfspan: {f_span[best_chan]}')
+    return best_chan
+
+
 
 
 @set_action()
 def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
                       reset_rate_khz=None, frac_pp=None,
-                      lms_freq=None, meas_time=None,
-                      make_plot=True):
+                      lms_freq=None, meas_time=10,
+                      make_plot=False):
     """
     Finds the drive power and uc attenuator value that minimizes the median noise within a band.
 
@@ -255,8 +331,11 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         fraction full scale of the FR DAC used for tracking_setup
     lms_freq: (float)
         tracking frequency used for tracking_setup
+    meas_time: float
+        Duration for data streaming to analyze PSD.
     make_plot: (bool)
-        If true will make plots
+        If true will make tracking plots for each channel.
+        Defaults to False
 
     Returns
     -------
@@ -296,14 +375,18 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
         'fraction_full_scale': band_cfg['frac_pp'],
-        'make_plot': False, 'show_plot': False,
-        'channel': S.which_on(band), 'nsamp': 2**18,
+        'make_plot': make_plot, 'show_plot': False,
+        'channel': [], 'nsamp': 2**18,
         'feedback_start_frac': 0.02,
         'feedback_end_frac': 0.94, 'lms_gain': 7,
         'return_data': True
     }
+    if make_plot:
+        tracking_kwargs['channel'] = S.which_on(band)
+
     f, df, _ = S.tracking_setup(band, **tracking_kwargs)
-    best_chan = identify_best_chan(S, band, f, df)
+    best_chan = identify_best_chan(S, band, f, df, f_span_min=0.03,
+                                   f_span_max=0.25)
 
     print(f'Channel chosen for lms_gain optimization: {best_chan}')
 
@@ -325,10 +408,10 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
 
     # Sweep over lms gain from 8 to 2 and calculate f3dB at each.
     lms_gain_sweep = np.arange(8, 1, -1)
-    if make_plot:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-        fig.suptitle('$f_{3dB}$ vs lms_gain', fontsize=32)
-        alpha = 0.8
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+    fig.suptitle('$f_{3dB}$ vs lms_gain', fontsize=32)
+    alpha = 0.8
 
     for lms_gain in lms_gain_sweep:
         outdict[lms_gain] = {}
@@ -339,7 +422,7 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         tracking_kwargs['lms_gain'] = lms_gain
         S.tracking_setup(band, **tracking_kwargs)
 
-        datafile = S.take_stream_data(20)
+        datafile = S.take_stream_data(meas_time)
         timestamp, phase, mask = S.read_stream_data(datafile)
         phase *= S.pA_per_phi0/(2*np.pi)
         ch_idx = mask[band, best_chan]
@@ -351,15 +434,20 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         outdict[lms_gain]['Pxx'] = Pxx
         def fit_func(x, scale, cutoff): return lowpass_fit(
             x, scale, cutoff, fs=fs)
-        pars, covs = opt.curve_fit(
-            fit_func, f, Pxx, bounds=([0, 0], [1e3, fs-1]))
-        outdict[lms_gain]['fit_params'] = pars
-        f3dBs.append(pars[1])
-        if make_plot:
+        try:
+            pars, covs = opt.curve_fit(
+                fit_func, f, Pxx, bounds=([0, 0], [1e3, fs/2]))
+            outdict[lms_gain]['fit_params'] = pars
+            f3dBs.append(pars[1])
+
             ax1.loglog(f, Pxx, alpha=alpha, label=f'lms_gain: {lms_gain}')
             ax1.loglog(f, lowpass_fit(f, pars[0], pars[1]), '--',
                        label=f'fit f3dB = {np.round(pars[1],2)} Hz')
             alpha = alpha*0.9
+        except RuntimeError as e:
+            print(e)
+            outdict[lms_gain]['fit_params'] = None
+            f3dBs.append(fs/2)
         print(f'lms_gain = {lms_gain}: f_3dB fit = {pars[1]} Hz')
 
     # Identify the lms_gain that produces a f3dB closest to the target
@@ -371,26 +459,33 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         opt_lms_gain = lms_gain_sweep[idx_min]
     print(f'Optimum lms_gain is: {opt_lms_gain}')
 
-    # Save plots and data and register them with the ocs publisher
-    if make_plot == True:
-        ax1.set_ylim([10, 100])
-        ax1.legend(fontsize=14)
-        ax1.set_xlabel('Frequency [Hz]', fontsize=18)
-        ax1.set_ylabel('PSD', fontsize=18)
+    S.set_lms_gain(band, opt_lms_gain)
+    tracking_kwargs['lms_gain'] = opt_lms_gain
+    S.tracking_setup(band, **tracking_kwargs)
 
-        ax2.plot(lms_gain_sweep, f3dBs, 'o--', label='Data')
-        ax2.set_xlabel('lms_gain', fontsize=18)
-        ax2.set_ylabel('$f_{3dB}$ [Hz]', fontsize=18)
-        ax2.axvline(opt_lms_gain, ls='--', color='r',
-                    label='Optimized LMS Gain')
-        ax2.axhline(BW_target, ls='--', color='k', label='Target $f_{3dB}$')
-        ax2.legend(fontsize=14)
-        plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
-        plt.savefig(plotpath)
-        S.pub.register_file(plotpath, 'opt_lms_gain', plot=True)
+    # Save plots and data and register them with the ocs publisher
+    ax1.set_ylim([10, 100])
+    ax1.legend(fontsize=14)
+    ax1.set_xlabel('Frequency [Hz]', fontsize=18)
+    ax1.set_ylabel('PSD', fontsize=18)
+
+    ax2.plot(lms_gain_sweep, f3dBs, 'o--', label='Data')
+    ax2.set_xlabel('lms_gain', fontsize=18)
+    ax2.set_ylabel('$f_{3dB}$ [Hz]', fontsize=18)
+    ax2.axvline(opt_lms_gain, ls='--', color='r',
+                label='Optimized LMS Gain')
+    ax2.axhline(BW_target, ls='--', color='k', label='Target $f_{3dB}$')
+    ax2.legend(fontsize=14)
+    plotpath = f'{S.plot_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.png'
+    plt.savefig(plotpath)
+    S.pub.register_file(plotpath, 'opt_lms_gain', plot=True)
+
     datpath = f'{S.output_dir}/{ctime}_f3dB_vs_lms_gain_b{band}.pkl'
     pkl.dump(outdict, open(datpath, 'wb'))
     S.pub.register_file(datpath, 'opt_lms_gain_data', format='pkl')
+
+    cfg.dev.update_band(band, {'lms_gain': opt_lms_gain,
+                               'optimized_lms_gain': True})
 
     # Reset the downsampling filtering parameters
     S.set_downsample_factor(prev_ds_factor)
@@ -399,7 +494,7 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
 
 
 @set_action()
-def get_median_noise(S, cfg, band, meas_time=30):
+def get_median_noise(S, cfg, band, meas_time=30, make_plots=False):
     """
     Takes PSD and returns the median noise of all active channels.
 
@@ -418,23 +513,40 @@ def get_median_noise(S, cfg, band, meas_time=30):
         Median noise for the specified band.
     """
     band_cfg = cfg.dev.bands[band]
+
+    print("Serial Gradient Descent")
     S.run_serial_gradient_descent(band)
+    print("Serail Eta Scan")
     S.run_serial_eta_scan(band)
-    S.tracking_setup(
-        band, reset_rate_khz=4, fraction_full_scale=band_cfg['frac_pp'],
-        make_plot=band_cfg.get('make_plot', False),
-        save_plot=band_cfg.get('save_plot', False),
-        channel=S.which_on(band), nsamp=2**18, lms_gain=band_cfg['lms_gain'],
-        lms_freq_hz=band_cfg['lms_freq_hz'], feedback_start_frac=1/12,
-        feedback_end_frac=0.98, show_plot=False
-    )
+    print("Tracking setup")
+
+    tracking_kwargs = {
+        'reset_rate_khz': 4, 'lms_freq_hz': band_cfg['lms_freq_hz'],
+        'fraction_full_scale': band_cfg['frac_pp'],
+        'make_plot': True, 'save_plot': True, 'show_plot': False,
+        'channel': [], 'nsamp': 2**18,
+        'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
+        'lms_gain': 7, 'return_data': True
+    }
+    if make_plots:
+        tracking_kwargs['channel'] = S.which_on(band)
+
+
+    f, _, _ = S.tracking_setup(band, **tracking_kwargs)
+    f_span = np.max(f, 0) - np.min(f, 0)
+
+    #for c in S.which_on(band):
+    #    if not 0.03 < f_span[c] < 0.14:
+    #        S.channel_off(band, c)
+
     datafile = S.take_stream_data(meas_time)
     median_noise, _ = analyze_noise_psd(S, band, datafile)
     return median_noise
 
 
 @set_action()
-def analyze_noise_psd(S, band, dat_file):
+def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
+                      max_phase_span=None):
     """
     Finds the white noise level, 1/f knee, and 1/f polynomial exponent of a
     noise timestream and returns the median white noise level of all channels
@@ -448,6 +560,14 @@ def analyze_noise_psd(S, band, dat_file):
         filepath to timestream data to analyze
     ctime: str
         ctime used for saved data/plot titles
+    fit_curve: bool
+        If true, will use the pysmurf ``analyze_psd`` function to calculate the
+        white noise, n, and f_knee values.  If false, calculate the white noise
+        value by taking the median of the PSD between 5 Hz and 100 Hz, and will
+        set n=f_knee=None, which is much faster.
+    max_phase_span : float
+        If set, will cut channels based on the phase span when calculating the
+        median.
 
     Returns
     -------
@@ -466,29 +586,46 @@ def analyze_noise_psd(S, band, dat_file):
                 }
             }
     """
+    if chans is None:
+        chans = S.which_on(band)
+
     outdict = {}
     datafile = dat_file
     nperseg = 2**16
     detrend = 'constant'
-    timestamp, phase, mask = S.read_stream_data(datafile)
-    phase *= S.pA_per_phi0/(2.*np.pi)
-    num_averages = S.get_downsample_factor()
-    fs = S.get_flux_ramp_freq()*1.0E3/num_averages
+    times, phase, mask = S.read_stream_data(datafile)
+    f, Pxx = get_psd(S, times, phase, detrend=detrend, nperseg=nperseg)
+    wl_mask = (f > 5) & (f < 50)
     wls = []
-    for chan in S.which_on(band):
+    cut_chans = []
+    for chan in chans:
         if chan < 0:
             continue
         ch_idx = mask[band, chan]
-        f, Pxx = signal.welch(
-            phase[ch_idx], nperseg=nperseg, fs=fs, detrend=detrend)
-        Pxx = np.sqrt(Pxx)
-        popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx)
-        wl, n, f_knee = popt
-        wls.append(wl)
+
+        phase_span = np.max(phase[ch_idx]) - np.min(phase[ch_idx])
+        if max_phase_span != None:
+            if phase_span > max_phase_span:
+                cut_chans.append(chan)
+                continue
+
+        if fit_curve:
+            popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx[ch_idx])
+            wl, n, f_knee = popt
+        else:
+            wl = np.nanmedian(Pxx[ch_idx][wl_mask])
+            n = None
+            f_knee = None
+
+        if f_knee != 0:
+            wls.append(wl)
+
         outdict[chan] = {}
         outdict[chan]['fknee'] = f_knee
         outdict[chan]['noise index'] = n
         outdict[chan]['white noise'] = wl
+
+    cprint(f"Channels {cut_chans} were cut due to high phase span.", False)
     median_noise = np.median(np.asarray(wls))
     return median_noise, outdict
 
@@ -553,10 +690,11 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     return False
 
 
+
 @set_action()
 def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
-                            frac_pp=None, lms_freq=None, make_plots=True,
-                            meas_time=None, fixed_drive=False):
+                            frac_pp=None, lms_freq=None, make_plots=False,
+                            lms_gain = None, meas_time=10, fixed_drive=False):
     """
     Finds the drive power and uc attenuator value that minimizes the median
     noise within a band.
@@ -574,7 +712,11 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
     lms_freq: float
         tracking frequency used for tracking_setup
     make_plots: bool
-        If true, will make median noise plots
+        If true, will make tracking plots
+    meas_time : float
+        Measurement time for noise PSD in seconds. Defaults to 10 sec.
+    fixed_drive: bool
+        If true, will not try to vary drive to search for global minimum.
 
     Returns
     -------
@@ -584,10 +726,6 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
         Optimized uc attenuator value
     cur_dr : int
         Optimized dr value
-    meas_time : float
-        Measurement time for noise PSD in seconds.
-    fixed_drive: bool
-        If true, will not try to vary drive to search for global minimum.
     """
     band_cfg = cfg.dev.bands[band]
     if tunefile is None:
@@ -598,19 +736,34 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
         frac_pp = band_cfg['frac_pp']
     if lms_freq is None:
         lms_freq = band_cfg['lms_freq_hz']
+    if lms_gain is None:
+        lms_gain = band_cfg['lms_gain']
 
     S.load_tune(tunefile)
+
     drive = dr_start
     attens = np.arange(30, -2, -2)
     checked_drives = []
     found_min = False
+
+    tracking_kwargs = {
+        'reset_rate_khz': 4, 'lms_freq_hz': lms_freq,
+        'fraction_full_scale': frac_pp,
+        'make_plot': True, 'save_plot': True, 'show_plot': False,
+        'channel': [], 'nsamp': 2**18,
+        'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
+        'lms_gain': lms_gain, 'return_data': True
+    }
 
     # Looping over drive powers
     while not found_min:
         cprint(f"Setting Drive to {drive}")
         ctime = S.get_timestamp()
         S.set_att_uc(band, 30)
-        S.relock(band=band, drive=drive)
+        S.relock(band=band, tone_power=drive)
+
+        print("Running setup notches")
+        S.setup_notches(band, tone_power=drive, new_master_assignment=False)
 
         medians = []
         initial_median = None
@@ -619,11 +772,22 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
             cprint(f'Setting UC atten to: {atten}')
             S.set_att_uc(band, atten)
 
-            kwargs = {}
-            if meas_time is not None:
-                kwargs['meas_time'] = meas_time
+            band_cfg = cfg.dev.bands[band]
 
-            m = get_median_noise(S, cfg, band, **kwargs)
+            print("Serial Gradient Descent")
+            S.run_serial_gradient_descent(band)
+            print("Serial Eta Scan")
+            S.run_serial_eta_scan(band)
+            print("Tracking setup")
+
+            if make_plots:
+                tracking_kwargs['channel'] = S.which_on(band)
+
+            f, _, _ = S.tracking_setup(band, **tracking_kwargs)
+
+            datafile = S.take_stream_data(meas_time)
+            m, _ = analyze_noise_psd(S, band, datafile, fit_curve=False)
+
             medians.append(m)
             # Checks to make sure noise doesn't go too far over original median
             if initial_median is None:
@@ -632,18 +796,21 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                 cprint(f"Median noise is now 4 times what it was at atten=30, "
                        f"so exiting loop at uc_atten = {atten}", style=False)
                 break
+        outfile = os.path.join(f'{S.output_dir}',
+                               f'{S.get_timestamp()}_b{band}_noise_vs_input_power.txt')
+        np.savetxt(outfile, np.array([attens[:len(medians)], medians]).T)
 
-        if make_plots:
-            plt.figure()
-            plt.plot(attens[:len(medians)], medians)
-            plt.title(f'Drive = {drive} in Band {band}', fontsize=18)
-            plt.xlabel('UC Attenuator Value', fontsize=14)
-            plt.ylabel('Median Channel Noise [pA/rtHz]', fontsize=14)
-            plotname = os.path.join(S.plot_dir,
-                                    f'{ctime}_noise_vs_uc_atten_b{band}.png')
-            plt.savefig(plotname)
-            S.pub.register_file(plotname, 'noise_vs_atten', plot=True)
-            plt.close()
+        # Summary plots
+        plt.figure()
+        plt.plot(attens[:len(medians)], medians)
+        plt.title(f'Drive = {drive} in Band {band}', fontsize=18)
+        plt.xlabel('UC Attenuator Value', fontsize=14)
+        plt.ylabel('Median Channel Noise [pA/rtHz]', fontsize=14)
+        plotname = os.path.join(S.plot_dir,
+                                f'{ctime}_noise_vs_uc_atten_b{band}.png')
+        plt.savefig(plotname)
+        S.pub.register_file(plotname, 'noise_vs_atten', plot=True)
+        plt.close()
 
         medians = np.asarray(medians)
         min_arg = np.argmin(medians)
@@ -657,7 +824,11 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                 cprint("Minimum is on the boundary! May not be a global minimum!",
                        style=TermColors.WARNING)
         else:
-            drive += 1 if min_arg == 0 else -1
+            if min_arg == 0:  # Atten = 30
+                drive -= 1
+            else:             # atten = 0
+                drive += 1
+
             if drive in checked_drives:
                 cprint(f"Drive {drive} has already been checked!! "
                        f"Exiting loop unsuccessfully", False)
@@ -667,13 +838,162 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
     if found_min:
         cprint(f'found optimum dr = {drive}, and optimum uc_att = {min_atten}',
                style=True)
+        cprint(f'optimal noise: {min_median}', True)
         S.set_att_uc(band, min_atten)
         S.load_tune(tunefile)
-        S.relock(band=band, drive=drive)
+        S.setup_notches(band, tone_power=drive, new_master_assignment=False)
+        S.relock(band=band, tone_power=drive)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
+        cfg.dev.update_experiment({'tunefile': S.tune_file})
         cfg.dev.update_band(band, {
-            'uc_att': min_atten, 'drive': drive
+            'uc_att': min_atten, 'drive': drive, 'optimized_drive': True
         })
         return min_median, min_atten, drive
+
+
+@set_action()
+def optimize_uc_atten(S, cfg, band, drive=None, tunefile=None,
+                      frac_pp=None, lms_freq=None, make_plots=False,
+                      lms_gain=None, meas_time=10,
+                      fit_curve=True, run_setup_notches=False):
+    """
+    Finds the drive power and uc attenuator value that minimizes the median
+    noise within a band.
+
+    Parameters
+    ----------
+    drive: int
+        Drive to run uc_atten optimization. If None will pull from device cfg.
+    band: int
+        band to optimize noise on
+    tunefile: str
+        filepath to the tunefile for the band to be optimized
+    frac_pp: float
+        fraction full scale of the FR DAC used for tracking_setup
+    lms_freq: float
+        tracking frequency used for tracking_setup
+    make_plots: bool
+        If true, will make tracking plots
+    meas_time : float
+        Measurement time for noise PSD in seconds. Defaults to 10 sec.
+    fit_curve: bool
+        If True, will fit
+    run_setup_notches : bool
+        If True, will run setup notches after each uc_atten step.
+
+    Returns
+    -------
+    min_med_noise : float
+        The median noise at the optimized drive power
+    atten : int
+        Optimized uc attenuator value
+    """
+    band_cfg = cfg.dev.bands[band]
+    if tunefile is None:
+        tunefile = cfg.dev.exp['tunefile']
+    if drive is None:
+        drive = band_cfg['drive']
+    if frac_pp is None:
+        frac_pp = band_cfg['frac_pp']
+    if lms_freq is None:
+        lms_freq = band_cfg['lms_freq_hz']
+    if lms_gain is None:
+        lms_gain = band_cfg['lms_gain']
+
+    tracking_kwargs = {
+        'reset_rate_khz': 4, 'lms_freq_hz': lms_freq,
+        'fraction_full_scale': frac_pp,
+        'make_plot': True, 'save_plot': True, 'show_plot': False,
+        'channel': [], 'nsamp': 2**18,
+        'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
+        'lms_gain': lms_gain, 'return_data': True
+    }
+
+    S.load_tune(tunefile)
+
+    attens = np.arange(30, -2, -2)
+
+    medians = np.full_like(attens, np.nan)
+    initial_median = None
+
+    S.set_att_uc(band, 30)
+    S.relock(band=band, tone_power=drive)
+    S.setup_notches(band, tone_power=drive, new_master_assignment=False)
+
+    for i, atten in enumerate(attens):
+        cprint(f'Setting UC atten to: {atten}')
+        S.set_att_uc(band, atten)
+
+        if run_setup_notches:
+            S.setup_notches(band, tone_power=drive,
+                            new_master_assignment=False)
+
+        print("Serial Gradient Descent")
+        S.run_serial_gradient_descent(band)
+        print("Serial Eta Scan")
+        S.run_serial_eta_scan(band)
+        print("Tracking setup")
+
+        if make_plots:
+            tracking_kwargs['channel'] = S.which_on(band)
+
+        f, _, _ = S.tracking_setup(band, **tracking_kwargs)
+
+        datafile = S.take_stream_data(meas_time)
+        m, _ = analyze_noise_psd(S, band, datafile, fit_curve=fit_curve)
+
+        medians[i] = m
+
+        cprint(f"uc atten: {atten}\tmedian:{m}")
+
+        # Checks to make sure noise doesn't go too far over original median
+        if initial_median is None:
+            initial_median = m
+        if m > 4 * initial_median:
+            cprint(f"Median noise is now 4 times what it was at atten=30, "
+                   f"so exiting loop at uc_atten = {atten}", style=False)
+            break
+
+    min_idx = np.nanargmin(medians)
+    uc_atten_opt = attens[min_idx]
+    min_median = medians[min_idx]
+
+    cprint(f"Optimal UC atten: {uc_atten_opt}", True)
+    cprint(f'optimal noise: {min_median}', True)
+    if not 2 < min_idx < len(attens) - 2:
+        cprint("Optimal UC atten is close to the boundary. Consider doing a "
+               "full drive optimization with a VNA ot find the drive and "
+               "synth_scale combination that gives you the right amount of "
+               "input power", style=False)
+
+    # Summary files and plots
+    fname = make_filename(S, f'b{band}_noise_vs_input_power.txt')
+    np.savetxt(fname, np.array([attens, medians]).T)
+
+    plt.figure()
+    plt.plot(attens, medians)
+    plt.title(f'Drive = {drive} in Band {band}', fontsize=18)
+    plt.xlabel('UC Attenuator Value', fontsize=14)
+    plt.ylabel('Median Channel Noise [pA/rtHz]', fontsize=14)
+
+    fname = make_filename(S, 'noise_vs_uc_atten_b{band}.png', plot=True)
+    plt.savefig(fname)
+    S.pub.register_file(fname, 'noise_vs_atten', plot=True)
+    plt.close()
+
+    cprint("Rerunning setup-notches with optimal uc_atten")
+    S.set_att_uc(band, uc_atten_opt)
+    S.load_tune(tunefile)
+    S.setup_notches(band, tone_power=drive, new_master_assignment=False)
+    S.relock(band=band, tone_power=drive)
+    S.run_serial_gradient_descent(band)
+    S.run_serial_eta_scan(band)
+
+    cfg.dev.update_experiment({'tunefile': S.tune_file})
+    cfg.dev.update_band(band, {
+        'uc_att': uc_atten_opt, 'optimized_uc_atten': True
+    })
+    return min_median, uc_atten_opt
+
