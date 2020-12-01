@@ -72,13 +72,14 @@ def full_optimize(S, cfg, args):
     optimize_dict = {}
     # Start band-specific operations
     for band in active_bands:
-        timer.start_section(f"Relock (b{band})")
-        cprint(f"Relock (b{band})", style=TermColors.HEADER)
+        timer.start_section(f"Initial Band Setup (b{band})")
+        cprint(f"Band Setup (b{band})", style=TermColors.HEADER)
 
         out = {}
         band_cfg = cfg.dev.bands[band]
         if relock_flag:
             S.relock(band)
+
         for _ in range(2):
             S.run_serial_gradient_descent(band)
             S.run_serial_eta_scan(band)
@@ -117,24 +118,25 @@ def full_optimize(S, cfg, args):
             cfg.dev.dump(cfg_path, clobber=True)
 
         ##############################################################
-        # Input power optimization
+        # UC Atten Optimization
         ##############################################################
-        timer.start_section(f"Optimize Input Power (b{band})")
-        cprint(f"Optimize Input Power (b{band})", style=TermColors.HEADER)
+        timer.start_section(f"Optimize UC Attenr (b{band})")
+        cprint(f"Optimize UC Atten (b{band})", style=TermColors.HEADER)
 
-        if band_cfg.get('optimized_drive', False):
-            cprint(f"Drive and atten for band {band} has already been "
-                   "optimized", True)
+        if band_cfg.get('optimized_uc_atten', False):
+            cprint(f"uc atten for band {band} has already been optimized",
+                   True)
             out.update({
-                'uc_att': band_cfg['uc_att'], 'drive': band_cfg['drive'],
+                'uc_att': band_cfg['uc_att']
             })
         else:
-            noise, uc_atten, drive = op.optimize_power_per_band(
-                S, cfg, band, meas_time=1
+            noise, uc_atten = op.optimize_uc_atten(
+                S, cfg, band, meas_time=10,
+                run_setup_notches=args.run_setup_notches
             )
             cfg.dev.dump(cfg_path, clobber=True)
             out.update({
-                'uc_att': uc_atten, 'drive': drive
+                'uc_att': uc_atten
             })
 
         ##############################################################
@@ -163,13 +165,22 @@ def full_optimize(S, cfg, args):
         cprint(f"Rerunning tracking setup for band {band}",
                style=TermColors.HEADER)
 
-        S.tracking_setup(
+        f, df, _ = S.tracking_setup(
             band, reset_rate_khz=band_cfg['flux_ramp_rate_khz'],
             make_plot=True, save_plot=True, show_plot=False, channel=[],
             nsamp=2**18, feedback_start_frac=0.02, feedback_end_frac=0.94,
-            return_data=False, lms_freq_hz=out['lms_freq_hz'],
-            fraction_full_scale=out['frac_pp'], lms_gain=out['lms_gain']
+            return_data=True, lms_freq_hz=out['lms_freq_hz'],
+            fraction_full_scale=out['frac_pp'], lms_gain=out['lms_gain'],
         )
+        fspan = np.max(f, 0) - np.min(f, 0)
+        fstd = np.std(df, 0)
+        ctime = S.get_timestamp()
+        fname = os.path.join(
+            S.output_dir,
+            f'{ctime}_final_optimized_tracking_b{band}.npz'
+        )
+        np.savez(fname, fspan=fspan, fstd=fstd)
+        S.pub.register_file(fname, 'tracking', format='npz')
 
     ##############################################################
     # Optimized Noise Calculation
@@ -180,10 +191,11 @@ def full_optimize(S, cfg, args):
     datafile = S.take_stream_data(20, register_file=False)
 
     cols, rows = len(active_bands) % 4, 1 + len(active_bands) // 4
-    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 5*rows), squeeze=False)
+    fig, axes = plt.subplots(rows, cols, figsize=(5*cols, 5*rows),
+                             squeeze=False)
     for i, band in enumerate(active_bands):
         median_noise, noise_dict = op.analyze_noise_psd(S, band, datafile,
-                                                        fit_curve=False)
+                                                        fit_curve=True)
         wls = np.array([chan['white noise'] for chan in noise_dict.values()])
         optimize_dict[band].update({
             'wls': wls,
@@ -239,7 +251,7 @@ def full_optimize(S, cfg, args):
     for b in active_bands:
         out = optimize_dict[b]
         summary += "-"*60 + "\n" + f"Band {b} Summary\n" + "-"*60 + "\n"
-        for key in ['lms_freq_hz', 'frac_pp', 'drive', 'uc_att',
+        for key in ['lms_freq_hz', 'frac_pp', 'uc_att',
                     'lms_gain', 'median_noise', 'detector_chans']:
             summary += f'{key:20s}:\t{out[key]}\n'
     cprint(summary, True)
@@ -258,7 +270,7 @@ def clear_cfg(cfg, dump=True):
     for band in range(8):
         cfg.dev.update_band(band, {
             'optimized_tracking': False,
-            'optimized_drive': False,
+            'optimized_uc_atten': False,
             'optimized_lms_gain': False,
             'active_subbands': []
         })
@@ -274,6 +286,8 @@ def make_parser(parser=None):
 
     parser.add_argument('--all', '-a', action='store_true',
                         help="If set will run all possible optimizations.")
+    parser.add_argument('--run-setup-notches', '--sn', action='store_true',
+                        help='If set will run setup notches for each uc step')
     parser.add_argument('--bands', '-b', default=None, nargs='+', type=int,
                         help="Bands to optimize")
     parser.add_argument('--BW-target', '--bw', type=float, default=500,

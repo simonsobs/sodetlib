@@ -5,6 +5,7 @@ scripts.
 import numpy as np
 from scipy import signal
 import time
+import os
 
 
 class TermColors:
@@ -24,6 +25,21 @@ def cprint(msg, style=TermColors.OKBLUE):
     elif style is False:
         style = TermColors.FAIL
     print(f"{style}{msg}{TermColors.ENDC}")
+
+
+def make_filename(S, name, ctime=None, plot=False):
+    """
+    Creates a timestamped filename in the pysmurf outputs or plot directory.
+    """
+    if ctime is None:
+        ctime = S.get_timestamp()
+
+    if plot:
+        ddir = S.plot_dir
+    else:
+        ddir = S.output_dir
+
+    return os.path.join(ddir, f'{ctime}_{name}')
 
 
 def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
