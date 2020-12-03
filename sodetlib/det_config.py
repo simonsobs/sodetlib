@@ -4,7 +4,7 @@ import yaml
 from collections import OrderedDict
 import sys
 import time
-
+import shutil
 
 class YamlReps:
     class FlowSeq(list):
@@ -251,6 +251,8 @@ class DetConfig:
         self.dev: DeviceConfig = None
         self.dump = None  # Whether config files should be dumped
 
+        self.S = None
+
         self._parser: argparse.ArgumentParser = None
         self._argparse_args = None
 
@@ -341,12 +343,14 @@ class DetConfig:
         else:
             self.pysmurf_file = pysmurf_file
 
-    def dump_configs(self, output_dir, clobber=False):
+    def dump_configs(self, output_dir, clobber=False, dump_rogue_tree=False):
         """
         Dumps any config information to an output directory
 
         Args:
             output_dir (path): Directory location to put config files.
+            dump_rogue_truee : bool
+                If True, will dump the pysmurf rogue tree to the configs dir.
 
         Returns:
             run_out (path): path to output run file
@@ -356,26 +360,61 @@ class DetConfig:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        run_info = YamlReps.Odict([
-            ('sys_file', self.sys_file),
-            ('dev_file', self.dev_file),
-            ('pysmurf_file', self.pysmurf_file),
-            ('slot', self.slot),
-            ('cwd', os.getcwd()),
-            ('argv',  ' '.join(sys.argv)),
-            ('time', int(time.time())),
-        ])
+        # Manually set publisher action because set_action decorator won't
+        # work without S being the first function argument.
+        if self.S:
+            start_action = self.S.pub._action
+            start_action_ts = self.S.pub._action_ts
 
-        if self._argparse_args is not None:
-            run_info['cfg_args'] = self._argparse_args
-        run_out = os.path.abspath(os.path.join(output_dir, 'run_info.yml'))
-        with open(run_out, 'w') as f:
-            yaml.dump(run_info, f)
-        sys_out = os.path.abspath(os.path.join(output_dir, 'sys_config.yml'))
-        with open(sys_out, 'w') as f:
-            yaml.dump(self.sys, f)
-        dev_out = os.path.abspath(os.path.join(output_dir, 'dev_cfg.yml'))
-        self.dev.dump(dev_out, clobber=clobber)
+        try:
+            if self.S:
+                self.S.pub._action = "config"
+                self.S.pub._action_ts = self.S.get_timestamp()
+
+            # Dump run info
+            run_info = YamlReps.Odict([
+                ('sys_file', self.sys_file),
+                ('dev_file', self.dev_file),
+                ('pysmurf_file', self.pysmurf_file),
+                ('slot', self.slot),
+                ('cwd', os.getcwd()),
+                ('argv',  ' '.join(sys.argv)),
+                ('time', int(time.time())),
+            ])
+            if self._argparse_args is not None:
+                run_info['cfg_args'] = self._argparse_args
+            run_out = os.path.abspath(os.path.join(output_dir, 'run_info.yml'))
+            with open(run_out, 'w') as f:
+                yaml.dump(run_info, f)
+            if self.S:
+                self.S.pub.register_file(run_out, 'config', format='yaml')
+
+            # Dump sys file
+            sys_out = os.path.abspath(os.path.join(output_dir,
+                                                   'sys_config.yml'))
+            with open(sys_out, 'w') as f:
+                yaml.dump(self.sys, f)
+            if self.S:
+                self.S.pub.register_file(sys_out, 'config', format='yaml')
+
+            # Dump device file
+            dev_out = os.path.abspath(os.path.join(output_dir, 'dev_cfg.yml'))
+            self.dev.dump(dev_out, clobber=clobber)
+            if self.S:
+                self.S.pub.register_file(dev_out, 'config', format='yaml')
+
+            # Copy pysmurf file
+            pysmurf_out = os.path.join(output_dir, 'pysmurf_cfg.yml')
+            pysmurf_out = os.path.abspath(pysmurf_out)
+            shutil.copy(self.pysmurf_file, pysmurf_out)
+            if self.S:
+                self.S.pub.register_file(pysmurf_out, 'config', format='yaml')
+        finally:
+            # Restore publisher action so it doesn't mess up ongoing actions
+            if self.S:
+                self.S.pub._action = start_action
+                self.S.pub._action_ts = start_action_ts
+
         return run_out, sys_out, dev_out
 
     def get_smurf_control(self, offline=False, epics_root=None, smurfpub_id=None,
@@ -425,12 +464,14 @@ class DetConfig:
             S = pysmurf.client.SmurfControl(
                 epics_root=epics_root, cfg_file=self.pysmurf_file, setup=setup,
                 make_logfile=make_logfile, **pysmurf_kwargs)
+        self.S = S
 
         # Dump config outputs
         if dump_configs:
             if config_dir is None:
                 if not offline:
-                    config_dir = os.path.join(S.base_dir, S.date, S.name, 'config', S.get_timestamp())
+                    config_dir = os.path.join(S.base_dir, S.date, S.name,
+                                              'config', S.get_timestamp())
 
                 else:
                     config_dir = os.path.join('config', S.get_timestamp())
