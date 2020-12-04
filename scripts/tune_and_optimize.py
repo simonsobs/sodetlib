@@ -4,7 +4,7 @@ import sodetlib.smurf_funcs.optimize_params as op
 import sodetlib.smurf_funcs.smurf_ops as so
 from sodetlib.smurf_funcs.health_check import health_check
 from sodetlib.det_config import DetConfig
-from sodetlib.util import cprint, TermColors, SectionTimer
+from sodetlib.util import cprint, TermColors, SectionTimer, make_filename
 
 import time
 import os
@@ -78,11 +78,12 @@ def full_optimize(S, cfg, args):
         out = {}
         band_cfg = cfg.dev.bands[band]
         if relock_flag:
-            S.relock(band)
+            S.setup_notches(band)
 
         for _ in range(2):
             S.run_serial_gradient_descent(band)
             S.run_serial_eta_scan(band)
+
         # Running tracking setup with existing dev_config args
         S.tracking_setup(
             band, reset_rate_khz=4, make_plot=True, save_plot=True,
@@ -242,7 +243,10 @@ def full_optimize(S, cfg, args):
         cfg.dev.update_band(band, {'detectors': det_chans})
         cfg.dev.dump(cfg_path, clobber=True)
 
-    pkl.dump(optimize_dict, open('/sodetlib/tests/demo_script.pkl', 'wb'))
+    out = make_filename(S, 'full_optimize.pkl')
+    with open(out, 'wb') as f:
+        pkl.dump(optimize_dict, f)
+    S.pub.register_file(out, 'full_optimize', format='pkl')
 
     ##############################################################
     # Summary
