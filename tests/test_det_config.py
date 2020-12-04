@@ -21,7 +21,7 @@ def test_dev_cfg(cfg):
 
     # Testing reloading written config file
     cfg = DetConfig(sys_file=sys, dev_file=dev)
-    args = cfg.parse_args(args=['-N', '2'])
+    cfg.parse_args(args=['-N', '2'])
     assert (cfg.dev.bands[1]['dc_att'] == 3)
 
 
@@ -33,6 +33,12 @@ def test_failed_update(cfg):
 
 def test_offline_pysmurf_instance(cfg):
     cfg.parse_args(args=[])
-    S = cfg.get_smurf_control(offline=True, dump_configs=True)
+    cfg.get_smurf_control(offline=True, dump_configs=True)
 
 
+def test_online_dump_confg():
+    cfg = DetConfig()
+    cfg.load_config_files(slot=2)
+    cfg.get_smurf_control(dump_configs=False)
+    config_dir = 'config_dump'
+    cfg.dump_configs(config_dir, clobber=True, dump_rogue_tree=True)
