@@ -357,6 +357,7 @@ class DetConfig:
             sys_out (path): path to output sys file
             dev_out (path): path to output device file.
         """
+        print(f"Dumping sodetlib configs to {output_dir}")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -367,6 +368,7 @@ class DetConfig:
             start_action_ts = self.S.pub._action_ts
 
         try:
+            outfiles = []
             if self.S:
                 self.S.pub._action = "config"
                 self.S.pub._action_ts = self.S.get_timestamp()
@@ -384,6 +386,7 @@ class DetConfig:
             if self._argparse_args is not None:
                 run_info['cfg_args'] = self._argparse_args
             run_out = os.path.abspath(os.path.join(output_dir, 'run_info.yml'))
+            outfiles.append(run_out)
             with open(run_out, 'w') as f:
                 yaml.dump(run_info, f)
             if self.S:
@@ -392,6 +395,7 @@ class DetConfig:
             # Dump sys file
             sys_out = os.path.abspath(os.path.join(output_dir,
                                                    'sys_config.yml'))
+            outfiles.append(sys_out)
             with open(sys_out, 'w') as f:
                 yaml.dump(self.sys, f)
             if self.S:
@@ -399,6 +403,7 @@ class DetConfig:
 
             # Dump device file
             dev_out = os.path.abspath(os.path.join(output_dir, 'dev_cfg.yml'))
+            outfiles.append(dev_out)
             self.dev.dump(dev_out, clobber=clobber)
             if self.S:
                 self.S.pub.register_file(dev_out, 'config', format='yaml')
@@ -406,16 +411,24 @@ class DetConfig:
             # Copy pysmurf file
             pysmurf_out = os.path.join(output_dir, 'pysmurf_cfg.yml')
             pysmurf_out = os.path.abspath(pysmurf_out)
+            outfiles.append(pysmurf_out)
             shutil.copy(self.pysmurf_file, pysmurf_out)
             if self.S:
                 self.S.pub.register_file(pysmurf_out, 'config', format='yaml')
+
+            if dump_rogue_tree:
+                print("Dumping state")
+                state_file = os.path.abspath(os.path.join(output_dir,
+                                                          'rogue_state.yaml'))
+                outfiles.append(state_file)
+                self.S.save_state(state_file)
         finally:
             # Restore publisher action so it doesn't mess up ongoing actions
             if self.S:
                 self.S.pub._action = start_action
                 self.S.pub._action_ts = start_action_ts
 
-        return run_out, sys_out, dev_out
+        return outfiles
 
     def get_smurf_control(self, offline=False, epics_root=None, smurfpub_id=None,
                               make_logfile=False, setup=False, dump_configs=None,
@@ -478,6 +491,4 @@ class DetConfig:
                     print("Warning! Being run in offline mode with no config "
                           f"directory specified! Writing to {config_dir}")
             self.dump_configs(config_dir)
-
         return S
-
