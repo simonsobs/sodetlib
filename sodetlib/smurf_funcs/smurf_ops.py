@@ -1,7 +1,8 @@
 """
 Module for general smurf operations.
 """
-from sodetlib.util import cprint, TermColors
+from sodetlib.util import cprint, TermColors, make_filename, \
+                          get_tracking_kwargs
 import numpy as np
 import os
 import time
@@ -314,4 +315,231 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
 
     return num_resonators_on, tune_file
 
+def res_shift(S, bands):
+    """
+    Calculates the resonance frequency from serial gradient descent before and 
+    after setup_notches is run. Typicaly paired w/ uc_att or flux steps.
 
+    Parameters
+    ----------
+    S: pysmurf.client.SmurfControl
+        Pysmurf control instance
+    bands : List[int]
+        bands to perform operation on.
+    """
+    out_dict = {}
+    for band in bands:
+        for band in bands:
+            out_dict[band] = {}
+            #For all other steps run serial algs after changing flux bias but before 
+            #running setup notches to see how much eta and freq shift
+            print(f'Running serial algorithms on band {band}')
+            S.run_serial_gradient_descent(band)
+            S.run_serial_eta_scan(band)
+            out_dict[band]['fs_sg_b'] = S.channel_to_freq(band)
+            out_dict[band]['eta_mags_sg_b'] = S.get_eta_mag_array(band)
+            out_dict[band]['eta_ps_sg_b'] = S.get_eta_phase_array(band)
+            #Now run setup notches and get the new freqs and etas
+            print(f'Running setup_notches on band {band}')
+            S.setup_notches(band,new_master_assignment = False)
+            out_dict[band]['fs_sn'] = S.channel_to_freq(band)
+            out_dict[band]['eta_mags_sn'] = S.get_eta_mag_array(band)
+            out_dict[band]['eta_ps_sn'] = S.get_eta_phase_array(band)
+            #Run serial algs after and get the new freqs and etas
+            print(f'Running serial algorithms on band {band}')
+            S.run_serial_gradient_descent(band)
+            S.run_serial_eta_scan(band)
+            out_dict[band]['fs_sg_a'] = S.channel_to_freq(band)
+            out_dict[band]['eta_mags_sg_a'] = S.get_eta_mag_array(band)
+            out_dict[band]['eta_ps_sg_a'] = S.get_eta_phase_array(band)
+            out_dict[band]['channels'] = S.which_on(band)
+        #For each flux step write out a tunefile that contains both band freq_resp info
+        #this can be used for fitting.
+        out_dict['tunefile'] = S.tune_file
+        return out_dict
+
+def res_shift_vs_uc_att(S, uc_atts, bands, tunefile):
+    """
+    Calculates the resonance frequency from serial gradient descent before and 
+    after setup_notches is run over a range of uc attenuator steps.
+
+    Parameters
+    ----------
+    S: pysmurf.client.SmurfControl
+        Pysmurf control instance
+    bands : List[int]
+        bands to perform operation on.
+    uc_atts : list[int]
+        uc attenuator values to step over.
+    tunefile : str
+        tunefile to use for retuning at each step.
+    """
+    #Initialize output dictionary
+    out_dict = {}
+    initial_uc_att = {}
+    #Step over uc attenuator values
+    for band in bands:
+        initial_uc_att[band] = S.get_att_uc(band)
+        S.set_att_uc(band,uc_atts[0])
+        #For the first step load the tunefile and relock then run serial
+        #algs to get freq and eta before setup_notches
+        S.load_tune(tunefile)
+        S.relock(band)
+    for uc_att in uc_atts:
+        #Loop over bands since serial algs and setup notches are per band operations
+        for band in bands:
+            print(f'Setting uc att in band {band} to {uc_att}')
+            S.set_att_uc(band,uc_att)
+        out_dict[uc_att] = res_shift(S, bands)
+    for band in bands:
+        S.set_att_uc(band,initial_uc_att[band])
+    return out_dict
+
+def res_shift_vs_flux_bias(S, frac_pp_steps, bands, tunefile):
+    """
+    Calculates the resonance frequency from serial gradient descent before and 
+    after setup_notches is run over a range of squid flux bias steps.
+
+    Parameters
+    ----------
+    S: pysmurf.client.SmurfControl
+        Pysmurf control instance
+    bands : List[int]
+        bands to perform operation on.
+    frac_pp_steps : list[float]
+        list of flux bias steps to take in units of fraction full scale
+        of the flux ramp dac.
+    tunefile : str
+        tunefile to use for retuning at each step.
+    """
+    S.set_mode_dc()
+    #Initialize output dictionary
+    out_dict = {}
+    #Step over dc flux bias values
+    S.set_fixed_flux_ramp_bias(frac_pp_steps[0],do_config=False)
+    for band in bands:
+        #For the first step load the tunefile and relock then run serial
+        #algs to get freq and eta before setup_notches
+        S.load_tune(tunefile)
+        S.relock(band)
+    for frac_pp in frac_pp_steps:
+        print(f'Setting flux bias to {frac_pp} fraction full scale')
+        S.set_fixed_flux_ramp_bias(frac_pp,do_config=False)
+        out_dict[frac_pp] = res_shift(S, bands)
+    #Set flux bias back to 0
+    S.set_fixed_flux_ramp_bias(0,do_config = False)
+    return out_dict
+
+
+@set_action()
+def tracking_quality(S, cfg, band, tracking_kwargs=None,
+                     make_channel_plots=False, r_thresh=0.9, show_plots=False):
+    """
+    Runs tracking setup and returns how good at tracking each channel is
+
+    Args
+    -----
+        S : SmurfControl
+            Pysmurf control object
+        cfg : DetConfig
+            Detconfig object
+        band : int
+            band number
+        tracking_kwargs : dict
+            Dictionary of additional custom args to pass to tracking setup
+        r_thresh : float
+            Threshold used to set color on plots
+    Returns
+    --------
+        rs : np.ndarray
+            Array of size (512) containing values between 0 and 1 which tells
+            you how good a channel is at tracking. If close to 1, the channel
+            is tracking well and if close to 0 the channel is tracking poorly
+        f : np.ndarray
+            f as returned from tracking setup
+        df : np.ndarray
+            df as returned from tracking setup
+        sync : np.ndarray
+            sync as returned from tracking setup
+    """
+    band_cfg = cfg.dev.bands[band]
+    tk = get_tracking_kwargs(S, cfg, band, kwargs=tracking_kwargs)
+    tk['nsamp'] = 2**20  # moreee data
+    tk['show_plot'] = False  # Override
+
+    f, df, sync = S.tracking_setup(band, **tk)
+    si = S.make_sync_flag(sync)
+    nphi0 = int(round(band_cfg['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+
+    active_chans = np.zeros_like(f[0], dtype=bool)
+    active_chans[S.which_on(band)] = True
+
+    # Average cycles to get single period estimate
+    seg_size = (si[1] - si[0]) // nphi0
+    fstack = np.zeros((seg_size, len(f[0])))
+    nstacks = (len(si)-1) * nphi0
+    for i in range(len(si) - 1):
+        s = si[i]
+        for j in range(nphi0):
+            a = s + seg_size * j
+            fstack += f[a:a + seg_size, :]
+    fstack /= nstacks
+
+    # calculates quality of estimate wrt real data
+    y_real = f[si[0]:si[-1], :]
+    # Averaged cycle repeated nstack times
+    y_est = np.vstack([fstack for _ in range(nstacks)])
+    sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
+    ssres = np.sum((y_real - y_est)**2, axis=0)
+
+    r = 1 - ssres/sstot
+    # Probably means it's a bugged debug channels.
+    r[np.isnan(r) & active_chans] = 1
+
+    if show_plots:
+        plt.ion()
+    else:
+        plt.ioff()
+
+    fname = make_filename(S, f'tracking_quality_b{band}.png', plot=True)
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('white')
+    ax.hist(r[active_chans], bins=30)
+    ax.axvline(r_thresh, linestyle=':', alpha=0.8)
+    text_props = {
+        'transform': ax.transAxes, 'fontsize': 11, 'verticalalignment': 'top',
+        'bbox': {'facecolor': 'white'}
+    }
+    props = {'facecolor': 'white'}
+    num_good = np.sum(r > r_thresh)
+    num_active = np.sum(active_chans)
+    s = f"{num_good}/{num_active} Channels above r={r_thresh}"
+    ax.text(0.05, 0.95, s, **text_props)
+    ax.set(xlabel="Tracking Quality", ylabel="Num Channels",
+           title=f"Band {band} Tracking Quality")
+    plt.savefig(fname)
+    S.pub.register_file(fname, 'tracking_goodness', plot=True)
+    if not show_plots:
+        plt.close()
+
+    if make_channel_plots:
+        print("Making channel plots....")
+        nramps = 2
+        xs = np.arange(len(f))
+        m = (si[1] - 20 < xs) & (xs < si[1 + nramps] + 20)
+        for chan in S.which_on(band):
+            fig, ax = plt.subplots()
+            fig.patch.set_facecolor('white')
+            c = 'C1' if r[chan] > 0.85 else 'black'
+            ax.plot(xs[m], f[m, chan], color=c)
+            props = {'facecolor': 'white'}
+            ax.text(0.05, 0.95, f"r={r[chan]:.3f}", transform=ax.transAxes,
+                    fontsize=15, verticalalignment="top", bbox=props)
+            ax.set_title(f"Band {band} Channel {chan}")
+            fname = make_filename(S, f"tracking_b{band}_c{chan}.png",
+                                  plot=True)
+            fig.savefig(fname)
+            if not show_plots:
+                plt.close()
+
+    return r, f, df, sync
