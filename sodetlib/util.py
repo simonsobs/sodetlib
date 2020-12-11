@@ -42,6 +42,23 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
+def get_tracking_kwargs(S, cfg, band, kwargs=None):
+    band_cfg = cfg.dev.bands[band]
+    tk = {
+        'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
+        'lms_freq_hz': band_cfg['lms_freq_hz'],
+        'lms_gain': band_cfg['lms_gain'],
+        'fraction_full_scale': band_cfg['frac_pp'],
+        'make_plot': True, 'show_plot': True, 'channel': [],
+        'nsamp': 2**18, 'return_data': True,
+        'feedback_start_frac': 0.02,
+        'feedback_end_frac': 0.94,
+        'return_data': True}
+    if kwargs is not None:
+        tk.update(kwargs)
+    return tk
+
+
 def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
     """
     Returns PSD for all channels.
