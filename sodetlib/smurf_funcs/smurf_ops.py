@@ -341,7 +341,7 @@ def res_shift(S, bands):
             out_dict[band]['eta_ps_sg_b'] = S.get_eta_phase_array(band)
             #Now run setup notches and get the new freqs and etas
             print(f'Running setup_notches on band {band}')
-            S.setup_notches(band,new_master_assignment = False)
+            S.setup_notches(band,new_master_assignment = True)
             out_dict[band]['fs_sn'] = S.channel_to_freq(band)
             out_dict[band]['eta_mags_sn'] = S.get_eta_mag_array(band)
             out_dict[band]['eta_ps_sn'] = S.get_eta_phase_array(band)
@@ -469,7 +469,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
 
     f, df, sync = S.tracking_setup(band, **tk)
     si = S.make_sync_flag(sync)
-    nphi0 = int(round(band_cfg['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+    nphi0 = int(round(tk['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
 
     active_chans = np.zeros_like(f[0], dtype=bool)
     active_chans[S.which_on(band)] = True
@@ -530,7 +530,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
         for chan in S.which_on(band):
             fig, ax = plt.subplots()
             fig.patch.set_facecolor('white')
-            c = 'C1' if r[chan] > 0.85 else 'black'
+            c = 'C1' if r[chan] > r_thresh else 'black'
             ax.plot(xs[m], f[m, chan], color=c)
             props = {'facecolor': 'white'}
             ax.text(0.05, 0.95, f"r={r[chan]:.3f}", transform=ax.transAxes,
