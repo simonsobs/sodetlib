@@ -504,14 +504,14 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     fname = make_filename(S, f'tracking_quality_b{band}.png', plot=True)
     fig, ax = plt.subplots()
     fig.patch.set_facecolor('white')
-    ax.hist(r[active_chans], bins=30)
+    ax.hist(r[active_chans], bins=30, range=(0, 1))
     ax.axvline(r_thresh, linestyle=':', alpha=0.8)
     text_props = {
         'transform': ax.transAxes, 'fontsize': 11, 'verticalalignment': 'top',
         'bbox': {'facecolor': 'white'}
     }
     props = {'facecolor': 'white'}
-    num_good = np.sum(r > r_thresh)
+    num_good = np.sum(r[active_chans] > r_thresh)
     num_active = np.sum(active_chans)
     s = f"{num_good}/{num_active} Channels above r={r_thresh}"
     ax.text(0.05, 0.95, s, **text_props)
@@ -527,7 +527,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
         nramps = 2
         xs = np.arange(len(f))
         m = (si[1] - 20 < xs) & (xs < si[1 + nramps] + 20)
-        for chan in S.which_on(band):
+        for chan in active_chans:
             fig, ax = plt.subplots()
             fig.patch.set_facecolor('white')
             c = 'C1' if r[chan] > r_thresh else 'black'
