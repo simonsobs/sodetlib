@@ -1,0 +1,7 @@
+cold_load_temp,bias_line,band,data_path
+10,all,all,/data/smurf_data/20201110/1604992038/outputs/1605036585_iv_raw_data.npy
+12,all,all,/data/smurf_data/20201110/1604992038/outputs/1605040256_iv_raw_data.npy
+14,all,all,/data/smurf_data/20201110/1604992038/outputs/1605043915_iv_raw_data.npy
+16,all,all,/data/smurf_data/20201110/1604992038/outputs/1605047671_iv_raw_data.npy
+18,all,all,/data/smurf_data/20201110/1604992038/outputs/1605051608_iv_raw_data.npy
+20,all,all,/data/smurf_data/20201110/1604992038/outputs/1605055699_iv_raw_data.npy

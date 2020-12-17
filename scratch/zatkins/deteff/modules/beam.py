@@ -248,7 +248,7 @@ class Beam:
                 
                 assert beam_E.keys() == beam_H.keys(), 'beam_E keys != beam_H keys'
                 
-                beam_out[freq] = {k: beam_E[k] + beam_H[k] for k in beam_E}
+                beam_out[freq] = {k: (beam_E[k] + beam_H[k])/2 for k in beam_E}
             
             else:
                 if mag:

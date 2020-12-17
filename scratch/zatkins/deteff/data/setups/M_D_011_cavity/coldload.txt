@@ -1,0 +1,7 @@
+Path Type: Circle
+Center: 0,0,-177.80
+Diameter: 211.55
+
+Path Type: Circle
+Center: 0,0,-186.60
+Diameter: 211.55
