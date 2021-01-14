@@ -24,7 +24,7 @@ amplitudes_and_uc_atts=[(None,None)]
 lmsGain=6
 hbInBay0=False
 relock=False 
-bands=[0]
+bands=[7]
 bias=None
 # no longer averaging as much or waiting as long between points in newer fw which has df filter
 wait_time=0.125
@@ -33,7 +33,7 @@ Npts=10
 #bias_high=0.432
 bias_low=-0.28288303069563764
 bias_high=0.28288303069563764
-Nsteps=500
+Nsteps=100
 #Nsteps=25
 bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
 channels=None
