@@ -260,9 +260,23 @@ def hammer_func(args):
 
     # Sets fan levels on crate
     cprint("Setting fan levels", style=TermColors.HEADER)
-    cmd = f'clia minfanlevel {sys_config["max_fan_level"]}; '
-    cmd += f'clia setfanlevel all {sys_config["max_fan_level"]}'
-    print("Setting crate fans to full...")
+
+    min_fan_level = sys_config.get('min_fan_level')
+    init_fan_level = sys_config.get('init_fan_level')
+
+    if (min_fan_level is None) or (init_fan_level is None):
+        # Run with old way, using max_fan_level to set both minfanlevel and
+        # init
+        min_fan_level = sys_config['max_fan_level']
+        init_fan_level = sys_config['max_fan_level']
+        cprint("Using max_fan_level sys_config value to set minfanlevel and "
+               "initial level. If you've switched to a Comtel crate, please "
+               "change your sys_config to use the `min_fan_level` and "
+               "`init_fan_level` variables", style=TermColors.WARNING)
+
+    cmd = f'clia minfanlevel {min_fan_level}; '
+    cmd += f'clia setfanlevel all {init_fan_level}'
+    print(f"Setting crate fans to {init_fan_level}...")
     run_on_shelf_manager(cmd)
 
     if reboot:
