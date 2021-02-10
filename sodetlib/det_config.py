@@ -461,10 +461,13 @@ class DetConfig:
         """
         import pysmurf.client
 
+        slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
         if epics_root is None:
             epics_root = f'smurf_server_s{self.slot}'
         if smurfpub_id is None:
-            smurfpub_id = f'crate{self.sys["crate_id"]}_slot{self.slot}'
+            smurfpub_id = slot_cfg.get(
+                'stream_id', f'crate{self.sys["crate_id"]}slot{self.slot}'
+            )
         if dump_configs is None:
             dump_configs = self.dump
 
