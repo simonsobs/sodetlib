@@ -34,6 +34,7 @@ freq_mult_key = {
     'W1236.txt': 100*c,
     'K2805_scaled.txt': 100*c,
     'K2951.txt': 100*c,
+    'K2908.txt': 100*c,
     'MF_1.txt': 1e9,
     'MF_1_peak.txt': 1e9,
     'MF_2.txt': 1e9,
