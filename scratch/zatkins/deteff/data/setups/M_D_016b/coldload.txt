@@ -1,0 +1,15 @@
+Path Type: Polygon
+z: -205.61
+Pt 1: -99.56, 41.24
+Pt 2: 41.24, 99.56
+Pt 3: 99.56, -41.24
+Pt 4: -41.24, -99.56
+Pt Close: -99.56, 41.24
+
+Path Type: Circle
+Center: 0,0,-177.80
+Diameter: 211.55
+
+Path Type: Circle
+Center: 0,0,-197.33
+Diameter: 211.55
