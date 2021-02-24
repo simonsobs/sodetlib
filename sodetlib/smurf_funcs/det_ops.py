@@ -6,6 +6,7 @@ import yaml
 
 from pysmurf.client.util.pub import set_action
 
+
 @set_action()
 def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
             bias_high=1.5, bias_low=0, bias_step=.005,
@@ -14,15 +15,14 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
             channels=None, band=None, high_current_mode=True,
             overbias_voltage=8., grid_on=True,
             phase_excursion_min=3., bias_line_resistance=None,
-            do_analysis=True,cool_voltage = None):
+            do_analysis=True, cool_voltage=None):
     """
-    Sodetlib IV script. Replaces the pysmurf run_iv function
-    to be more appropriate for SO-specific usage, as well as 
-    easier to edit as needed. 
-    Steps the TES bias down slowly. Starts at bias_high to
-    bias_low with step size bias_step. Waits wait_time between
-    changing steps. After overbiasing, can choose bias point to
-    allow system to cool down.
+    Replaces the pysmurf run_iv function to be more appropriate for SO-specific
+    usage, as well as easier to edit as needed.  Steps the TES bias down
+    slowly. Starts at bias_high to bias_low with step size bias_step. Waits
+    wait_time between changing steps. After overbiasing, can choose bias point
+    to allow system to cool down.
+
     Args
     ----
     bias_groups : numpy.ndarray or None, optional, default None
@@ -48,7 +48,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     overbias_voltage : float, optional, default 8.0
         The voltage to set the TES bias in the overbias stage.
     grid_on : bool, optional, default True
-        Grids on plotting. 
+        Grids on plotting.
     phase_excursion_min : float, optional, default 3.0
         The minimum phase excursion required for making plots.
     bias_line_resistance : float or None, optional, default None
@@ -80,21 +80,23 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     if overbias:
         if cool_voltage is None:
             S.overbias_tes_all(bias_groups=bias_groups,
-                overbias_wait=overbias_wait, tes_bias=np.max(bias),
-                cool_wait=cool_wait, high_current_mode=high_current_mode,
-                overbias_voltage=overbias_voltage)
+                               overbias_wait=overbias_wait,
+                               tes_bias=np.max(bias), cool_wait=cool_wait,
+                               high_current_mode=high_current_mode,
+                               overbias_voltage=overbias_voltage)
         else:
             S.overbias_tes_all(bias_groups=bias_groups,
-                overbias_wait=overbias_wait, tes_bias=cool_voltage,
-                cool_wait=cool_wait, high_current_mode=high_current_mode,
-                overbias_voltage=overbias_voltage)
-    S.log('Starting to take IV.', S.LOG_USER)
+                               overbias_wait=overbias_wait,
+                               tes_bias=cool_voltage, cool_wait=cool_wait,
+                               high_current_mode=high_current_mode,
+                               overbias_voltage=overbias_voltage)
+            S.log('Starting to take IV.', S.LOG_USER)
     S.log('Starting TES bias ramp.', S.LOG_USER)
     bias_group_bool = np.zeros((n_bias_groups,))
-    bias_group_bool[bias_groups] = 1 # only set things on the bias groups that are on
+    bias_group_bool[bias_groups] = 1  # only set things on the bias groups that are on
     S.set_tes_bias_bipolar_array(bias[0] * bias_group_bool)
     time.sleep(wait_time)
-    start_time = S.get_timestamp() # get time the IV starts
+    start_time = S.get_timestamp()  # get time the IV starts
     S.log(f'Starting IV at {start_time}')
     datafile = S.stream_data_on()
     S.log(f'writing to {datafile}')
@@ -103,14 +105,14 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         S.set_tes_bias_bipolar_array(b * bias_group_bool)
         time.sleep(wait_time)
     S.stream_data_off()
-    stop_time = S.get_timestamp() # get time the IV finishes
+    stop_time = S.get_timestamp()  # get time the IV finishes
     S.log(f'Finishing IV at {stop_time}')
     basename, _ = os.path.splitext(os.path.basename(datafile))
     path = os.path.join(S.output_dir, basename + '_iv_bias_all')
     np.save(path, bias)
     # publisher announcement
     S.pub.register_file(path, 'iv_bias', format='npy')
-    
+
     iv_info = {}
     iv_info['plot_dir'] = S.plot_dir
     iv_info['output_dir'] = S.output_dir
@@ -125,11 +127,75 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     iv_info['datafile'] = datafile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
-    
+
     iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
- 
+
     np.save(iv_info_fp, iv_info)
     S.log(f'Writing IV information to {iv_info_fp}.')
     S.pub.register_file(iv_info_fp, 'iv_info', format='npy')
-    
+
     return iv_info_fp
+
+
+@set_action()
+def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
+                duration=3., high_current=False):
+    """
+    Takes a tickle measurement on one or more bias groups. If multiple bias
+    groups are specified, will play a tickle over each bias group in sequence,
+    so we are able to identify which detectors belong to which bias group.
+
+    Args
+    ----
+    bias_group : (int, list[int])
+        bias group or list of bias groups to tickle.
+    tickle_freq : float
+        Frequency of tickle to play
+    tickle_voltage : float
+        voltage of tickle
+    duration : float
+        duration of tickle (sec)
+    """
+    if isinstance(bias_groups, (float, int)):
+        bias_groups = [bias_groups]
+
+    init_biases = S.get_tes_bias_bipolar_array()
+    bias_groups = np.array(bias_groups)
+    start_times = np.zeros_like(bias_groups, dtype=np.float32)
+    stop_times = np.zeros_like(bias_groups,  dtype=np.float32)
+    dat_files = []
+
+    for i, bg in enumerate(bias_groups):
+        if high_current:
+            print(f"Setting bias group {bg} to high current")
+            S.set_tes_bias_high_current(bg)
+        print(f"Playing sine wave on bias group {bg}")
+        S.play_sine_tes(bg, tickle_voltage, tickle_freq)
+        dat_file = S.stream_data_on(make_freq_mask=False)
+        dat_files.append(dat_file)
+        start_times[i] = time.time()
+        time.sleep(duration)
+        stop_times[i] = time.time()
+        S.stream_data_off()
+        S.stop_tes_bipolar_waveform(bg)
+        S.set_tes_bias_bipolar(bg, init_biases[bg])
+        if high_current:
+            print(f"Setting bias group {bg} back to low current")
+            S.set_tes_bias_low_current(bg)
+        time.sleep(2)  # Gives some time for g3 file to finish
+
+    summary = {
+        'tickle_freq': tickle_freq,
+        'tone_voltage': tickle_voltage,
+        'high_current': high_current,
+        'bias_array': S.get_tes_bias_bipolar_array(),
+        'bias_groups': bias_groups,
+        'start_times': start_times,
+        'stop_times': stop_times,
+        'dat_files': dat_files,
+    }
+    filename = make_filename(S, 'tickle_summary.npy')
+    np.save(filename, summary, allow_pickle=True)
+    S.pub.register_file(filename, 'tickle_summary', format='npy')
+    print(f"Saved tickle summary to {filename}")
+    return filename
