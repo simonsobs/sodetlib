@@ -139,7 +139,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
 
 @set_action()
 def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
-                duration=3., high_current=False):
+                duration=3., high_current=False, silence_pysmurf=True):
     """
     Takes a tickle measurement on one or more bias groups. If multiple bias
     groups are specified, will play a tickle over each bias group in sequence,
@@ -161,16 +161,17 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
 
     init_biases = S.get_tes_bias_bipolar_array()
     bias_groups = np.array(bias_groups)
-    start_times = np.zeros_like(bias_groups, dtype=np.float32)
-    stop_times = np.zeros_like(bias_groups,  dtype=np.float32)
+    start_times = np.zeros_like(bias_groups, dtype=np.float64)
+    stop_times = np.zeros_like(bias_groups,  dtype=np.float64)
     dat_files = []
 
+    if (bias_groups >= 12).any():
+        raise ValueError("Can only run with bias groups < 12")
+
     for i, bg in enumerate(bias_groups):
-        if high_current:
-            print(f"Setting bias group {bg} to high current")
-            S.set_tes_bias_high_current(bg)
         print(f"Playing sine wave on bias group {bg}")
         S.play_sine_tes(bg, tickle_voltage, tickle_freq)
+        time.sleep(1)
         dat_file = S.stream_data_on(make_freq_mask=False)
         dat_files.append(dat_file)
         start_times[i] = time.time()
@@ -179,15 +180,12 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         S.stream_data_off()
         S.stop_tes_bipolar_waveform(bg)
         S.set_tes_bias_bipolar(bg, init_biases[bg])
-        if high_current:
-            print(f"Setting bias group {bg} back to low current")
-            S.set_tes_bias_low_current(bg)
         time.sleep(2)  # Gives some time for g3 file to finish
 
     summary = {
         'tickle_freq': tickle_freq,
         'tone_voltage': tickle_voltage,
-        'high_current': high_current,
+        'high_current': True,
         'bias_array': S.get_tes_bias_bipolar_array(),
         'bias_groups': bias_groups,
         'start_times': start_times,

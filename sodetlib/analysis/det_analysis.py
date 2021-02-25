@@ -101,6 +101,7 @@ def analyze_biasgroup_data(times, sig, mask, freq):
         amps[i], phases[i] = fit_sine(times, sig[i], freq)
         sighat = sine(times, amps[i], phases[i], freq)
         r2s[i] = get_r2(sig[i], sighat)
+
     return mask, amps, phases, r2s
 
 
@@ -184,6 +185,7 @@ def plot_tickle_summary(S, summary, save_dir=None):
 
     # Bias plots altogether
     fig, axes = plt.subplots(3, 4, figsize=(30, 15))
+    fig.patch.set_facecolor('white')
     for i, ax in enumerate(axes.flatten()):
         m = bgs == i
         scatter = ax.scatter(np.arange(np.sum(m)), res[m]*1000, c=r2s[m],
@@ -205,7 +207,8 @@ def plot_tickle_summary(S, summary, save_dir=None):
 
 
 def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
-                        normal_thresh=4e-3, sc_thresh=1e-5):
+                        normal_thresh=4e-3, sc_thresh=1e-5,
+                        make_channel_plots=False):
     """
     Analyzes bias tickle data.
 
@@ -248,17 +251,45 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
     cprint("Fitting sine wave for each biasgroup segment")
     mask = invert_mask(segs[0].mask)
     amps_full = np.zeros((len(mask), len(biasgroups)))
+    phases_full = np.zeros((len(mask), len(biasgroups)))
     r2s_full = np.zeros((len(mask), len(biasgroups)))
     for i, bg in enumerate(biasgroups):
-        _chans, _amps, _phases, _r2s = analyze_biasgroup_data(*segs[i],
-                                                              tickle_freq)
+        _chans, _amps, _phases, _r2s = analyze_biasgroup_data(
+            *segs[i], tickle_freq)
         amps_full[:, i] = _amps
+        phases_full[:, i] = _phases
         r2s_full[:, i] = _r2s
 
-    # Assigns bias groups, calculates resistance, and classifies channel
+    if make_channel_plots:
+        cprint("Making channel plots")
+        for i, abschan in enumerate(mask):
+            fig, ax = plt.subplots()
+            txt_array = []
+            for bgidx, bg in enumerate(biasgroups):
+                s = segs[bgidx]
+                ts = (s.times - s.times[0])/1e9
+                if r2s_full[i, bgidx] > assignment_thresh:
+                    ax.plot(ts, (s.sig[i]-np.mean(s.sig[i]))*S.pA_per_phi0 / (2*np.pi))
+                    amp = amps_full[i, bgidx]*S.pA_per_phi0 / (2*np.pi)
+                    phase = phases_full[i, bgidx]
+                    sighat = sine(ts, amp, phase, tickle_freq)
+                    ax.plot(ts, sighat)
+                    txt_array.append(f"bias group {bg}, amp={amp:.2f} pA")
+                else:
+                    ax.plot(ts, (s.sig[i]-np.mean(s.sig[i]))*S.pA_per_phi0 / (2*np.pi),
+                            color='black', alpha=0.4)
+
+            ax.set(ylabel="Current(pA)", title=f"Channel {abschan}")
+            ax.text(0, 0, "\n".join(txt_array), bbox={'facecolor': 'white'})
+            fname = make_filename(S, f"tickle_channel_{abschan}.png", plot=True)
+            fig.savefig(fname)
+            plt.close(fig)
+
+    #  Assigns bias groups, calculates resistance, and classifies channel
     bg_assignments = np.full(len(mask), -1)
-    resistances = np.zeros_like(mask, dtype=np.float32)
-    r2s = np.zeros_like(mask, dtype=np.float32)
+    resistances = np.zeros_like(mask, dtype=np.float64)
+    r2s = np.zeros_like(mask, dtype=np.float64)
+    current_meas = np.zeros_like(r2s)
     classifications = np.full(len(mask), "no_tes", dtype="U15")
     for i in range(len(mask)):
         bgidx = predict_bg_index(amps_full[i], r2s_full[i])
@@ -269,9 +300,15 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
             continue
         bg_assignments[i] = biasgroups[bgidx]
         r2s[i] = r2s_full[i, bgidx]
-        current_meas = amps_full[i, bgidx] * pA_per_phi0 * 1e-12
-        voltage_meas = (current_cmd - current_meas) * S.R_sh
-        res = max(voltage_meas / current_meas, 0.)
+        curr_meas = amps_full[i, bgidx] * pA_per_phi0 * 1e-12 / (2*np.pi)
+        current_meas[i] = curr_meas
+        voltage_meas = (current_cmd - curr_meas) * S.R_sh
+        res = voltage_meas / curr_meas
+        # res = max(res, 0)
+        # print(f"Tickle voltage: {tickle_voltage}")
+        # print(f"Current cmd: {current_cmd}")
+        # print(f"current meas: {current_meas}")
+        # print(f"Resistance: {res}")
         if res < sc_thresh:
             classifications[i] = "sc"
         elif res < normal_thresh:
@@ -286,9 +323,13 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
            "assigned to bias groups")
 
     summary = {
+        "R_sh": R_sh,
+        "run_summary": tickle_info,
         "abs_channels": mask,
         "bg_assignments": bg_assignments,
         "rsquared": r2s,
+        "current_meas": current_meas,
+        "current_cmd": current_cmd,
         "resistances": resistances,
         "classifications": classifications
     }
