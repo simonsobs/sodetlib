@@ -1,9 +1,10 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 from scipy.optimize import curve_fit
 from collections import namedtuple
 from sodetlib.util import cprint, make_filename
-import matplotlib.pyplot as plt
+from pysmurf.client.util.pub import set_action
 
 
 CHANS_PER_BAND = 512
@@ -134,7 +135,7 @@ def predict_bg_index(amps, r2s, thresh=0.9):
     return bg_idx
 
 
-def plot_tickle_summary(S, summary, save_dir=None):
+def plot_tickle_summary(S, summary, save_dir=None, timestamp=None):
     """
     Makes summary plots from tickle analysis results
 
@@ -147,15 +148,18 @@ def plot_tickle_summary(S, summary, save_dir=None):
     save_dir:
         Save directory. If None, will not try to save figures.
     """
+    if timestamp is None:
+        timestamp = S.get_timestamp()
     bgs = summary['bg_assignments']
     res = summary['resistances']
     r2s = summary['rsquared']
     classes = summary['classifications']
     class_cmap = {
-        "sc": "C0", "transition": "C1", "normal": "red", "no_tes": "black"
+        "sc": "C0", "transition": "C1", "normal": "red", "no_tes": "grey"
     }
     cs = np.array([class_cmap[c] for c in classes])
 
+    ### Individual bias group plots
     for bg in np.unique(bgs):
         if bg == -1:
             continue
@@ -172,12 +176,12 @@ def plot_tickle_summary(S, summary, save_dir=None):
             f"Transition channels: {num_trans}",
             f"Normal channels: {num_normal}"
         ])
-        ax.text(0, 0.1, txt, alpha=0.9,
+        ax.text(0, 0.5, txt, alpha=0.9, transform=ax.transAxes,
                 bbox={'facecolor': 'white'})
         ax.set(title=f"Bias Group {bg}", ylabel="Resistance (mOhm)")
         if save_dir is not None:
             fname = os.path.join(
-                save_dir, f"{S.get_timestamp()}_tickle_summary_bg{bg}.png"
+                save_dir, f"{timestamp}_tickle_summary_bg{bg}.png"
             )
             fig.savefig(fname)
             S.pub.register_file(fname, "tickle_summary", plot=True)
@@ -188,27 +192,56 @@ def plot_tickle_summary(S, summary, save_dir=None):
     fig.patch.set_facecolor('white')
     for i, ax in enumerate(axes.flatten()):
         m = bgs == i
-        scatter = ax.scatter(np.arange(np.sum(m)), res[m]*1000, c=r2s[m],
-                             cmap='Reds', vmin=0, vmax=1)
+        ax.scatter(np.arange(np.sum(m)), res[m]*1000, c=cs[m])
         ax.set(title=f"Biasgroup {i}")
 
     axes[1, 0].set_ylabel("Resistance (mOhm)", fontsize=22)
-    cbar = fig.colorbar(scatter, ax=axes)
-    cbar.set_label("$R^2$ values")
 
     if save_dir is not None:
         fname = os.path.join(
-            save_dir, f"{S.get_timestamp()}_tickle_summary_all_bg.png"
+            save_dir, f"{timestamp}_tickle_summary_all_bg.png"
         )
         fig.savefig(fname)
         S.pub.register_file(fname, "tickle_summary", plot=True)
 
     fig.show()
 
+    #  Channel division bar plot
+    fig, ax = plt.subplots(figsize=(16, 8))
+    xs = np.arange(-1, 12)
+    class_order = ['no_tes', 'sc', 'transition', 'normal']
+    totals = []
+    width = 0.2
+    for i, cl in enumerate(class_order):
+        m = classes == cl
+        totals.append(np.sum(m))
+        ys = [np.sum(bgs[m] == bg) for bg in xs]
+        offset = 0
+        if cl != 'no_tes':
+            offset = 2*width
+        ax.bar(xs + i*width - offset, ys, width=width, color=class_cmap[cl],
+               label=cl)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(['None'] + list(range(0, 12)))
+    ax.set(yscale='log', xlabel='Bias Group', ylabel='Num Channels')
+    labels = [f"{class_order[i]} -- {totals[i]} total"
+              for i in range(len(class_order))]
+    ax.legend(labels)
 
+    if save_dir is not None:
+        fname = os.path.join(
+            save_dir, f"{timestamp}_channels_assignment_summary.png"
+        )
+        fig.savefig(fname)
+        S.pub.register_file(fname, "tickle_summary", plot=True)
+    fig.show()
+
+
+@set_action()
 def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
                         normal_thresh=4e-3, sc_thresh=1e-5,
-                        make_channel_plots=False):
+                        make_channel_plots=False, return_full=False,
+                        return_segs=False):
     """
     Analyzes bias tickle data.
 
@@ -238,7 +271,7 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
     if tickle_info['high_current']:
         current_cmd *= S.high_low_current_ratio
 
-    if (R_sh is None) or (pA_per_phi0 is None):
+    if R_sh is None:
         raise ValueError("Pysmurf not loaded with config properties!")
 
     DataSegment = namedtuple("DataSegment", "times sig mask")
@@ -268,20 +301,25 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
             for bgidx, bg in enumerate(biasgroups):
                 s = segs[bgidx]
                 ts = (s.times - s.times[0])/1e9
+                ys = s.sig[i] * pA_per_phi0 / (2*np.pi)
+                ys -= ys.mean()
+
                 if r2s_full[i, bgidx] > assignment_thresh:
-                    ax.plot(ts, (s.sig[i]-np.mean(s.sig[i]))*S.pA_per_phi0 / (2*np.pi))
-                    amp = amps_full[i, bgidx]*S.pA_per_phi0 / (2*np.pi)
+                    ax.plot(ts, ys)
+                    # Plots fitted signal
+                    amp = amps_full[i, bgidx] * S.pA_per_phi0 / (2*np.pi)
                     phase = phases_full[i, bgidx]
                     sighat = sine(ts, amp, phase, tickle_freq)
                     ax.plot(ts, sighat)
                     txt_array.append(f"bias group {bg}, amp={amp:.2f} pA")
                 else:
-                    ax.plot(ts, (s.sig[i]-np.mean(s.sig[i]))*S.pA_per_phi0 / (2*np.pi),
-                            color='black', alpha=0.4)
+                    ax.plot(ts, ys, color='black', alpha=0.4)
 
-            ax.set(ylabel="Current(pA)", title=f"Channel {abschan}")
-            ax.text(0, 0, "\n".join(txt_array), bbox={'facecolor': 'white'})
-            fname = make_filename(S, f"tickle_channel_{abschan}.png", plot=True)
+            ax.set(ylabel="Current (pA)", title=f"Channel {abschan}")
+            ax.text(0, 0.5, "\n".join(txt_array), transform=ax.transAxes,
+                    bbox={'facecolor': 'white'})
+            fname = make_filename(S, f"tickle_channel_{abschan}.png",
+                                  plot=True)
             fig.savefig(fname)
             plt.close(fig)
 
@@ -304,11 +342,6 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         current_meas[i] = curr_meas
         voltage_meas = (current_cmd - curr_meas) * S.R_sh
         res = voltage_meas / curr_meas
-        # res = max(res, 0)
-        # print(f"Tickle voltage: {tickle_voltage}")
-        # print(f"Current cmd: {current_cmd}")
-        # print(f"current meas: {current_meas}")
-        # print(f"Resistance: {res}")
         if res < sc_thresh:
             classifications[i] = "sc"
         elif res < normal_thresh:
@@ -333,14 +366,23 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         "resistances": resistances,
         "classifications": classifications
     }
+    if return_full:
+        summary.update({
+            'r2s_full': r2s_full,
+            'amps_full': amps_full,
+        })
 
     if S.output_dir is not None:
         fname = make_filename(S, "tickle_analysis.npy")
         np.save(fname, summary, allow_pickle=True)
+        S.pub.register_file(fname, 'tickle_analysis', format='npy')
         plot_dir = S.plot_dir
     else:
         plot_dir = None
 
     cprint("Making summary plots")
     plot_tickle_summary(S, summary, save_dir=plot_dir)
-    return summary
+    if return_segs:
+        return summary, segs
+    else:
+        return summary

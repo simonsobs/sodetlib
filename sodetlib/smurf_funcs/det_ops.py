@@ -1,3 +1,10 @@
+"""
+det_ops.py is a module containing functions for detector characterization and
+operation, such as:
+- Tickle and bias step function
+- Running IV's
+- and more!!
+"""
 import numpy as np
 import time
 import os
@@ -5,6 +12,26 @@ from sodetlib.util import make_filename
 import yaml
 
 from pysmurf.client.util.pub import set_action
+
+
+def get_current_mode(S, bias_group):
+    """
+    Returns 1 if requested bias_group is in high_current_mode and 0
+    otherwise.
+    Args
+    ----
+    S:
+        SmurfControl object
+    bias_group : int
+        The bias group to query
+    """
+    relay = S.get_cryo_card_relays()
+    relay = S.get_cryo_card_relays()  # querey twice to ensure update
+    if bias_group >= S._n_bias_groups:
+        raise ValueError("Biasgroup must be between 0 and {S._n_bias_groups}")
+    r = np.ravel(S._pic_to_bias_group[np.where(
+        S._pic_to_bias_group[:, 1] == bias_group)])[0]
+    return (relay >> r) & 1
 
 
 @set_action()
@@ -155,11 +182,32 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         voltage of tickle
     duration : float
         duration of tickle (sec)
+    high_current: bool
+        If True, will set to high-current mode and adjust the dc bias voltage
+        such that the current is the same if not already in high-current mode.
+        Note that running without high-current mode means that there is
+        low-pass frequency with a low cutoff that will almost certainly screw
+        up the analysis and give you incorrect resistance values.
+    silence_pysmurf : bool
+        If True, will sent the pysmurf logs to a logfile instead of stdout
+
+    Returns
+    -------
+    summary : dictionary
+        A dict containing a summary of the operation, containing all info
+        needed to perform the analysis on either the smurf-server from .dat
+        files or simons1 from g3 files.
+
     """
     if isinstance(bias_groups, (float, int)):
         bias_groups = [bias_groups]
 
+    if silence_pysmurf:
+        fname = make_filename(S, 'take_tickle.log')
+        S.set_logfile(fname)
+
     init_biases = S.get_tes_bias_bipolar_array()
+    bias_array = S.get_tes_bias_bipolar_array()
     bias_groups = np.array(bias_groups)
     start_times = np.zeros_like(bias_groups, dtype=np.float64)
     stop_times = np.zeros_like(bias_groups,  dtype=np.float64)
@@ -169,6 +217,19 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         raise ValueError("Can only run with bias groups < 12")
 
     for i, bg in enumerate(bias_groups):
+
+        orig_hc_mode = get_current_mode(S, bg)
+        orig_bias = S.get_tes_bias_bipolar(bg)
+        new_bias = None
+        if high_current and (not orig_hc_mode):
+            new_bias = orig_bias / S.high_low_current_ratio
+            print(f"Setting bias_group {bg} to high current mode.")
+            print(f"Changing bias from {orig_bias} to {new_bias} to preserve "
+                  f"dc-current.")
+            S.set_tes_bias_high_current(bg)
+            S.set_tes_bias_bipolar(bg, new_bias)
+            bias_array[bg] = new_bias
+
         print(f"Playing sine wave on bias group {bg}")
         S.play_sine_tes(bg, tickle_voltage, tickle_freq)
         time.sleep(1)
@@ -180,13 +241,24 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         S.stream_data_off()
         S.stop_tes_bipolar_waveform(bg)
         S.set_tes_bias_bipolar(bg, init_biases[bg])
+
+        if new_bias is not None:
+            print(f"Restoring bg {bg} to low-current mode  and dc bias to "
+                  f"{orig_bias}")
+            S.set_tes_bias_low_current(bg)
+            S.set_tes_bias_bipolar(bg, orig_bias)
+
         time.sleep(2)  # Gives some time for g3 file to finish
+
+    S.set_logfile(None)
+
+
 
     summary = {
         'tickle_freq': tickle_freq,
         'tone_voltage': tickle_voltage,
-        'high_current': True,
-        'bias_array': S.get_tes_bias_bipolar_array(),
+        'high_current': high_current,
+        'bias_array': bias_array,
         'bias_groups': bias_groups,
         'start_times': start_times,
         'stop_times': stop_times,
