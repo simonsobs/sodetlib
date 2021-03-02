@@ -65,7 +65,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         Full path to IV raw npy file.
     """        
     
-    n_bias_groups = 12 # SO UFMs have 12 bias groups
+    n_bias_groups = S._n_bias_groups # This is the number of bias groups that the cryocard has
     if bias_groups is None:
         bias_groups = np.arange(12) # SO UFMs have 12 bias groups
     bias_groups = np.array(bias_groups)
@@ -123,9 +123,8 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     iv_info['stop_time'] = stop_time
     iv_info['basename'] = basename
     iv_info['datafile'] = datafile
-    iv_info['bias_array'] = bias
-    iv_info['bias group'] = bias_groups
     iv_info['bias'] = bias
+    iv_info['bias group'] = bias_groups
     
     iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
  
