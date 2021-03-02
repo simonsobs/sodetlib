@@ -16,7 +16,9 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
             phase_excursion_min=3., bias_line_resistance=None,
             do_analysis=True,cool_voltage = None):
     """
-    sodetlib IV script. 
+    Sodetlib IV script. Replaces the pysmurf run_iv function
+    to be more appropriate for SO-specific usage, as well as 
+    easier to edit as needed. 
     Steps the TES bias down slowly. Starts at bias_high to
     bias_low with step size bias_step. Waits wait_time between
     changing steps. After overbiasing, can choose bias point to
@@ -46,7 +48,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     overbias_voltage : float, optional, default 8.0
         The voltage to set the TES bias in the overbias stage.
     grid_on : bool, optional, default True
-        Grids on plotting. This is Ari's fault.
+        Grids on plotting. 
     phase_excursion_min : float, optional, default 3.0
         The minimum phase excursion required for making plots.
     bias_line_resistance : float or None, optional, default None
@@ -63,9 +65,9 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         Full path to IV raw npy file.
     """        
     
-    n_bias_groups = S._n_bias_groups
+    n_bias_groups = 12 # SO UFMs have 12 bias groups
     if bias_groups is None:
-        bias_groups = S._all_groups
+        bias_groups = np.arange(12) # SO UFMs have 12 bias groups
     bias_groups = np.array(bias_groups)
     if overbias_voltage != 0.:
         overbias = True
@@ -100,7 +102,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         S.log(f'Bias at {b:4.3f}')
         S.set_tes_bias_bipolar_array(b * bias_group_bool)
         time.sleep(wait_time)
-    S.stream_data_off(register_file=True)
+    S.stream_data_off()
     stop_time = S.get_timestamp() # get time the IV finishes
     S.log(f'Finishing IV at {stop_time}')
     basename, _ = os.path.splitext(os.path.basename(datafile))
@@ -122,32 +124,13 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     iv_info['basename'] = basename
     iv_info['datafile'] = datafile
     iv_info['bias_array'] = bias
-    iv_info['bias_groups'] = bias_groups
+    iv_info['bias group'] = bias_groups
+    iv_info['bias'] = bias
     
-    iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.yml')
-    
-    with open(iv_info_fp, 'w') as file:
-        iv_info_file = yaml.dump(iv_info, file)
-    
+    iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
+ 
+    np.save(iv_info_fp, iv_info)
     S.log(f'Writing IV information to {iv_info_fp}.')
-    S.pub.register_file(iv_info_fp, 'iv_info', format='yml')
+    S.pub.register_file(iv_info_fp, 'iv_info', format='npy')
     
-    # keeping this for now, until we retire the pysmurf IV analysis
-    iv_raw_data = {}
-    iv_raw_data['bias'] = bias
-    iv_raw_data['high_current_mode'] = high_current_mode
-    iv_raw_data['bias group'] = bias_groups
-    iv_raw_data['datafile'] = datafile
-    iv_raw_data['basename'] = basename
-    iv_raw_data['output_dir'] = S.output_dir
-    iv_raw_data['plot_dir'] = S.plot_dir
-
-    fn_iv_raw_data = os.path.join(S.output_dir, basename +
-        '_iv_raw_data.npy')
-    S.log(f'Writing IV metadata to {fn_iv_raw_data}.')
-    path = os.path.join(S.output_dir, fn_iv_raw_data)
-    np.save(path, iv_raw_data)
-    S.pub.register_file(path, 'iv_raw', format='npy')
-    
-    
-    return path
+    return iv_info_fp
