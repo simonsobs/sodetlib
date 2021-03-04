@@ -13,6 +13,7 @@ from scipy import interpolate
 import pickle as pkl
 from sodetlib.util import cprint, TermColors, get_psd, make_filename, \
     get_tracking_kwargs, StreamSeg
+from sodetlib.smurf_funcs import smurf_ops
 
 from pysmurf.client.util.pub import set_action
 
@@ -123,7 +124,7 @@ def optimize_nphi0(S, cfg, band):
 
 
 def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=5,
-                      reset_rate_khz=None, lms_gain=None, relock=True,
+                      reset_rate_khz=None, lms_gain=None, relock=False,
                       tunefile=None, make_plots=False):
     """
     This starts with some default parameters and optimizes the amplitude
@@ -179,57 +180,59 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=5,
             S.run_serial_gradient_descent(band)
             S.run_serial_eta_scan(band)
 
-    tracking_kwargs = {'band': band, 'reset_rate_khz': reset_rate_khz,
-                       'lms_freq_hz': None, 'nsamp': 2**17,
-                       'fraction_full_scale': init_fracpp,
-                       'lms_gain': lms_gain, 'make_plot': True, 'channel': [],
-                       'show_plot': False, 'save_plot': True,
-                       'meas_lms_freq': True, 'return_data': True}
-
-    if make_plots:
-        tracking_kwargs['channel'] = S.which_on(band)
-
-    f, _, _ = S.tracking_setup(**tracking_kwargs)
-    f_span = np.max(f, 0) - np.min(f, 0)
-
-    for c in S.which_on(band):
-        if not 0.03 < f_span[c] < 0.25:
+    tk = get_tracking_kwargs(
+        S, band, kwargs={'lms_freq': None, 'meas_lms_freq': True}
+    )
+    rs, f, df, sync = smurf_ops.tracking_quality(
+        S, cfg, tracking_kwargs=tk, make_channel_plots=make_plots,
+        nphi0=1
+    )
+    good_chans = np.where(rs > 0.95)[0]
+    num_good, num_total = len(good_chans), len(rs)
+    cprint(f"{num_good}/{num_total} channels have r-squared > 0.95")
+    if num_good/num_total < 0.5:
+        cprint("This is less than 50%, so something is wrong with the tune.",
+               False)
+        cprint("Not continuing with optimization...", False)
+        return
+    else:
+        cprint("This is more than 50%, shutting off bad channels.", True)
+        bad_chans = np.where(rs < 95)[0]
+        for c in bad_chans:
             S.channel_off(band, c)
 
     # Reruns to get re-estimate of tracking freq
-    S.tracking_setup(**tracking_kwargs)
+    S.tracking_setup(band, **tk)
 
     lms_meas = S.lms_freq_hz[band]
     lms_freq = phi0_number * reset_rate_khz * 1e3
     frac_pp = init_fracpp * lms_freq / lms_meas
 
-    tracking_kwargs['meas_lms_freq'] = False
-    tracking_kwargs['fraction_full_scale'] = frac_pp
-    tracking_kwargs['lms_freq_hz'] = lms_freq
+    tk['meas_lms_freq'] = False
+    tk['fraction_full_scale'] = frac_pp
+    tk['lms_freq_hz'] = lms_freq
 
-    S.load_tune(tunefile)
+    # Turns channels back on
+    print("Relocking and running serial ops")
     S.relock(band)
     for _ in range(2):
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
-    f, df, _ = S.tracking_setup(**tracking_kwargs)
-    df_std = np.std(df, 0)
-    f_span = np.max(f, 0) - np.min(f, 0)
+    chans = S.which_on(band)
+    rs, f, df, sync = smurf_ops.tracking_quality(
+        S, cfg, band, tracking_kwargs=tk
+    )
+    outdict = {
+        'chans': chans,
+        'r2s': rs
+    }
 
-    bad_track_chans = []
-    outdict = {}
-    for c in S.which_on(band):
-        outdict[c] = {}
-        outdict[c]['df_pp'] = f_span[c]
-        outdict[c]['df_err'] = df_std[c]
-        outdict[c]['tracking'] = True
-
-    fname = os.path.join(S.output_dir,
-                         f'{S.get_timestamp()}_optimize_tracking.pkl')
+    fname = make_filename(S, 'optimize_tracking.pkl')
     pkl.dump(outdict, open(fname, 'wb'))
     S.pub.register_file(fname, 'tracking_optimization', format='pkl')
 
+    bad_track_chans = np.where(rs < 0.9)[0]
     print(f'Number of bad tracking channels {len(bad_track_chans)}')
     print(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
 

@@ -441,7 +441,8 @@ def res_shift_vs_flux_bias(S, frac_pp_steps, bands, tunefile):
 
 @set_action()
 def tracking_quality(S, cfg, band, tracking_kwargs=None,
-                     make_channel_plots=False, r_thresh=0.9, show_plots=False):
+                     make_channel_plots=False, r_thresh=0.9, show_plots=False,
+                     nphi0=None):
     """
     Runs tracking setup and returns how good at tracking each channel is
 
@@ -457,6 +458,11 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
             Dictionary of additional custom args to pass to tracking setup
         r_thresh : float
             Threshold used to set color on plots
+        nphi0 : optional(int)
+            Number of segments to divide FluxRamp cycle into. If None (default)
+            will automatically figure out based on the lms_freq. If you are
+            attempting to measure lms_freq, use nphi0=1, which will use the
+            entire flux ramp period as the stack segment
     Returns
     --------
         rs : np.ndarray
@@ -477,15 +483,18 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
 
     f, df, sync = S.tracking_setup(band, **tk)
     si = S.make_sync_flag(sync)
-    nphi0 = int(round(tk['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+
+    if nphi0 is None
+        nphi0 = int(round(tk['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+
+    # Average cycles to get single period estimate
+    seg_size = (si[1] - si[0]) // nphi0
+    nstacks = (len(si) - 1) * nphi0
 
     active_chans = np.zeros_like(f[0], dtype=bool)
     active_chans[S.which_on(band)] = True
 
-    # Average cycles to get single period estimate
-    seg_size = (si[1] - si[0]) // nphi0
     fstack = np.zeros((seg_size, len(f[0])))
-    nstacks = (len(si)-1) * nphi0
     for i in range(len(si) - 1):
         s = si[i]
         for j in range(nphi0):
