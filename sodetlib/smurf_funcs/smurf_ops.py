@@ -6,15 +6,14 @@ from sodetlib.util import cprint, TermColors, make_filename, \
 import numpy as np
 import os
 import time
-from scipy import signal
-import scipy.optimize as opt
-from scipy import interpolate
-import pickle as pkl
 import sys
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 from pysmurf.client.util.pub import set_action
 
 
@@ -499,6 +498,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     if show_plots:
         plt.ion()
     else:
+        matplotlib.use("Agg")
         plt.ioff()
 
     fname = make_filename(S, f'tracking_quality_b{band}.png', plot=True)
