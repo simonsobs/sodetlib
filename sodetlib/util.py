@@ -8,8 +8,7 @@ import time
 import os
 from collections import namedtuple
 
-StreamSeg = namedtuple("StreamSeg", "times sig mask biases",
-                       defaults=(None, None, None, None))
+StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
 
 class TermColors:

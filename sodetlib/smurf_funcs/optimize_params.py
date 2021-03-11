@@ -691,7 +691,6 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     return False
 
 
-
 @set_action()
 def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                             frac_pp=None, lms_freq=None, make_plots=False,
@@ -855,9 +854,28 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
 
 
 @set_action()
+def plot_optimize_atten(S, summary):
+    wls = summary['wl_medians']
+    grid = summary['atten_grid']
+    shape = wls[0].shape
+    xs = np.reshape(grid[:, 0], shape)
+    ys = np.reshape(grid[:, 1], shape)
+    for i, band in enumerate(summary['bands']):
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor('white')
+        cbar = plt.contourf(xs, ys, wls[i])
+        ax.set(xlabel="UC atten", ylabel="DC atten",
+               title=f"Band {band} Atten Sweep")
+        fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
+        fname = make_filename(S, f'atten_sweep_b{band}.png', plot=True)
+        fig.savefig(fname)
+
+
+@set_action()
 def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
                     dc_attens=None, tone_power=None, silence_logs=True,
-                    tracking_kwargs=None, skip_setup_notches=False):
+                    tracking_kwargs=None, skip_setup_notches=False,
+                    update_cfg=True):
     """
     UC and DC attenuation optimization function, built to work efficiently
     with multiple bands.
@@ -881,6 +899,8 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         If true, will skip the initial setup notches at the start of the
         optimization. This is not recommended unless you are just testing the
         base functionality
+    update_cfg : bool
+        If true, will update the cfg object with the new atten values
     """
     if isinstance(bands, (int, float)):
         bands = [bands]
@@ -932,17 +952,19 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     for i, uc_atten in enumerate(uc_attens):
         cprint(f"Setting uc_atten to {uc_atten}")
         for b in bands:
-            print("Serial fns for band {b}")
+            print(f"Serial fns for band {b}")
             S.set_att_uc(b, uc_atten)
             S.set_att_dc(b, dc_attens[0])
-            S.run_serial_gradient_descent(b)
-            S.run_serial_eta_scan(b)
             # Should tracking setup go in dc_atten loop? Need to test.
-            S.tracking_setup(b, **tks[b])
+            # S.tracking_setup(b, **tks[b])
 
         for j, dc_atten in enumerate(dc_attens):
             for b in bands:
                 S.set_att_dc(b, dc_atten)
+                print("Tracking Setup")
+                S.run_serial_gradient_descent(b)
+                S.run_serial_eta_scan(b)
+                S.tracking_setup(b, **tks[b])
             # Take data
             atten_grid.append([uc_atten, dc_atten])
             start_times.append(time.time())
@@ -951,7 +973,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
             stop_times.append(time.time())
 
             # Analyze data
-            seg = StreamSeg(S.read_stream_data(datfile))
+            seg = StreamSeg(*S.read_stream_data(datfile))
             f, Pxx = get_psd(S, seg.times, seg.sig)
             fmask = (f > 5) & (f < 50)
             # Array of whitenoise level for each readout chan
@@ -979,9 +1001,25 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     fname = make_filename(S, 'optimize_atten_summary.npy')
     np.save(fname, summary, allow_pickle=True)
     S.pub.register_file(fname, 'optimize_atten_summary', format='npy')
+
+    for i, band in enumerate(bands):
+        uc_idx, dc_idx = np.unravel(np.argmin(wls[i], axis=None), wls[i].shape)
+        cprint(f"Band {band}:")
+        cprint(f"  Min White Noise: {wls[i, uc_idx, dc_idx]}")
+        cprint(f"  UC Atten: {uc_attens[uc_idx]}")
+        cprint(f"  DC Atten: {dc_attens[dc_idx]}")
+        if update_cfg:
+            cfg.dev.update_bans(band, {
+                'uc_atten': uc_attens[uc_idx],
+                'dc_atten': dc_attens[dc_idx],
+            })
+    if update_cfg:
+        print(f"Updating cfg and dumping to {cfg.dev_file}")
+        cfg.dev.dump(cfg.dev_file, clobber=True)
+
     cprint(f"Finished atten scan. Summary saved to {fname}", True)
-    cprint(f"Total duration: {start_time - stop_time} sec", True)
-    return summary
+    cprint(f"Total duration: {stop_time - start_time} sec", True)
+    return summary, fname
 
 
 @set_action()
