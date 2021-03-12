@@ -854,7 +854,10 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
 
 
 @set_action()
-def plot_optimize_atten(S, summary):
+def plot_optimize_attens(S, summary):
+    """
+    Plots the results from the optimize_attens functions.
+    """
     wls = summary['wl_medians']
     grid = summary['atten_grid']
     shape = wls[0].shape
@@ -863,7 +866,9 @@ def plot_optimize_atten(S, summary):
     for i, band in enumerate(summary['bands']):
         fig, ax = plt.subplots()
         fig.patch.set_facecolor('white')
-        cbar = plt.contourf(xs, ys, wls[i])
+        wl = wls[i].copy()
+        wl[wl > 100] = np.nan
+        cbar = plt.contourf(xs, ys, wl,  levels=100)
         ax.set(xlabel="UC atten", ylabel="DC atten",
                title=f"Band {band} Atten Sweep")
         fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
@@ -984,6 +989,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
                 wl_medians[k, i, j] = np.nanmedian(wls[rchans])
             print(f"Median noise for uc={uc_atten}, dc={dc_atten}: "
                   f"{wl_medians[:, i, j]}")
+
     stop_time = time.time()
     atten_grid = np.array(atten_grid)
     S.set_logfile(None)
@@ -1003,19 +1009,22 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     S.pub.register_file(fname, 'optimize_atten_summary', format='npy')
 
     for i, band in enumerate(bands):
-        uc_idx, dc_idx = np.unravel(np.argmin(wls[i], axis=None), wls[i].shape)
+        wls = wl_medians[i]
+        uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
         cprint(f"Band {band}:")
-        cprint(f"  Min White Noise: {wls[i, uc_idx, dc_idx]}")
+        cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
         cprint(f"  UC Atten: {uc_attens[uc_idx]}")
         cprint(f"  DC Atten: {dc_attens[dc_idx]}")
         if update_cfg:
-            cfg.dev.update_bans(band, {
-                'uc_atten': uc_attens[uc_idx],
-                'dc_atten': dc_attens[dc_idx],
+            cfg.dev.update_band(band, {
+                'uc_att': uc_attens[uc_idx],
+                'dc_att': dc_attens[dc_idx],
             })
     if update_cfg:
         print(f"Updating cfg and dumping to {cfg.dev_file}")
         cfg.dev.dump(cfg.dev_file, clobber=True)
+
+    plot_optimize_attens(S, summary)
 
     cprint(f"Finished atten scan. Summary saved to {fname}", True)
     cprint(f"Total duration: {stop_time - start_time} sec", True)
