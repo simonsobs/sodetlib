@@ -5,6 +5,7 @@ psd noise.
 import numpy as np
 import os
 import time
+import sys
 from scipy import signal
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
@@ -928,10 +929,13 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     stop_times = []
 
     start_time = time.time()
-    if silence_logs:
+
+    logs_silenced = False
+    if silence_logs and (S.log.logfile == sys.stdout):
         logfile = make_filename(S, 'optimize_atten.log')
         print(f"Writing pysmurf logs to {logfile}")
         S.set_logfile(logfile)
+        logs_silenced = True
 
     cprint("-" * 60)
     cprint("Atten optimization plan")
@@ -992,7 +996,9 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     stop_time = time.time()
     atten_grid = np.array(atten_grid)
-    S.set_logfile(None)
+
+    if logs_silenced: # Returns logs to stdout
+        S.set_logfile(None)
 
     summary = {
         'starts': start_times,
