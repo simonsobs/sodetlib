@@ -14,7 +14,7 @@ from sodetlib.det_config import DetConfig
 
 @set_action()
 def optimize_uc_atten(S, cfg, bands, meas_time=10, fit_curve=False,
-                      attens=None, skip_setup_notches=False, tone_power=None, 
+                      attens=None, skip_setup_notches=False, tone_power=None,
                       silence_logs=True, tracking_kwargs=None):
     """
     Finds the drive power and uc attenuator value that minimizes the median
