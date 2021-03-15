@@ -79,7 +79,8 @@ outdirname=datafn.split('.')[0]
 outdirname+='_fits'
 
 # right now, puts results directory in same directory as data
-outdir=os.path.join(datadir.split('outputs')[0]+'plots',outdirname)
+#outdir=outdirname
+outdir = os.path.join(datadir.split('outputs')[0]+'plots',outdirname)
 if not os.path.exists(outdir):
     os.mkdir(outdir)
 
@@ -93,6 +94,7 @@ resultsoutfile.write(hdr)
 resultsoutfile.flush()
 
 for band in bands:
+    #channels = frdata[band][(None,None)]['channels']
     channels=frdata[band]['channels']
     for idx in range(len(channels)):
 
@@ -103,6 +105,9 @@ for band in bands:
         squid_data=frdata[band]['fvsfr'][idx]
         fres=frdata[band]['fres'][idx]        
         bias=frdata['bias']
+        #squid_data=frdata[band][(None,None)]['fvsfr'][idx]
+        #fres=frdata[band][(None,None)]['fres'][idx]        
+
         est=sf.estimate_fit_parameters(
             bias,squid_data,nharmonics_to_estimate=options.nharmonics,debug=options.debug)
 
@@ -241,14 +246,14 @@ for band in bands:
         fitresult=fmt_str.format([
             str(band),
             str(ch),
-            f'%{fres:.4f}',
-            f'%{max_fit_fres_mhz:.4f}',
-            f'%{min_fit_fres_mhz:.4f}',
-            f'%{phi0_ff:.4f}',
-            f'%{phi0_offset_ff/phi0_ff:.4f}',
-            f'%{df_khz:.4f}',
-            f'%{hhpwr:.4e}',
-            f'%{avg_dfdphi_Hzperuphi0:.4e}'
+            f'{fres:.4f}',
+            f'{max_fit_fres_mhz:.4f}',
+            f'{min_fit_fres_mhz:.4f}',
+            f'{phi0_ff:.4f}',
+            f'{phi0_offset_ff/phi0_ff:.4f}',
+            f'{df_khz:.4f}',
+            f'{hhpwr:.4e}',
+            f'{avg_dfdphi_Hzperuphi0:4e}'
         ]) 
         resultsoutfile.write(fitresult)
         resultsoutfile.flush()
