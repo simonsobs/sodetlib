@@ -5,12 +5,14 @@ psd noise.
 import numpy as np
 import os
 import time
+import sys
 from scipy import signal
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
-from sodetlib.util import cprint, TermColors, get_psd, make_filename
+from sodetlib.util import cprint, TermColors, get_psd, make_filename, \
+    get_tracking_kwargs, StreamSeg
 
 from pysmurf.client.util.pub import set_action
 
@@ -690,7 +692,6 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
     return False
 
 
-
 @set_action()
 def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
                             frac_pp=None, lms_freq=None, make_plots=False,
@@ -851,6 +852,189 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
             'uc_att': min_atten, 'drive': drive, 'optimized_drive': True
         })
         return min_median, min_atten, drive
+
+
+@set_action()
+def plot_optimize_attens(S, summary):
+    """
+    Plots the results from the optimize_attens functions.
+    """
+    wls = summary['wl_medians']
+    grid = summary['atten_grid']
+    shape = wls[0].shape
+    xs = np.reshape(grid[:, 0], shape)
+    ys = np.reshape(grid[:, 1], shape)
+    for i, band in enumerate(summary['bands']):
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor('white')
+        wl = wls[i].copy()
+        wl[wl > 100] = np.nan
+        cbar = plt.contourf(xs, ys, wl,  levels=100)
+        ax.set(xlabel="UC atten", ylabel="DC atten",
+               title=f"Band {band} Atten Sweep")
+        fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
+        fname = make_filename(S, f'atten_sweep_b{band}.png', plot=True)
+        fig.savefig(fname)
+
+
+@set_action()
+def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
+                    dc_attens=None, tone_power=None, silence_logs=True,
+                    tracking_kwargs=None, skip_setup_notches=False,
+                    update_cfg=True):
+    """
+    UC and DC attenuation optimization function, built to work efficiently
+    with multiple bands.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf control object
+    cfg : DetConfig
+        Det Config instance
+    meas_time : float
+        Measurement time (sec) for white noise analysis
+    tone_power : int
+        Tone power to use for scan.
+    silence_logs : bool
+        If true will send pysmurf logs to file instead of stdout to declutter
+        logs.
+    tracking_kwargs : dict
+        Custom tracking kwargs to pass to tracking setup
+    skip_setup_notches : bool
+        If true, will skip the initial setup notches at the start of the
+        optimization. This is not recommended unless you are just testing the
+        base functionality
+    update_cfg : bool
+        If true, will update the cfg object with the new atten values
+    """
+    if isinstance(bands, (int, float)):
+        bands = [bands]
+    bands = np.array(bands)
+
+    if uc_attens is None:
+        uc_attens = np.arange(30, -2, -2)
+    else:
+        uc_attens = np.array(uc_attens)
+
+    if dc_attens is None:
+        dc_attens = np.arange(30, -2, -2)
+    else:
+        dc_attens = np.array(dc_attens)
+
+    wl_medians = np.full((len(bands), len(uc_attens), len(dc_attens)), np.inf)
+    datfiles = []
+    atten_grid = []
+    start_times = []
+    stop_times = []
+
+    start_time = time.time()
+
+    logs_silenced = False
+    if silence_logs and (S.log.logfile == sys.stdout):
+        logfile = make_filename(S, 'optimize_atten.log')
+        print(f"Writing pysmurf logs to {logfile}")
+        S.set_logfile(logfile)
+        logs_silenced = True
+
+    cprint("-" * 60)
+    cprint("Atten optimization plan")
+    cprint(f"bands: {bands}")
+    cprint(f"uc_attens: {uc_attens}")
+    cprint(f"dc_attens: {dc_attens}")
+    cprint(f"logfile: {logfile}")
+    cprint("-" * 60)
+
+    tks = {}
+    for b in bands:
+        cprint(f"Setting up band {b}...")
+        S.set_att_uc(b, uc_attens[0])
+        S.set_att_dc(b, dc_attens[0])
+        tks[b] = get_tracking_kwargs(S, cfg, b, kwargs=tracking_kwargs)
+        tks[b].update({
+            'return_data': False, 'make_plot': False, 'save_plot': False
+        })
+        if not skip_setup_notches:
+            S.setup_notches(b, tone_power=tone_power,
+                            new_master_assignment=False)
+
+    for i, uc_atten in enumerate(uc_attens):
+        cprint(f"Setting uc_atten to {uc_atten}")
+        for b in bands:
+            print(f"Serial fns for band {b}")
+            S.set_att_uc(b, uc_atten)
+            S.set_att_dc(b, dc_attens[0])
+            # Should tracking setup go in dc_atten loop? Need to test.
+            # S.tracking_setup(b, **tks[b])
+
+        for j, dc_atten in enumerate(dc_attens):
+            for b in bands:
+                S.set_att_dc(b, dc_atten)
+                print("Tracking Setup")
+                S.run_serial_gradient_descent(b)
+                S.run_serial_eta_scan(b)
+                S.tracking_setup(b, **tks[b])
+            # Take data
+            atten_grid.append([uc_atten, dc_atten])
+            start_times.append(time.time())
+            datfile = S.take_stream_data(meas_time, make_freq_mask=False)
+            datfiles.append(datfile)
+            stop_times.append(time.time())
+
+            # Analyze data
+            seg = StreamSeg(*S.read_stream_data(datfile))
+            f, Pxx = get_psd(S, seg.times, seg.sig)
+            fmask = (f > 5) & (f < 50)
+            # Array of whitenoise level for each readout chan
+            wls = np.nanmedian(Pxx[:, fmask], axis=1)
+            for k, b in enumerate(bands):
+                rchans = seg.mask[b]  # Readout channels for band b
+                rchans = rchans[rchans != -1]
+                wl_medians[k, i, j] = np.nanmedian(wls[rchans])
+            print(f"Median noise for uc={uc_atten}, dc={dc_atten}: "
+                  f"{wl_medians[:, i, j]}")
+
+    stop_time = time.time()
+    atten_grid = np.array(atten_grid)
+
+    if logs_silenced: # Returns logs to stdout
+        S.set_logfile(None)
+
+    summary = {
+        'starts': start_times,
+        'stops': stop_times,
+        'uc_attens': uc_attens,
+        'dc_attens': dc_attens,
+        'atten_grid': atten_grid,
+        'bands': bands,
+        'dat_files': datfiles,
+        'wl_medians': wl_medians
+    }
+    fname = make_filename(S, 'optimize_atten_summary.npy')
+    np.save(fname, summary, allow_pickle=True)
+    S.pub.register_file(fname, 'optimize_atten_summary', format='npy')
+
+    for i, band in enumerate(bands):
+        wls = wl_medians[i]
+        uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
+        cprint(f"Band {band}:")
+        cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
+        cprint(f"  UC Atten: {uc_attens[uc_idx]}")
+        cprint(f"  DC Atten: {dc_attens[dc_idx]}")
+        if update_cfg:
+            cfg.dev.update_band(band, {
+                'uc_att': uc_attens[uc_idx],
+                'dc_att': dc_attens[dc_idx],
+            })
+    if update_cfg:
+        print(f"Updating cfg and dumping to {cfg.dev_file}")
+        cfg.dev.dump(cfg.dev_file, clobber=True)
+
+    plot_optimize_attens(S, summary)
+
+    cprint(f"Finished atten scan. Summary saved to {fname}", True)
+    cprint(f"Total duration: {stop_time - start_time} sec", True)
+    return summary, fname
 
 
 @set_action()

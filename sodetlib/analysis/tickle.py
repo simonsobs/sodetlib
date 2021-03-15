@@ -1,13 +1,16 @@
 from pysmurf.client.util.pub import set_action
 import pickle as pkl
 import scipy.optimize as opt
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
 from scipy import signal
 import matplotlib
-matplotlib.use("Agg")
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 pi = np.pi
 
 
@@ -116,6 +119,7 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current,
             Dictionary with T/F for each channel whether its a detector or not
             and for detector channels calculated resistance.
     """
+    matplotlib.use("Agg")
     # Read back in stream data to analyze
     timestamp, phase, mask = S.read_stream_data(datafile=data_file)
     # ctime for plot labeling

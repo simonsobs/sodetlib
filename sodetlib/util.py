@@ -6,6 +6,9 @@ import numpy as np
 from scipy import signal
 import time
 import os
+from collections import namedtuple
+
+StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
 
 class TermColors:
