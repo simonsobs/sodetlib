@@ -295,7 +295,7 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
     chans_to_consider = [c for c in S.which_on(band)
                          if f_span_min < f_span[c] < f_span_max]
 
-    datfile = S.take_stream_data(10)
+    datfile = S.take_stream_data(10, make_freq_mask=False)
     _, outdict = analyze_noise_psd(S, band, datfile, chans=chans_to_consider)
     chan_noise = []
     chan_df = []
@@ -424,7 +424,7 @@ def optimize_lms_gain(S, cfg, band, BW_target, tunefile=None,
         tracking_kwargs['lms_gain'] = lms_gain
         S.tracking_setup(band, **tracking_kwargs)
 
-        datafile = S.take_stream_data(meas_time)
+        datafile = S.take_stream_data(meas_time, make_freq_mask=False)
         timestamp, phase, mask = S.read_stream_data(datafile)
         phase *= S.pA_per_phi0/(2*np.pi)
         ch_idx = mask[band, best_chan]
@@ -614,6 +614,7 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
         if fit_curve:
             popt, pcov, f_fit, Pxx_fit = S.analyze_psd(f, Pxx[ch_idx])
             wl, n, f_knee = popt
+            wlmean = np.nanmedian(Pxx[ch_idx][wl_mask])
         else:
             wl = np.nanmedian(Pxx[ch_idx][wl_mask])
             n = None
@@ -621,11 +622,15 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
 
         if f_knee != 0:
             wls.append(wl)
+        if f_knee == 0:
+            wls.append(wlmean)
 
         outdict[chan] = {}
         outdict[chan]['fknee'] = f_knee
         outdict[chan]['noise index'] = n
         outdict[chan]['white noise'] = wl
+        if fit_curve:
+            outdict[chan]['wl_mean'] = wlmean
 
     cprint(f"Channels {cut_chans} were cut due to high phase span.", False)
     median_noise = np.median(np.asarray(wls))
