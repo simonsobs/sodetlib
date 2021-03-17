@@ -1,11 +1,6 @@
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
 import pysmurf.client
 import argparse
 import numpy as np
-from scipy import signal
 import os
 import pandas as pd
 from resonator_model import *
@@ -92,8 +87,3 @@ if __name__=='__main__':
 	
 	#Put your script calls here
 	resonator_fitting(S,tunefile = args.tunefile)
-
-
-
-
-

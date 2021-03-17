@@ -6,22 +6,21 @@ from sodetlib.util import cprint, TermColors, make_filename, \
 import numpy as np
 import os
 import time
-from scipy import signal
-import scipy.optimize as opt
-from scipy import interpolate
-import pickle as pkl
 import sys
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 from pysmurf.client.util.pub import set_action
 
 
 @set_action()
 def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
                          frac_pp=None,lms_freq=None,reset_rate_khz=None,
-                         lms_gain=None):
+                         lms_gain=None,channels=None):
     """
     Adapted from script by SWH: shawn@slac.stanford.edu (can still see original
     in pysmurf/scratch/shawn/measureFluxRampFvsV.py) by MSF: msilvafe@ucsd.edu.
@@ -47,6 +46,10 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
         Number of flux points you will take total.
     relock: (bool)
         Whether or not to relock before starting flux stepping
+    channels: (dict)
+        default is None and will run on all channels that are on
+        otherwise pass a dictionary with a key for each band
+        with values equal to the list of channels to run in each band.
 
     Returns
     -------
@@ -74,8 +77,8 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
 
     #This is the step size calculated from range and number of steps
     bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
-
-    channels = {}
+    if channels is None:
+        channels = {}
 
     bias = np.arange(bias_low, bias_high, bias_step)
 
@@ -88,7 +91,8 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
         print(band_cfg)
         if lms_gain is None:
             lms_gain = band_cfg['lms_gain']
-        channels[band] = S.which_on(band)
+        if channels is None:
+            channels[band] = S.which_on(band)
         if len(channels[band])>0:
             S.log(f'{len(channels[band])} channels on in band {band}, configuring band for simple, integral tracking')
             S.log(f'-> Setting lmsEnable[1-3] and lmsGain to 0 for band {band}.', S.LOG_USER)
@@ -499,6 +503,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     if show_plots:
         plt.ion()
     else:
+        matplotlib.use("Agg")
         plt.ioff()
 
     fname = make_filename(S, f'tracking_quality_b{band}.png', plot=True)

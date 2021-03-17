@@ -54,8 +54,9 @@ if __name__=='__main__':
     
     #S.find_freq(band, subband=sbs_on,drive_power = 12,make_plot=True,show_plot=False,save_plot = True)
     #S.load_tune('/data/smurf_data/tune/1588116270_tune.npy')
+    #S.load_tune('/data/smurf_data/tune/1592250732_tune.npy')
     S.load_tune('/data/smurf_data/tune/1592250732_tune.npy')
-    S.setup_notches(band,drive=12,new_master_assignment=False) 
+    S.setup_notches(band,drive=12,new_master_assignment=False)
     for chan in S.which_on(band):
         if chan in good_resp_chans:
             continue

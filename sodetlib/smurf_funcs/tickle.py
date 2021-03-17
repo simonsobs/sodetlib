@@ -1,15 +1,7 @@
 import numpy as np
-import os
 import time
-from scipy import signal
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import scipy.optimize as opt
-import pickle as pkl
 pi = np.pi
 
-from pysmurf.client.util.pub import set_action
 
 def take_tickle(S,band,bias_group, high_current, tickle_voltage, over_bias):
     """
@@ -71,5 +63,3 @@ def take_tickle(S,band,bias_group, high_current, tickle_voltage, over_bias):
     time.sleep(5)
     S.stream_data_off()
     return data_file, cur_dc
-
-

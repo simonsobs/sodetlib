@@ -1,13 +1,16 @@
 from pysmurf.client.util.pub import set_action
 import pickle as pkl
 import scipy.optimize as opt
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
 from scipy import signal
 import matplotlib
-matplotlib.use("Agg")
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 pi = np.pi
 
 
@@ -116,6 +119,7 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current,
             Dictionary with T/F for each channel whether its a detector or not
             and for detector channels calculated resistance.
     """
+    matplotlib.use("Agg")
     # Read back in stream data to analyze
     timestamp, phase, mask = S.read_stream_data(datafile=data_file)
     # ctime for plot labeling
@@ -169,43 +173,51 @@ def analyze_tickle(S, band, data_file, dc_level, tickle_voltage, high_current,
             pks, _ = signal.find_peaks(corrs, distance=100)
             tau0 = np.median(np.diff(np.sort(pks)))/S.fs
             fguess = 1/tau0
-            # Fit the tickle to a sine wave
-            try:
-                popt, pcov = opt.curve_fit(
-                    sine_fit, xdata=time_plot, ydata=pnew,
-                    p0=[np.mean(pnew), np.abs(
-                        np.max(pnew)-np.min(pnew))/2, 0, fguess],
-                    bounds=([np.min(pnew), 0, -pi, 0.95*fguess],
-                            [np.max(pnew), 20*(np.max(pnew)-np.min(pnew)),
-                             pi, 1.05*fguess]))
-            except RuntimeError as e:
+
+            #ADDING FLAG FOR NANS
+            if np.isnan(fguess):
                 channel_data = {
                     'detector_channel': False,
-                    'failure_statement': 'Failed fit'
+                    'failure_statement': 'Frequency NaN'
                 }
-                continue
-            rms_error = np.sqrt(
-                np.sum((sine_fit(time_plot, *popt) - pnew)**2)/len(pnew))
-            res = pnew - sine_fit(time_plot, *popt)
-            ss_res = np.sum(res**2)
-            ss_tot = np.sum((pnew - np.mean(pnew))**2)
-            r2 = 1 - (ss_res / ss_tot)
-            print(f"Possible channel: {c}, r2={r2}")
-            I_bolo = (S.pA_per_phi0*popt[1]/(2*np.pi))*1e-12
-            V_bolo = (I_command - I_bolo)*S.R_sh
-            R_fit = V_bolo/I_bolo
-            channel_data = {
-                'detector_channel': True,
-                'failure_statement': None,
-                'popts': popt,
-                'pcov': pcov,
-                'rms_error': rms_error,
-                'r2': r2,
-                'R_fit': R_fit
-            }
-            if r2 < 0.9:
-                channel_data['detector_channel'] = False
-                channel_data['failure_statement'] = f"Poor Fit (R2={r2:.2f})"
+            else:
+                # Fit the tickle to a sine wave
+                try:
+                    popt, pcov = opt.curve_fit(
+                        sine_fit, xdata=time_plot, ydata=pnew,
+                        p0=[np.mean(pnew), np.abs(
+                            np.max(pnew)-np.min(pnew))/2, 0, fguess],
+                        bounds=([np.min(pnew), 0, -pi, 0.95*fguess],
+                                [np.max(pnew), 20*(np.max(pnew)-np.min(pnew)),
+                                pi, 1.05*fguess]))
+                except RuntimeError as e:
+                    channel_data = {
+                        'detector_channel': False,
+                        'failure_statement': 'Failed fit'
+                    }
+                    continue
+                rms_error = np.sqrt(
+                    np.sum((sine_fit(time_plot, *popt) - pnew)**2)/len(pnew))
+                res = pnew - sine_fit(time_plot, *popt)
+                ss_res = np.sum(res**2)
+                ss_tot = np.sum((pnew - np.mean(pnew))**2)
+                r2 = 1 - (ss_res / ss_tot)
+                print(f"Possible channel: {c}, r2={r2}")
+                I_bolo = (S.pA_per_phi0*popt[1]/(2*np.pi))*1e-12
+                V_bolo = (I_command - I_bolo)*S.R_sh
+                R_fit = V_bolo/I_bolo
+                channel_data = {
+                    'detector_channel': True,
+                    'failure_statement': None,
+                    'popts': popt,
+                    'pcov': pcov,
+                    'rms_error': rms_error,
+                    'r2': r2,
+                    'R_fit': R_fit
+                }
+                if r2 < 0.9:
+                    channel_data['detector_channel'] = False
+                    channel_data['failure_statement'] = f"Poor Fit (R2={r2:.2f})"
         if not(channel_data['detector_channel']):
             channel_data['R_fit'] = 0
         channel_data['R_guess'] = R_pp
