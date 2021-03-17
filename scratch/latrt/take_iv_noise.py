@@ -13,6 +13,10 @@ cfg = DetConfig()
 cfg.load_config_files(slot=2)
 S = cfg.get_smurf_control(dump_configs=True, make_logfile=True)
 
+S.pA_per_phi0 = 9e6
+S.R_sh=400e-6
+S.bias_line_resistance=16400.0
+
 S.load_tune()
 S.relock(1)
 S.relock(3)
@@ -66,7 +70,7 @@ for ch in bad_chan:
 
 data, results = S.take_noise_psd(meas_time=10, low_freq=[1],
                                  high_freq=[10],nperseg=2**16, return_noise_params=True,
-                                save_data=True,show_plot=True,make_channel_plot=False)
+                                save_data=True,show_plot=False,make_channel_plot=False)
 
 
 iv_file = S.run_iv(bias_groups=[1],bias_high=15.,bias_low=0.,bias_step=0.1,
