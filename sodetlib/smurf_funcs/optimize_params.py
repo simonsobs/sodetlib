@@ -936,6 +936,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     start_time = time.time()
 
     logs_silenced = False
+    logfile = None
     if silence_logs and (S.log.logfile == sys.stdout):
         logfile = make_filename(S, 'optimize_atten.log')
         print(f"Writing pysmurf logs to {logfile}")
