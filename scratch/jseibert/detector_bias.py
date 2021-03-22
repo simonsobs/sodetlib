@@ -66,7 +66,7 @@ def find_bias(iv_fp,band,channels):
             
     s_i = {}
 
-    for ch in chans:
+    for ch in channels:
         s_i[ch] = []
         for v in good_volt:
             idx = np.where(iv_data[band][ch]['v_bias'] == v)[0]
