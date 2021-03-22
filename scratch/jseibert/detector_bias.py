@@ -25,6 +25,9 @@ def find_bias(iv_fp,band,channels):
     good_volt : list
         List of bias voltages that will place the maximal number of detectors
         in the acceptable Rfrac range. 
+    s_i: dict
+        Dictionary keyed by channel of the responsivities at each of the bias
+        voltages returned in good_volt. 
     """        
 
     iv_data = np.load(iv_fp,allow_pickle=True).item()
@@ -61,5 +64,13 @@ def find_bias(iv_fp,band,channels):
 
             good_volt.append(v)
             
-    return good_volt
+    s_i = {}
+
+    for ch in chans:
+        s_i[ch] = []
+        for v in good_volt:
+            idx = np.where(iv_data[2][ch]['v_bias'] == v)[0]
+            s_i[ch].append(np.float(iv_data[2][ch]['si'][idx]))
+            
+    return good_volt, s_i
  
