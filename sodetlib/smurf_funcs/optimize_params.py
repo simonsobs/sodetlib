@@ -1105,7 +1105,7 @@ def optimize_uc_atten(S, cfg, band, drive=None, tunefile=None,
 
     attens = np.arange(30, -2, -2)
 
-    medians = np.full_like(attens, np.nan)
+    medians = np.full(len(attens), np.nan)
     initial_median = None
 
     S.set_att_uc(band, 30)
