@@ -126,7 +126,7 @@ if __name__=='__main__':
             time.sleep(5)
 
             # Instead of using the pysmurf stop function, set to the original dc value
-            S.set_rtm_arb_waveform_enable(bg)
+            S.set_rtm_arb_waveform_enable(0)
             S.set_tes_bias_bipolar(bg,cur_bias)
             time.sleep(1)
             S.stream_data_off()
