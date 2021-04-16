@@ -1,29 +1,23 @@
-import matplotlib 
+import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+
 import pysmurf.client
 import argparse
 import numpy as np
 import os
 import time
 import glob
-from scipy import signal
-import scipy.optimize as opt
-pi = np.pi
+
+from sodetlib.det_config  import DetConfig
+import numpy as np
 
 
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--setup', action='store_true')
-    parser.add_argument('--config-file', required=True)
-    parser.add_argument('--epics-root', default='smurf_server_s2')
-
-    parser.add_argument('--out-file')
-
     parser.add_argument('--band', type=int, required=True)
-    parser.add_argument('--bias-group',type=int,default=1)
+    parser.add_argument('--bias-group',type=int,default=0)
 
     parser.add_argument('--step-size',type=float)
 
@@ -35,12 +29,10 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     # Initialize pysmurf object
-    S = pysmurf.client.SmurfControl(
-            epics_root = args.epics_root,
-            cfg_file = args.config_file,
-            setup = args.setup,make_logfile=False
-    )
-
+    cfg = DetConfig()
+    cfg.load_config_files(slot=2)
+    S = cfg.get_smurf_control()
+    
     # Basic setup info
     band = args.band
     bg = args.bias_group
@@ -53,12 +45,11 @@ if __name__=='__main__':
     bias_step = args.bias_step
     ob_volt = args.overbias_voltage
 
-    # Output information
-    out_file = args.out_file
-    output_dir = S.output_dir
+    ctime = S.get_timestamp()
+    out_file = f'/data/sodetlib_data/{ctime}_bias_steps.txt'
 
     with open(out_file, 'a') as fname:
-        fname.write('# Bias,Datafile,Output_Dir,Sample_rate')
+        fname.write('# Bias,Datafile,Output_Dir,Sample_rate,Start,Stop')
 
     # Starting downsample and filter information
     start_downsample = S.get_downsample_factor()
@@ -76,9 +67,12 @@ if __name__=='__main__':
     S.set_tes_bias_high_current(bg)
     S.set_tes_bias_bipolar(bg,0.0)
 
+    # Convert step size to high current mode
+    step_size /= S.high_low_current_ratio
+    
     # Overbias detectors
-    S.set_tes_bias_bipolar(bg,ob_volt/S.high_low_current_ratio)
-
+    S.overbias_tes(bias_group = bg, tes_bias = bias_high/S.high_low_current_ratio,overbias_wait=5,overbias_voltage=ob_volt,high_current_mode=True)
+    
     for b_bias in np.arange(bias_high,bias_low,-bias_step):
         
         # Step the bias down to some value in the transition
@@ -87,9 +81,10 @@ if __name__=='__main__':
         
         cur_bias = S.get_tes_bias_bipolar(bg) 
         print(cur_bias)
-        b_step = np.arange(cur_bias,
-                bias_target_low_current_mode/S.high_low_current_ratio,
-                -0.1/S.high_low_current_ratio)
+        b_step = np.arange(bias_target_low_current_mode/S.high_low_current_ratio,
+                   cur_bias,
+            0.1/S.high_low_current_ratio)
+        b_step = np.flip(b_step)
         print(b_step)
         for b in b_step:
             S.set_tes_bias_bipolar(bg,b)
@@ -120,6 +115,7 @@ if __name__=='__main__':
         # This is a remnant from an old pysmurf bug, but it isn't hurting anything except
         # storage space on the smurf-srv. Can probably take this out now
         for i in range(2):
+            start = S.get_timestamp()
             datfile = S.stream_data_on()
             time.sleep(1)
             S.play_tes_bipolar_waveform(bg,sig)
@@ -130,14 +126,16 @@ if __name__=='__main__':
             S.set_tes_bias_bipolar(bg,cur_bias)
             time.sleep(1)
             S.stream_data_off()
+            stop = S.get_timestamp()
 
         # Save datfile info
 
         with open(out_file, 'a') as fname:
-            fname.write(f'{b},{datfile},{output_dir},{fs}\n')
+            fname.write(f'{b_bias},{datfile},{S.output_dir},{fs},{start},{stop}\n')
         
-        # Sleep for 60 seconds before ending
-        time.sleep(60)
+        # Sleep for 15 seconds before next step
+        time.sleep(15)
 
-    # Turn on downsample filter again
+    # Turn on downsample filter again and downsampling
     S.set_filter_disable(0)
+    S.set_downsample_factor(20)
