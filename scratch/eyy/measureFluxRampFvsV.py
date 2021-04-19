@@ -12,27 +12,30 @@ import sys
 #S = pysmurf.SmurfControl(make_logfile=False,setup=False,epics_root='smurf_server_s2',cfg_file='/data/pysmurf_cfg/experiment_fp29_smurfsrv03_noExtRef_lbOnlyBay0.cfg')
 
 import os
-fn_raw_data = os.path.join(S.output_dir, '%s_fr_sweep_data.npy'%(S.get_timestamp()))
+fn_raw_data = os.path.join(S.output_dir,
+                           '%s_fr_sweep_data.npy'%(S.get_timestamp()))
 
 #######
 # [(None,None)] means don't change the amplitude or uc_att, but still retunes
 #amplitudes_and_uc_atts=[(8,30),(9,30),(10,30),(11,30),(12,30),(12,24),(12,18),(12,12),(12,6),(12,0)]
-amplitudes_and_uc_atts=[(None,None)]
+#amplitudes_and_uc_atts=[(None,None)]
+amplitudes_and_uc_atts = [(12, 6)]
+print(f'Amplitudes and UC atts are {amplitudes_and_uc_atts}')
 
 # needs to be nonzero, or won't track flux ramp well,
 # particularly when stepping flux ramp by large amounts
 lmsGain=6
 hbInBay0=False
 relock=False 
-bands=[0,1,2,3]
+bands=[2]
 bias=None
 # no longer averaging as much or waiting as long between points in newer fw which has df filter
 wait_time=0.125
-Npts=10
+Npts=3
 #bias_low=-0.432
 #bias_high=0.432
-bias_low=-0.6#28288303069563764
-bias_high=0.6#28288303069563764
+bias_low=-0.25
+bias_high=0.25
 Nsteps=500
 #Nsteps=25
 bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
@@ -153,12 +156,15 @@ for (amplitude,uc_att) in amplitudes_and_uc_atts:
     S.log('Done taking flux ramp with amplitude={} and uc_att={}.'.format(amplitude,uc_att), S.LOG_USER)
 
     for band in bands:
-        fres = []
-        for ch in channels[band]:
-            fres.append(S.channel_to_freq(band,ch))
+        print(f"--==working on band {band}==--")
+        fres = np.zeros(len(channels[band]))
+        for ii, ch in enumerate(channels[band]):
+            fres[ii] = S.channel_to_freq(band, ch)
+        # fres=[S.channel_to_freq(band, ch) for ch in channels[band]]
+        print("11")
         raw_data[band][(amplitude,uc_att)]['fres']=np.array(fres) + (2e3 if hbInBay0 else 0)
         raw_data[band][(amplitude,uc_att)]['channels']=channels[band]
-
+        print("22")
         if use_take_debug_data:
             #stack
             fovsfr=np.dstack(fs[band])[0]
@@ -167,14 +173,18 @@ for (amplitude,uc_att) in amplitudes_and_uc_atts:
             raw_data[band][(amplitude,uc_att)]['fvsfr']=fvsfr + (2e3 if hbInBay0 else 0)
         else:
             #stack
+            print("33")
             lfovsfr=np.dstack(fs[band])[0]
             raw_data[band][(amplitude,uc_att)]['lfovsfr']=lfovsfr
             raw_data[band][(amplitude,uc_att)]['fvsfr']=np.array([arr/4.+fres for (arr,fres) in zip(lfovsfr,fres)]) + (2e3 if hbInBay0 else 0)
 
     # save dataset for each iteration, just to make sure it gets
     # written to disk
+    print("Almost at the end...")
     np.save(fn_raw_data, raw_data)
-            
+
+print("Super confused...")
 # done - zero and unset
-S.set_fixed_flux_ramp_bias(0,do_config=False)
+S.set_fixed_flux_ramp_bias(0, do_config=False)
 S.unset_fixed_flux_ramp_bias()
+print("END")

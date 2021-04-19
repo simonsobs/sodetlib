@@ -886,7 +886,7 @@ def plot_optimize_attens(S, summary):
 def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
                     dc_attens=None, tone_power=None, silence_logs=True,
                     tracking_kwargs=None, skip_setup_notches=False,
-                    update_cfg=True):
+                    update_cfg=True, set_to_opt=True):
     """
     UC and DC attenuation optimization function, built to work efficiently
     with multiple bands.
@@ -912,6 +912,9 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         base functionality
     update_cfg : bool
         If true, will update the cfg object with the new atten values
+    set_to_opt : bool
+        If true, will set atten to the optimal values afterwards and run setup
+        functions.
     """
     if isinstance(bands, (int, float)):
         bands = [bands]
@@ -1003,7 +1006,24 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     stop_time = time.time()
     atten_grid = np.array(atten_grid)
 
-    if logs_silenced: # Returns logs to stdout
+    opt_ucs = np.zeros_like(bands)
+    opt_dcs = np.zeros_like(bands)
+    for i, band in enumerate(bands):
+        wls = wl_medians[i]
+        uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
+        opt_ucs[i] = uc_attens[uc_idx]
+        opt_dcs[i] = dc_attens[dc_idx]
+        cprint(f"Band {band}:")
+        cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
+        cprint(f"  UC Atten: {uc_attens[uc_idx]}")
+        cprint(f"  DC Atten: {dc_attens[dc_idx]}")
+        if update_cfg:
+            cfg.dev.update_band(band, {
+                'uc_att': uc_attens[uc_idx],
+                'dc_att': dc_attens[dc_idx],
+            })
+
+    if logs_silenced:  # Returns logs to stdout
         S.set_logfile(None)
 
     summary = {
@@ -1014,7 +1034,9 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         'atten_grid': atten_grid,
         'bands': bands,
         'dat_files': datfiles,
-        'wl_medians': wl_medians
+        'wl_medians': wl_medians,
+        'opt_ucs': opt_ucs,
+        'opt_dcs': opt_dcs,
     }
     fname = make_filename(S, 'optimize_atten_summary.npy')
     np.save(fname, summary, allow_pickle=True)
@@ -1040,6 +1062,19 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     cprint(f"Finished atten scan. Summary saved to {fname}", True)
     cprint(f"Total duration: {stop_time - start_time} sec", True)
+
+    if set_to_opt:
+        for i, b in enumerate(bands):
+            cprint("Setting attens to opt values and re-running setup notches "
+                   f"for band {b}...")
+            S.set_att_uc(b, opt_ucs[i])
+            S.set_att_dc(b, opt_dcs[i])
+            S.setup_notches(b, tone_power=tone_power,
+                            new_master_assignment=False)
+            S.run_serial_gradient_descent(b)
+            S.run_serial_eta_scan(b)
+            S.tracking_setup(b, **tks[b])
+
     return summary, fname
 
 
@@ -1105,7 +1140,7 @@ def optimize_uc_atten(S, cfg, band, drive=None, tunefile=None,
 
     attens = np.arange(30, -2, -2)
 
-    medians = np.full_like(attens, np.nan)
+    medians = np.full(len(attens), np.nan)
     initial_median = None
 
     S.set_att_uc(band, 30)
