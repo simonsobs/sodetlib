@@ -49,12 +49,10 @@ if __name__=='__main__':
     out_file = f'/data/sodetlib_data/{ctime}_bias_steps.txt'
 
     with open(out_file, 'a') as fname:
-        fname.write('# Bias,Datafile,Output_Dir,Sample_rate,Start,Stop')
+        fname.write('# Bias,Datafile,Output_Dir,Sample_rate,Start,Stop\n')
 
     # Starting downsample and filter information
     start_downsample = S.get_downsample_factor()
-    a = S.get_filter_a(band)
-    b = S.get_filter_b(band)
 
     # No more downsampling
     S.set_downsample_factor(1)
