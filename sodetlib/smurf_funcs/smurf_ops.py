@@ -79,6 +79,8 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     bias_step=np.abs(bias_high-bias_low)/float(Nsteps)
     if channels is None:
         channels = {}
+        for band in bands:
+            channels[band] = S.which_on(band)
 
     bias = np.arange(bias_low, bias_high, bias_step)
 
@@ -88,11 +90,8 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     bands_with_channels_on=[]
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        print(band_cfg)
         if lms_gain is None:
             lms_gain = band_cfg['lms_gain']
-        if channels is None:
-            channels[band] = S.which_on(band)
         if len(channels[band])>0:
             S.log(f'{len(channels[band])} channels on in band {band}, configuring band for simple, integral tracking')
             S.log(f'-> Setting lmsEnable[1-3] and lmsGain to 0 for band {band}.', S.LOG_USER)
@@ -532,7 +531,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
         nramps = 2
         xs = np.arange(len(f))
         m = (si[1] - 20 < xs) & (xs < si[1 + nramps] + 20)
-        for chan in active_chans:
+        for chan in np.where(active_chans)[0]:
             fig, ax = plt.subplots()
             fig.patch.set_facecolor('white')
             c = 'C1' if r[chan] > r_thresh else 'black'

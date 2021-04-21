@@ -1,0 +1,370 @@
+/* Set defaults just in case HTML5 isn't implemented fully */
+article, aside, details, figcaption, figure, footer, header,
+hgroup, menu, nav, section { display: block; }
+
+/* Force a sane/predictable box model on everything */
+html {
+    box-sizing: border-box;
+}
+*, *::after, *::before {
+    -webkit-box-sizing: inherit;
+    -moz-box-sizing: inherit;
+    box-sizing: inherit;
+}
+
+body {
+    color: #000000;
+    font-family: 'Linux Libertine', 'Cambria', serif;
+    text-align: justify;
+
+    background-color: #f0f0f0;
+    /* Boring defaults if we can't do fancier things in the next block.
+     * Allow the figures later to span 1000px, but then use padding to
+     * make the text block 800px as is done in the calculated section. */
+    width: 1000px;
+    margin-left:  auto;
+    margin-right: auto;
+    padding-left:  100px;
+    padding-right: 100px;
+    /* Center the body. Do this with calc statements instead of the usual
+     * margin trick so that this only happens if we can also later resize
+     * figures to be full page width too.
+     *
+     * IMPORTANT! Make sure every calculation include a 'vw' component in
+     * the calculation to ensure it's an all-or-nothing update. */
+    width: -webkit-calc(0vw + 800px);
+    width:    -moz-calc(0vw + 800px);
+    width:         calc(0vw + 800px);
+    margin-left: -webkit-calc(50vw - 400px);
+    margin-left:    -moz-calc(50vw - 400px);
+    margin-left:         calc(50vw - 400px);
+    margin-right: -webkit-calc(50vw - 400px);
+    margin-right:    -moz-calc(50vw - 400px);
+    margin-right:         calc(50vw - 400px);
+    /* Reset padding back to zero if calculations are possible,
+     * effectively disabling the fallback settings. */
+    padding-left: -webkit-calc(0vw + 0px);
+    padding-left:    -moz-calc(0vw + 0px);
+    padding-left:         calc(0vw + 0px);
+    padding-right: -webkit-calc(0vw + 0px);
+    padding-right:    -moz-calc(0vw + 0px);
+    padding-right:         calc(0vw + 0px);
+}
+header {
+    text-align: center;
+}
+h1,h2,h3,h4,h5,h6 {
+    font-family: 'Linux Biolinum', 'Calibri', sans-serif;
+}
+hr {
+    border: 0;
+    height: 1px;
+    width: 80%;
+    background-image: -webkit-linear-gradient(left, rgba(0,0,0,0),
+        rgba(0,0,0,0.75), rgba(0,0,0,0));
+    background-image:    -moz-linear-gradient(left, rgba(0,0,0,0),
+        rgba(0,0,0,0.75), rgba(0,0,0,0));
+    background-image:     -ms-linear-gradient(left, rgba(0,0,0,0),
+        rgba(0,0,0,0.75), rgba(0,0,0,0));
+    background-image:      -o-linear-gradient(left, rgba(0,0,0,0),
+        rgba(0,0,0,0.75), rgba(0,0,0,0));
+    margin-top: 40px;
+    margin-bottom: 40px;
+}
+dl {
+    margin-left: 40px;
+    margin-right: 40px;
+}
+dt {
+    font-weight: bold;
+}
+ul li,ol li {
+    margin: 1em 0;
+}
+code {
+    background-color: #f7f7f7;
+    border: 1px solid #ccc;
+    padding: 0.1ex 0.5ex;
+    border-radius: 0.5ex;
+}
+code.block {
+    display: block;
+    margin: 0.75em 40px 0.75em 40px;
+    white-space: nowrap;
+}
+table {
+    border-collapse: collapse;
+}
+table td {
+    padding: 0.1em 0.2em;
+    text-align: center;
+    vertical-align: middle;
+}
+table thead td {
+    font-weight: bold;
+}
+
+/* Make a prettier color for links */
+a {
+    color: #c02020;
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+/* Link class for postings, colored differently so that they don't stand out
+ * as much
+ */
+a.posting {
+    color: #802020;
+}
+
+/* Visually identify anything with a title attribute since it's probably
+ * being used as a tooltip that should be hovered for more info. */
+*[title] {
+    text-decoration: underline dashed;
+}
+
+/* Also make a postings list align correctly */
+.postinglist {
+    display: block; /* Fallback */
+    display: table;
+    margin: 0px 40px;
+    font-size: smaller;
+}
+.postinglist > * {
+    display: block; /* Fallback */
+    display: table-row;
+}
+.postinglist > * > * {
+    display: inline; /* Fallback */
+    display: table-cell;
+    padding: 0.2em 0;
+}
+.postinglist > * > *:first-child {
+    font-weight: bold;
+    text-align: right;
+    padding-right: 1em;
+}
+
+.shadowbox {
+    /* Make some nice looking box shadows in as many browsers as we
+        can */
+    -ms-filter: "progid:DXImageTransform.Microsoft.Shadow(Strength=2,Direction=135, Color='#BBBBBB')";
+        filter:  progid:DXImageTransform.Microsoft.Shadow(Strength=2,Direction=135, Color='#BBBBBB');
+    -webkit-box-shadow: 2px 2px 12px #BBBBBB;
+       -moz-box-shadow: 2px 2px 12px #BBBBBB;
+            box-shadow: 2px 2px 12px #BBBBBB;
+    /* then do some rounded box corners for eye candy as well */
+    -webkit-border-radius: 8px;
+       -moz-border-radius: 8px;
+            border-radius: 8px;
+}
+figure {
+    text-align: center;
+    background-color: #ffffff;
+    padding: 8px;
+    /* In fallback mode, use a full 1000px and center around the body
+     * text */
+    width: 1000px;
+    margin-left: -100px;
+    /* Figures should span the entire page width even though the body
+     * doesn't necessarily span that far. */
+    width: -webkit-calc(100vw - 2 * 32px);
+    width:    -moz-calc(100vw - 2 * 32px);
+    width:         calc(100vw - 2 * 32px);
+    margin-left: -webkit-calc(-50vw + 400px + 32px);
+    margin-left:    -moz-calc(-50vw + 400px + 32px);
+    margin-left:         calc(-50vw + 400px + 32px);
+
+    /* Make some nice looking box shadows in as many browsers as we
+        can */
+    -ms-filter: "progid:DXImageTransform.Microsoft.Shadow(Strength=2,Direction=135, Color='#BBBBBB')";
+        filter:  progid:DXImageTransform.Microsoft.Shadow(Strength=2,Direction=135, Color='#BBBBBB');
+    -webkit-box-shadow: 2px 2px 12px #BBBBBB;
+       -moz-box-shadow: 2px 2px 12px #BBBBBB;
+            box-shadow: 2px 2px 12px #BBBBBB;
+    /* then do some rounded box corners for eye candy as well */
+    -webkit-border-radius: 8px;
+       -moz-border-radius: 8px;
+            border-radius: 8px;
+}
+figure img {
+    max-width: 100%;
+    object-fit: scale-down;
+}
+figure table {
+    margin-left: auto;
+    margin-right: auto;
+}
+figure figcaption {
+    max-width: 800px;
+    margin: 8px auto;
+    text-align: left;
+    font-size: 10pt;
+}
+tr {
+    vertical-align: top;
+}
+.rlabel {
+    text-align: right;
+    padding-right: 1em;
+    white-space: nowrap;
+}
+
+/* Generic styles */
+
+.center { text-align: center; }
+.tt { font-family: monospace; }
+.bold { font-weight: bold; }
+.highlight { background: #eee; }
+
+.bordered, .bordered td {
+    border: solid 1px #333;
+}
+.empty { border: 0px none; }
+
+/* Setup automatic numbering */
+/*
+     Note that counters only propagate increments at the sibling and
+     child levels. This means, e.g., that incrementing counter section
+     on the <h2> element doesn't work when each section is embedded in
+     a <section> element; instead, the counter must be incremented at
+     the <section> level so that all sibling sections also see the
+     correct counter value.
+*/
+body {
+    counter-reset: section;
+    counter-reset: appendix;
+    counter-reset: figure;
+    counter-reset: table;
+}
+
+figure {
+    counter-increment: figure;
+}
+figure.table {
+    counter-increment: table;
+}
+
+section {
+    counter-increment: section;
+    counter-reset: figure;
+    counter-reset: table;
+}
+    h2:before {
+        content: counter(section, upper-roman) ': ';
+    }
+    figure > figcaption:before {
+        content: 'Figure ' counter(section) '.' counter(figure) ': ';
+    }
+    figure.table > figcaption:before {
+        content: 'Table ' counter(section) '.' counter(table) ': ';
+    }
+
+section.appendix {
+    counter-increment: appendix;
+    counter-reset: figure;
+    counter-reset: table;
+}
+    .appendix h2:before {
+        content: counter(appendix, upper-latin) ': ';
+    }
+    .appendix figure > figcaption:before {
+        content: 'Figure ' counter(appendix, upper-latin) '.' counter(figure) ': ';
+    }
+    .appendix figure.table > figcaption:before {
+        content: 'Table ' counter(appendix) '.' counter(table) ': ';
+    }
+
+/***************************************************************************
+ * Small screen modifications
+ ***************************************************************************/
+/* Transition at 864px to account for the 800px wide content + 2*32px margins
+ * on figures */
+@media screen and (max-width: 864px) {
+    body {
+        width: 100%;
+        margin-left: 0px;
+        margin-right: 0px;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+    figure {
+        width: 100%;
+        margin-left: 0px;
+        margin-right: 0px;
+    }
+}
+
+/***************************************************************************
+ * Print modifications
+ ***************************************************************************/
+@media print {
+
+  @page {
+    margin: 0.5in;
+  }
+
+  /* Remove effects */
+  * {
+    background: #FFF !important;
+    -webkit-box-shadow: none !important;
+       -moz-box-shadow: none !important;
+            box-shadow: none !important;
+    -ms-filter: none !important;
+        filter: none !important;
+  }
+
+  body {
+    width: 100%;
+    margin: 0px 0px;
+    padding: 0em 1em;
+  }
+
+  /* Cause print-outs to include the URL explicitly. */
+  a[href]:after {
+    content: " [" attr(href) "]";
+  }
+  /* Exceptions are javascript links, internal page references, and anything
+   * which links to an image should not have their links printed out. */
+  a[href^="javascript:"]:after,
+  a[href^="#"]:after,
+  a[href*=".jpg"]:after,
+  a[href*=".jpeg"]:after,
+  a[href*=".png"]:after,
+  a[href*=".gif"]:after
+  {
+    content: "";
+  }
+
+  /* Exclude adding explicit links to postings since the link text is
+   * already descriptive enough. */
+  a.posting[href]:after {
+    content: "";
+  }
+
+  figure {
+    width: 100%;
+    margin: 0px 0px;
+    border: 1px solid #000;
+    page-break-inside: avoid;
+  }
+  figure figcaption {
+    max-width: 100%;
+    margin: 0px 0px;
+  }
+
+  /* Simple horizontal-rule */
+  hr {
+    width: 80%;
+    background-image: none;
+    border-top: #000 1px solid;
+    height: 0px;
+  }
+
+  /* Avoid page-breaks in bad locations. */
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+} /* @media print */
