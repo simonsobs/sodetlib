@@ -498,10 +498,39 @@ def load_from_g3(archive_path,meta_path,db_path,start,stop):
     
     return timestamps,phase,mask,tes_biases   
     
-# @set_action()
-def analyze_iv_info(iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0):
-    
-# adapted from pysmurf IV analysis
+@set_action()
+def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfile = None):
+    """
+    Analyzes an IV curve that was taken using sodetlib's take_iv function, detailed
+    in the iv_info dictionary. Based on pysmurf IV analysis.
+
+    Args
+    ----
+    S:
+        Smurf Control object. Required for publishing output dict.
+    iv_info_fp: str
+        Filepath to the iv_info.npy file generated when the IV
+        was taken.
+    phase: numpy.ndarray
+        Array containing the detector response in units of radians.
+    v_bias: numpy.ndarray
+        Array containing the bias line information in volts.
+    mask: numpy.ndarray
+        Array containing the band and channel assignments for any
+        active resonator channels.
+    phase_excusrion_min: float
+        Default 3.0. In radians, the minimum response a channel must
+        have to be considered a detector coupled to the bias line.
+    outfile: str
+        Filepath to save the output dictionary. Default is the
+        output directory in the iv_info dictionary plus the
+        basename ctime associated with the IV curve.
+
+    Returns
+    -------
+    outfile: str
+        Filepath where output dictionary is saved.
+    """
 
     iv_info = np.load(iv_info_fp,allow_pickle=True).item()
     
@@ -617,7 +646,7 @@ def analyze_iv_info(iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0):
         
         if R_n < 0:
             print(f'Fitted normal resistance is negative. Skipping band {bands[c]}, channel {chans[c]}')
-            continue 
+            continue
 
         v_tes = i_bias_bin*R_sh*R/(R+R_sh) # voltage over TES
         i_tes = v_tes/R # current through TES 
@@ -627,12 +656,12 @@ def analyze_iv_info(iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0):
         R_trans_max = R[nb_idx]
         R_frac_min = R_trans_min/R_n
         R_frac_max = R_trans_max/R_n
-        
+
         # calculates P_sat as P_TES at 90% R_n
         # if the TES is at 90% R_n more than once, set to -1000
         level = 0.9
         cross_idx = np.where(np.logical_and(R/R_n - level >= 0, np.roll(R/R_n - level, 1) < 0))[0]
-        
+
         if len(cross_idx) == 1:
             cross_idx = cross_idx[0]
             p_sat = interp1d(R[cross_idx-1:cross_idx+1]/R_n, p_tes[cross_idx-1:cross_idx+1])
@@ -686,19 +715,59 @@ def analyze_iv_info(iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0):
 
         iv_full_dict.setdefault(bands[c],{})
         iv_full_dict[bands[c]][chans[c]] = iv_dict
-        
-    return iv_full_dict
 
-def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None):
-    
-    if bands == None:
+    if outfile is None:
+        outfile = os.path.join(iv_info['output_dir'],iv_info['basename']+'_iv_analyze.npy')
+
+    np.save(outfile,iv_full_dict)
+    S.pub.register_file(outfile, 'iv_analyze', format='npy')
+
+    return outfile
+
+def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,show_plot=False,save_plot=True):
+    """
+    Generates individual channel plots from an analyzed IV dictionary.
+    Will make an IV plot, Rfrac plot, S_I vs. Rfrac plot, and RP plot.
+
+    Args
+    ----
+    iv_info: dict
+        Dictionary loaded from iv_info.npy that contains information from
+        when IV curve was taken.
+    iv_analyze: dict
+        Dictionary generated that contains all fitted and calculated
+        parameters from IV analysis.
+    bands: list or numpy.ndarray
+        Default None. List of bands you want to generate plots for.
+        If None, will use all the bands in the analyzed dictionary.
+    chans: list or numpy.ndarray
+        Default None. List of channels you want to generate plots for.
+        If None, will use all the bands in the analyzed dictionary.
+    plot_dir: str
+        Default None. Directory where you want to save the plots.
+        If None, will use the plot_dir specified in the iv_info dict.
+    show_plot: bool
+        Default False. Whether or not to show the plots.
+    save_plot: bool
+        Default True. Whether or not to save the plots.
+    Returns
+    -------
+    plot_dir: str
+        Filepath where plots are saved, if save_plot is True.
+    """
+    if plot_dir is None:
+        plot_dir = iv_info['plot_dir']
+
+    if bands is None:
         bands = iv_analyze.keys()
-            
+
     for b in bands:
-        if chans == None:
-            chans = iv_analyze[b].keys()
-            
-        for c in chans:
+        if chans is None:
+            chans_iter = iv_analyze[b].keys()
+        else:
+            chans_iter = chans
+
+        for c in chans_iter:
 
             if iv_analyze[b][c]['p_sat'] < -1:
                 print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
@@ -730,24 +799,36 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None):
             plt.ylabel(r'I$_{TES}$ ($\mu$A)')
             plt.title(fr'Band {b}, Ch {c} IV Curve')
             plt.legend()
-            plt.savefig(f'/home/jseibert/scratch/b{b}c{c}_iv.png')
+            if show_plot:
+                plt.show()
+            if save_plot:
+                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_iv.png'))
+            plt.close()
 
             plt.figure()
             plt.plot(v_bias,R/R_n,color='black')
             plt.xlabel(r'V$_{bias}$ (V)')
             plt.ylabel(r'R/R$_n$')
             plt.title(fr'Band {b}, Ch {c} R$_{{frac}}$ vs. Bias')
-            plt.savefig(f'/home/jseibert/scratch/b{b}c{c}_rfrac.png')
+            if show_plot:
+                plt.show()
+            if save_plot:
+                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
+            plt.close()
 
             sc_idx = iv_analyze[b][c]['idxs'][0]
-            
+
             plt.figure()
             plt.plot(R[sc_idx:-1]/R_n,si[sc_idx:],color='black')
             plt.xlabel(r'R/R$_n$')
             plt.ylabel(r'S$_I$')
             plt.title(fr'Band {b}, Ch {c} S$_I$ vs. Rfrac')
-            plt.savefig(f'/home/jseibert/scratch/b{b}c{c}_si.png')
-            
+            if show_plot:
+                plt.show()
+            if save_plot:
+                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_si.png'))
+            plt.close()
+
             plt.figure()
             plt.plot(p_tes,R/R_n,color='black')
             plt.axvline(p_sat,color='red',
@@ -756,38 +837,95 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None):
             plt.xlabel(r'P$_{TES} (pW)$')
             plt.ylabel(r'R/R$_n$')
             plt.title(f'Band {b}, Ch {c} R-P curve')
-            plt.savefig(f'/home/jseibert/scratch/b{b}c{c}_rp.png')
-            
-def iv_summary_plots(iv_info,iv_analyze):
-    
+            if show_plot:
+                plt.show()
+            if save_plot:
+                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_rp.png'))
+            plt.close()
+
+    if save_plot:
+        print(f'Plots saved to {plot_dir}.')
+        return plot_dir
+
+def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=True):
+    """
+    Generates summary plots from an analyzed IV dictionary.
+    Will make histograms of R_n and electrical power at 90% Rn (Psat).
+    Will ignore any channels with unreasonable/unexpected normal
+    resistance, or negative saturation powers.
+
+    Args
+    ----
+    iv_info: dict
+        Dictionary loaded from iv_info.npy that contains information from
+        when IV curve was taken.
+    iv_analyze: dict
+        Dictionary generated that contains all fitted and calculated
+        parameters from IV analysis.
+    plot_dir: str
+        Default None. Directory where you want to save the plots.
+        If None, will use the plot_dir specified in the iv_info dict.
+    show_plot: bool
+        Default False. Whether or not to show the plots.
+    save_plot: bool
+        Default True. Whether or not to save the plots.
+    Returns
+    -------
+    plot_dir: str
+        Filepath where plots are saved, if save_plot is True.
+    """
+    if plot_dir is None:
+        plot_dir = iv_info['plot_dir']
+
     Rns = []
     Psats = []
-    
+
     Rn_upper = 0.02
     Rn_lower = 0.0
-    
+
     print(f'Not including any channels with atypical normal resistances.')
-    
+
     for b in iv_analyze.keys():
         for c in iv_analyze[b].keys():
             if iv_analyze[b][c]['R_n'] < Rn_upper and iv_analyze[b][c]['R_n'] > Rn_lower:
                 Rns.append(iv_analyze[b][c]['R_n']*1e3)
-            
+
             if iv_analyze[b][c]['p_sat'] > -1:
                 Psats.append(iv_analyze[b][c]['p_sat'])
-    
+
     Rns = np.array(Rns)
     Psats = np.array(Psats)
-    
+
+    Rn_median = np.median(Rns)
+
     plt.figure()
     plt.hist(Rns,ec='k',bins=np.arange(5,10,0.1),color='grey')
-    plt.axvline(np.median(Rns),color='purple')
-    plt.show()
-    
-    
+    plt.axvline(Rn_median,color='purple',lw=2.0,label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
+    plt.legend()
+    plt.xlabel(r'R$_n$ (m$\Omega$)')
+    plt.ylabel('Counts')
+    plt.title('Normal Resistance Distribution')
+    if show_plot:
+        plt.show()
+    if save_plot:
+        plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_rn_hist.png'))
+    plt.close()
+
+    Psat_median = np.median(Psats)
+
     plt.figure()
     plt.hist(Psats,ec='k',bins=np.arange(0,10,0.5),color='grey')
-    plt.axvline(np.median(Psats),color='purple')
-    plt.show()
-    
-    return Rns,Psats
+    plt.axvline(Psat_median,color='purple',lw=2.0,label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
+    plt.legend()
+    plt.xlabel(r'P$_{{sat}} (pW)$')
+    plt.ylabel('Counts')
+    plt.title(r'Electrical Power at 90% R$_n$')
+    if show_plot:
+        plt.show()
+    if save_plot:
+        plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_psat_hist.png'))
+    plt.close()
+
+    if save_plot:
+        print(f'Plots saved to {plot_dir}.')
+        return plot_dir
