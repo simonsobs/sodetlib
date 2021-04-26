@@ -207,6 +207,7 @@ def mux_band_to_mux_posn(smurf2mux,mux_band2_mux_posn,highband='S'):
 def get_pad_to_wafer(filename, dark_bias_lines=[]):
     """
     Extracts routing wafer to detector wafer map
+    Mostly from Zach Atkin's script 
     ----------
     filename:
         Path to the detector-routing wafer map created by NIST and Princeton
