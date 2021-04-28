@@ -16,6 +16,6 @@ docker run -it --rm  \
   -v /etc/passwrd:/etc/passerd:ro \
   -v /home/${user}/.bash_history:/home/${user}/.bash_history \
   -v /home/${user}/.Xauthority:/home/${user}/.Xauthority \
-  tidair/smurf-rogue:R2.6.2 \
+  tidair/smurf-rogue:R2.8.2 \
   python3 -m pyrogue gui --server=localhost:$port
 
