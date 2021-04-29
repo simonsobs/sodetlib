@@ -16,6 +16,10 @@ except Exception:
     import matplotlib.pyplot as plt
 from pysmurf.client.util.pub import set_action
 
+try:
+    from spt3g import core
+except Exception:
+    print("Could not import spt3g-software! Update your sodetlib docker")
 
 @set_action()
 def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
@@ -547,3 +551,60 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
                 plt.close()
 
     return r, f, df, sync
+
+
+def get_g3_session(S):
+    """
+    Gets the current G3 stream session-id
+    """
+    reg = S.smurf_processor + "SOStream:SOFileWriter:session_id"
+    return S._caget(reg)
+
+
+def stream_g3_on(S, make_freq_mask=True, emulator=False):
+    """
+    Starts the G3 data-stream. Returns the session-id corresponding with the
+    data stream.
+
+    Args
+    ----
+    S : S
+        Pysmurf control object
+    make_freq_mask : bool, optional
+        Tell pysmurf to write and register the current freq mask
+    emulator : bool
+        If True, will enable the emulator source data-generator. Defaults to
+        False.
+    return_dat : bool
+        If True, will return the name of the .datfile instead of the g3
+        session-id.
+
+    Return
+    -------
+    session_id
+
+    """
+    em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
+    if emulator:
+        S._caput(em_enable, 1)
+    S.stream_data_on(make_freq_mask=make_freq_mask)
+    S.set_stream_enable(1)
+
+    # Sometimes it takes a bit for data to propogate through to the
+    # streamer
+    for _ in range(5):
+        sess_id = get_g3_session(S)
+        if sess_id != 0:
+            break
+        time.sleep(0.3)
+    return sess_id
+
+
+def stream_g3_off(S, emulator=False):
+    em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
+    sess_id = get_g3_session(S)
+    if emulator:
+        S._caput(em_enable, 0)
+    S.set_stream_enable(0)
+    S.stream_data_off()
+    return sess_id
