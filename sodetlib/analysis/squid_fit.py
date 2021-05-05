@@ -15,7 +15,7 @@ except Exception:
     import matplotlib.pyplot as plt
 
 
-def plot_squid_curves(datafile, plot_dir="."):
+def plot_squid_curves(datafile, S=None, plot_dir=None):
     """
     Plots data taken with take_squid_open_loop
 
@@ -23,12 +23,21 @@ def plot_squid_curves(datafile, plot_dir="."):
     ----------
     datafile: str
         Path to data taken with take_squid_open_loop
+    S: PysmurfControl object, optional
+        Used to grab plot_dir and publish plots
     plot_dir: str
-        Output directory in which to store plots
+        Overrides plot_dir from S, if specified
     """
     backend = matplotlib.get_backend()
     matplotlib.use("Agg")
     
+    if plot_dir is not None:
+        pass
+    elif S is not None:
+        plot_dir = S.plot_dir
+    else:
+        raise ValueError("Either S or `plot_dir` must be specified.")
+
     ctime = "%0d" % time.time()
     dat = np.load(datafile, allow_pickle=True)
     dat = dat.item()
@@ -46,7 +55,10 @@ def plot_squid_curves(datafile, plot_dir="."):
             plt.xlabel("Flux Bias [Fraction Full Scale FR DAC]", fontsize=14)
             plt.ylabel("Frequency Swing [kHz]", fontsize=14)
             plt.title(f"Band {band} Channel {ch} $f_r$ = {np.round(fres,2)}")
-            plt.savefig(f"{plot_dir}/{ctime}_b{band}c{ch}_dc_squid_curve.png")
+            fig_name = f"{plot_dir}/{ctime}_b{band}c{ch}_dc_squid_curve.png"
+            plt.savefig(fig_name)
+            if S is not None:
+                S.pub.register_file(fig_name, 'dc_squid_curve', plot=True)
             plt.close()
     matplotlib.use(backend)
     return
