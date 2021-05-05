@@ -1,7 +1,9 @@
 # sodetlib dockerfile.
 FROM tidair/pysmurf-client:v5.0.0
 
-# Installs spt3g to /usr/local/src/
+#################################################################
+# SPT3G Install
+#################################################################
 WORKDIR /usr/local/src/
 
 ENV TZ=Etc/UTC
@@ -20,6 +22,7 @@ RUN apt-get install -y \
     gdb \
     rsync \
     cmake \
+    libblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/CMB-S4/spt3g_software.git
@@ -33,7 +36,42 @@ ENV SPT3G_SOFTWARE_PATH /usr/local/src/spt3g_software
 ENV SPT3G_SOFTWARE_BUILD_PATH /usr/local/src/spt3g_software/build
 ENV PYTHONPATH /usr/local/src/spt3g_software/build:${PYTHONPATH}
 
-####  Installs OCS
+#################################################################
+# SO3G Install
+#################################################################
+WORKDIR /usr/local/src
+RUN git clone https://github.com/simonsobs/so3g.git
+WORKDIR /usr/local/src/so3g
+ENV LANG C.UTF-8
+RUN apt-get update
+RUN apt-get install -y build-essential \
+    automake \
+    gfortran \
+    libopenblas-dev
+
+RUN pip3 install -r requirements.txt
+
+ENV Spt3g_DIR /usr/local/src/spt3g_software
+# Install qpoint
+RUN /bin/bash /usr/local/src/so3g/docker/qpoint-setup.sh
+
+# Build so3g
+RUN mkdir build \
+   && cd build \
+   && cmake .. -DCMAKE_PREFIX_PATH=$SPT3G_SOFTWARE_BUILD_PATH \
+   && make \
+   && make install
+
+#################################################################
+# SOTODLIB Install
+#################################################################
+RUN git clone --branch load_g3_file https://github.com/simonsobs/sotodlib.git
+RUN pip3 install quaternionarray sqlalchemy
+RUN pip3 install ./sotodlib
+
+#################################################################
+# OCS Install
+#################################################################
 WORKDIR /usr/local/src
 RUN git clone https://github.com/simonsobs/ocs.git
 
@@ -44,11 +82,14 @@ RUN pip3 install ./ocs
 # Sets ocs configuration environment
 ENV OCS_CONFIG_DIR=/config
 
-#Copies and installs sodetlib
-COPY . /sodetlib
 
+#################################################################
+# sodetlib Install
+#################################################################
+COPY . /sodetlib
 WORKDIR /sodetlib
 
 RUN pip3 install -e .
+RUN pip3 install -r requirements.txt
 RUN pip3 install -U jupyterlab
 
