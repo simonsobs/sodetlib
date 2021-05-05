@@ -18,6 +18,7 @@ from pysmurf.client.util.pub import set_action
 
 try:
     from spt3g import core
+    from sotodlib.io import load_smurf
 except Exception:
     print("Could not import spt3g-software! Update your sodetlib docker")
 
@@ -553,7 +554,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     return r, f, df, sync
 
 
-def get_g3_session(S):
+def get_stream_session_id(S):
     """
     Gets the current G3 stream session-id
     """
@@ -561,7 +562,64 @@ def get_g3_session(S):
     return S._caget(reg)
 
 
-def stream_g3_on(S, make_freq_mask=True, emulator=False):
+def get_session_files(cfg, session_id, idx=None):
+    base_dir = cfg.sys['g3_dir']
+    stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
+    subdir = os.path.join(base_dir, str(session_id)[:5], stream_id)
+    files = sorted([
+        os.path.join(subdir, f) for f in os.listdir(subdir)
+        if str(session_id) in f
+    ])
+
+    if idx is None:
+        return files
+    elif isinstance(idx, int):
+        return files[idx]
+    else:  #list of indexes
+        return [files[i] for i in idx]
+
+
+def load_session(cfg, session_id, idx=None):
+    """
+    Loads a stream-session into an axis manager.
+
+    Args
+    ----
+    cfg : DetConfig object
+        DetConfig object
+    session_id: int
+        Session id corresonding with the stream session you wish to load
+    idx: int, list(int), optional
+    """
+    files = get_session_files(cfg, session_id, idx)
+    return load_smurf.load_file(files)
+
+
+@set_action()
+def take_g3_data(S, dur, **stream_kw):
+    """
+    Takes data for some duration
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf control object
+    dur : float
+        Duration to take data over
+
+    Returns
+    -------
+    session_id : int
+        Id used to read back stream data
+    """
+    stream_g3_on(S, **stream_kw)
+    time.sleep(dur)
+    sid = stream_g3_off(S, emulator=stream_kw['emulator'])
+    return sid
+
+
+@set_action()
+def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=''):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -575,36 +633,74 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False):
     emulator : bool
         If True, will enable the emulator source data-generator. Defaults to
         False.
-    return_dat : bool
-        If True, will return the name of the .datfile instead of the g3
-        session-id.
 
     Return
     -------
-    session_id
-
+    session_id : int
+        Id used to read back streamed data
     """
-    em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
+    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
+
+    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
+    reg_action = so_root + "pysmurf_action"
+    reg_action_ts = so_root + "pysmurf_action_timestamp"
+    reg_stream_tag = so_root + "stream_tag"
+
+    S._caput(reg_action, S.pub._action)
+    S._caput(reg_action_ts, S.pub._action_ts)
+    S._caput(reg_stream_tag, tag)
+
     if emulator:
-        S._caput(em_enable, 1)
+        S._caput(reg_em_enable, 1)
     S.stream_data_on(make_freq_mask=make_freq_mask)
     S.set_stream_enable(1)
 
     # Sometimes it takes a bit for data to propogate through to the
     # streamer
     for _ in range(5):
-        sess_id = get_g3_session(S)
+        sess_id = get_stream_session_id(S)
         if sess_id != 0:
             break
         time.sleep(0.3)
     return sess_id
 
 
+@set_action()
 def stream_g3_off(S, emulator=False):
-    em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
-    sess_id = get_g3_session(S)
+    """
+    Stops the G3 data-stream. Returns the session-id corresponding with the
+    data stream.
+
+    Args
+    ----
+    S : S
+        Pysmurf control object
+    emulator : bool
+        If True, will enable the emulator source data-generator. Defaults to
+        False.
+
+    Return
+    -------
+    session_id : int
+        Id used to read back streamed data
+    """
+    sess_id = get_stream_session_id(S)
+
+    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
+    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
+    reg_action = so_root + "pysmurf_action"
+    reg_action_ts = so_root + "pysmurf_action_timestamp"
+    reg_stream_tag = so_root + "stream_tag"
+
+
     if emulator:
-        S._caput(em_enable, 0)
+        S._caput(reg_em_enable, 0)
+
     S.set_stream_enable(0)
     S.stream_data_off()
+
+    S._caput(reg_action, '')
+    S._caput(reg_action_ts, 0)
+    S._caput(reg_stream_tag, '')
+
     return sess_id
