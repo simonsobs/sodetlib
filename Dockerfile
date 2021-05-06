@@ -92,4 +92,5 @@ WORKDIR /sodetlib
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
 RUN pip3 install -U jupyterlab
+RUN pip3 install jedi==0.17.1
 
