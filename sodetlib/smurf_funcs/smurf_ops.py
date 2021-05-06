@@ -614,7 +614,7 @@ def take_g3_data(S, dur, **stream_kw):
     """
     stream_g3_on(S, **stream_kw)
     time.sleep(dur)
-    sid = stream_g3_off(S, emulator=stream_kw['emulator'])
+    sid = stream_g3_off(S, emulator=stream_kw.get('emulator', False))
     return sid
 
 
@@ -650,9 +650,10 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=''):
     S._caput(reg_action_ts, S.pub._action_ts)
     S._caput(reg_stream_tag, tag)
 
+    S.stream_data_on(make_freq_mask=make_freq_mask)
+
     if emulator:
         S._caput(reg_em_enable, 1)
-    S.stream_data_on(make_freq_mask=make_freq_mask)
     S.set_stream_enable(1)
 
     # Sometimes it takes a bit for data to propogate through to the
@@ -702,5 +703,10 @@ def stream_g3_off(S, emulator=False):
     S._caput(reg_action, '')
     S._caput(reg_action_ts, 0)
     S._caput(reg_stream_tag, '')
+
+    # Waits until file is closed out before returning
+    S.log("Waiting for g3 file to close out")
+    while get_stream_session_id(S) != 0:
+        time.sleep(0.5)
 
     return sess_id
