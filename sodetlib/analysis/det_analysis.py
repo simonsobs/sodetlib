@@ -388,8 +388,9 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         return summary, segs
     else:
         return summary
-    
-def load_from_dat(S,datfile):
+
+
+def load_from_dat(S, datfile):
     """
     Loads data from .dat files and returns the timestamps,
     phase, and mask. Just a wrapper for S.read_stream_data().
@@ -400,7 +401,7 @@ def load_from_dat(S,datfile):
         SmurfControl object
     datfile: str
         Filepath to .dat file.
-        
+
     Returns
     -------
     timestamp: numpy.ndarray
@@ -415,27 +416,28 @@ def load_from_dat(S,datfile):
         number 0-511
     tes_biases: numpy.ndarray
         array containing tes biases in units of volts
-        
+
     """
-    
-    timestamp,phase,mask,tes_biases = S.read_stream_data(datfile,return_tes_bias=True)
-    
-    timestamp = timestamp*1e-9 #converts timestamps from nanoseconds to seconds
-    
+
+    (timestamp,
+        phase,
+        mask,
+        tes_biases) = S.read_stream_data(datfile, return_tes_bias=True)
+
+    # converts timestamps from nanoseconds to seconds
+    timestamp = timestamp*1e-9
     bands, chans = np.where(mask != -1)
-    
-    mask = np.array([bands,chans])
-    
+    mask = np.array([bands, chans])
     tes_biases = tes_biases * 2 * S._rtm_slow_dac_bit_to_volt
-    
-    return timestamp,phase,mask,tes_biases
+    return timestamp, phase, mask, tes_biases
+
 
 # update this so db_path isn't required
-def load_from_g3(archive_path,meta_path,db_path,start,stop):
+def load_from_g3(archive_path, meta_path, db_path, start, stop):
     """
-    Loads data from .g3 files using G3t_Smurf and returns the 
+    Loads data from .g3 files using G3t_Smurf and returns the
     timestamps, phase, mask, and TES biases. Requires installs of
-    sotodlib, so3g, and spt3g. 
+    sotodlib, so3g, and spt3g.
 
     Args
     ----
@@ -451,7 +453,7 @@ def load_from_g3(archive_path,meta_path,db_path,start,stop):
         start time for loading the data
     stop: timestamp or DateTime
         stop time for loading the data
-        
+
     Returns
     -------
     timestamps: numpy.ndarray
@@ -465,49 +467,45 @@ def load_from_g3(archive_path,meta_path,db_path,start,stop):
         number 0-511
     tes_biases: numpy.ndarray
         array containing tes biases in units of volts
-        
+
     """
-        
+
     # putting these imports here just so sotodlib is not required
-    # to run the other analysis functions, if you don't have an 
+    # to run the other analysis functions, if you don't have an
     # active copy
     from sotodlib.io.load_smurf import G3tSmurf
-    
-    if db_path: 
+
+    if db_path:
         SMURF = G3tSmurf(archive_path=archive_path,
                          meta_path=meta_path,
                          db_path=db_path)
-    else: 
+    else:
         SMURF = G3tSmurf(archive_path=archive_path,
                          meta_path=meta_path)
-    
-    aman = SMURF.load_data(start,stop)
-    
+
+    aman = SMURF.load_data(start, stop)
     timestamps = aman.timestamps
-    
     phase = aman.signal
-    
-    mask = np.array([aman.ch_info.band,aman.ch_info.channel])
-    
+    mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
     rtm_bit_to_volt = 1.9073486328125e-05
-    
+
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
-    
-    return timestamps,phase,mask,tes_biases   
-    
-@set_action()
-def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfile = None):
+
+    return timestamps, phase, mask, tes_biases
+
+
+def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
+                    phase_excursion_min=3.0, psat_level=0.9):
     """
-    Analyzes an IV curve that was taken using sodetlib's take_iv function, detailed
-    in the iv_info dictionary. Based on pysmurf IV analysis.
+    Analyzes an IV curve that was taken using sodetlib's take_iv function,
+    detailed in the iv_info dictionary. Based on pysmurf IV analysis.
+    Does not require pysmurf, just the data and corresponding metadata.
 
     Args
     ----
-    S:
-        Smurf Control object. Required for publishing output dict.
     iv_info_fp: str
         Filepath to the iv_info.npy file generated when the IV
         was taken.
@@ -521,19 +519,19 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
     phase_excusrion_min: float
         Default 3.0. In radians, the minimum response a channel must
         have to be considered a detector coupled to the bias line.
-    outfile: str
-        Filepath to save the output dictionary. Default is the
-        output directory in the iv_info dictionary plus the
-        basename ctime associated with the IV curve.
+    psat_level: float
+        Default 0.9. Value of Rfrac to calculate Psat.
 
     Returns
     -------
-    outfile: str
-        Filepath where output dictionary is saved.
+    iv_full_dict: dict
+        Dictionary containing analyzed IV data, keyed by band
+        and channel. Also contains the iv_info dict that was
+        used for the analysis.
     """
 
-    iv_info = np.load(iv_info_fp,allow_pickle=True).item()
-    
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+
     R_sh = iv_info['R_sh']
     pA_per_phi0 = iv_info['pA_per_phi0']
     bias_line_resistance = iv_info['bias_line_resistance']
@@ -542,30 +540,30 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
     bias_group = iv_info['bias group']
 
     iv_full_dict = {}
-    
+
     bands = mask[0]
     chans = mask[1]
-    
+
     for c in range(len(chans)):
-        
+
         phase_ch = phase[c]
-        
         phase_exc = np.ptp(phase_ch)
-        
+
         if phase_exc < phase_excursion_min:
-            print(f'Phase excursion too small. Skipping band {bands[c]}, channel {chans[c]}')
+            print(f'Phase excursion too small.'
+                  f'Skipping band {bands[c]}, channel {chans[c]}')
             continue
-        
+
         # assumes biases are the same on all bias groups
         v_bias_bg = v_bias[bias_group[0]]
         v_bias_bg = np.abs(v_bias_bg)
 
-        resp = phase_ch * pA_per_phi0/(2.*np.pi*1e6) # convert phase to uA
+        resp = phase_ch * pA_per_phi0/(2.*np.pi*1e6)  # convert phase to uA
 
         step_loc = np.where(np.diff(v_bias_bg))[0]
 
         if step_loc[0] != 0:
-            step_loc = np.append([0], step_loc) # starts from zero
+            step_loc = np.append([0], step_loc)  # starts from zero
         n_step = len(step_loc) - 1
 
         # arrays for holding response, I, and V
@@ -601,7 +599,6 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
         i_bias_bin = i_bias_bin[::-1]
         resp_bin = resp_bin[::-1]
 
-
         # PROBLEMS FROM THIS FITTING SEEM TO COME FROM HOW IT FINDS
         # SC IDX AND NB IDX
 
@@ -612,7 +609,8 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
             sc_idx = 1
 
         # index of the start of the normal branch
-        nb_idx_default = int(0.8*n_step) # default to partway from beginning of IV curve
+        # default to partway from beginning of IV curve
+        nb_idx_default = int(0.8*n_step)
         nb_idx = nb_idx_default
         for i in np.arange(nb_idx_default, sc_idx, -1):
             # look for minimum of IV curve outside of superconducting region
@@ -621,11 +619,13 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
                 nb_idx = i+1
                 break
 
-        nb_fit_idx = int(np.mean((n_step,nb_idx)))
-        norm_fit = np.polyfit(i_bias_bin[nb_fit_idx:], resp_bin[nb_fit_idx:], 1)
+        nb_fit_idx = int(np.mean((n_step, nb_idx)))
+        norm_fit = np.polyfit(i_bias_bin[nb_fit_idx:],
+                              resp_bin[nb_fit_idx:], 1)
         if norm_fit[0] < 0:  # Check for flipped polarity
             resp_bin = -1 * resp_bin
-            norm_fit = np.polyfit(i_bias_bin[nb_fit_idx:], resp_bin[nb_fit_idx:], 1)
+            norm_fit = np.polyfit(i_bias_bin[nb_fit_idx:],
+                                  resp_bin[nb_fit_idx:], 1)
 
         resp_bin -= norm_fit[1]  # now in real current units
 
@@ -638,43 +638,41 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
         # superconducting branch for anything meaningful anyway. This will just
         # make our plots look nicer.
         resp_bin[:sc_idx] -= sc_fit[1]
-        sc_fit[1] = 0 # now change s.c. fit offset to 0 for plotting
+        sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
         R = R_sh * (i_bias_bin/(resp_bin) - 1)
         R_n = np.mean(R[nb_fit_idx:])
-        R_L = np.mean(R[1:sc_idx]) 
-        
+        R_L = np.mean(R[1:sc_idx])
+
         if R_n < 0:
-            print(f'Fitted normal resistance is negative. Skipping band {bands[c]}, channel {chans[c]}')
+            print(f'Fitted normal resistance is negative. '
+                  f'Skipping band {bands[c]}, channel {chans[c]}')
             continue
 
-        v_tes = i_bias_bin*R_sh*R/(R+R_sh) # voltage over TES
-        i_tes = v_tes/R # current through TES 
-        p_tes = (v_tes**2)/R # electrical power on TES
-
-        R_trans_min = R[sc_idx]
-        R_trans_max = R[nb_idx]
-        R_frac_min = R_trans_min/R_n
-        R_frac_max = R_trans_max/R_n
+        v_tes = i_bias_bin*R_sh*R/(R+R_sh)  # voltage over TES
+        i_tes = v_tes/R  # current through TES
+        p_tes = (v_tes**2)/R  # electrical power on TES
 
         # calculates P_sat as P_TES at 90% R_n
-        # if the TES is at 90% R_n more than once, set to -1000
-        level = 0.9
-        cross_idx = np.where(np.logical_and(R/R_n - level >= 0, np.roll(R/R_n - level, 1) < 0))[0]
+        # if the TES is at 90% R_n more than once, set to nan
+        level = psat_level
+        cross_idx = np.where(np.logical_and(R/R_n - level >= 0,
+                             np.roll(R/R_n - level, 1) < 0))[0]
 
         if len(cross_idx) == 1:
             cross_idx = cross_idx[0]
-            p_sat = interp1d(R[cross_idx-1:cross_idx+1]/R_n, p_tes[cross_idx-1:cross_idx+1])
+            p_sat = interp1d(R[cross_idx-1:cross_idx+1]/R_n,
+                             p_tes[cross_idx-1:cross_idx+1])
             p_sat = p_sat(level)
         else:
             cross_idx = -1
-            p_sat = -1000
+            p_sat = np.nan
 
         smooth_dist = 5
         w_len = 2*smooth_dist + 1
 
         # Running average
-        w = (1./float(w_len))*np.ones(w_len) # window
+        w = (1./float(w_len))*np.ones(w_len)  # window
         i_tes_smooth = np.convolve(i_tes, w, mode='same')
         v_tes_smooth = np.convolve(v_tes, w, mode='same')
         r_tes_smooth = v_tes_smooth/i_tes_smooth
@@ -688,43 +686,93 @@ def analyze_iv_info(S,iv_info_fp,phase,v_bias,mask,phase_excursion_min=3.0,outfi
         i0 = i_tes_smooth[:-1]
         r0 = r_tes_smooth_noStray[:-1]
         rL = R_L_smooth[:-1]
-        si_etf = -1./(i0*r0)
         beta = 0.
 
-        # artificially setting rL to 0 for now, to avoid issues in the SC branch
-        # don't expect a large change, given the relative size of rL to the other terms
+        # artificially setting rL to 0 for now,
+        # to avoid issues in the SC branch
+        # don't expect a large change, given the
+        # relative size of rL to the other terms
 
         rL = 0
 
         # Responsivity estimate
         # add where eq comes from (irwin hilton)
-        si = -(1./i0)*( dv_tes/di_tes - (r0+rL+beta*r0) ) / \
-            ( (2.*r0-rL+beta*r0)*dv_tes/di_tes - 3.*rL*r0 - rL**2 )
+        si = -(1./i0)*(dv_tes/di_tes - (r0+rL+beta*r0)) / \
+            ((2.*r0-rL+beta*r0)*dv_tes/di_tes - 3.*rL*r0 - rL**2)
 
         iv_dict = {}
         iv_dict['R'] = R
         iv_dict['R_n'] = R_n
-        iv_dict['idxs'] = np.array([sc_idx,nb_idx,cross_idx])
+        iv_dict['idxs'] = np.array([sc_idx, nb_idx, cross_idx])
         iv_dict['p_tes'] = p_tes
         iv_dict['p_sat'] = p_sat
         iv_dict['v_bias'] = v_bias_bin
         iv_dict['v_tes'] = v_tes
         iv_dict['i_tes'] = i_tes
         iv_dict['si'] = si
-        iv_dict['iv_info'] = iv_info_fp #this needs to remove everything but the filename
+        iv_dict['iv_info'] = iv_info_fp
 
-        iv_full_dict.setdefault(bands[c],{})
+        iv_full_dict.setdefault(bands[c], {})
         iv_full_dict[bands[c]][chans[c]] = iv_dict
 
-    if outfile is None:
-        outfile = os.path.join(iv_info['output_dir'],iv_info['basename']+'_iv_analyze.npy')
+    return iv_full_dict
 
-    np.save(outfile,iv_full_dict)
+
+@set_action()
+def analyze_iv_and_save(S, iv_info_fp, phase, v_bias, mask,
+                        phase_excursion_min=3.0, psat_level=0.9, outfile=None):
+    """
+    Runs analyze_iv_info and saves the output properly, archiving the
+    resulting iv_analyze dictionary. Requires pysmurf.
+
+    Args
+    ----
+    S:
+        Smurf Control object. Required for publishing output dict.
+    iv_info_fp: str
+        Filepath to the iv_info.npy file generated when the IV
+        was taken.
+    phase: numpy.ndarray
+        Array containing the detector response in units of radians.
+    v_bias: numpy.ndarray
+        Array containing the bias line information in volts.
+    mask: numpy.ndarray
+        Array containing the band and channel assignments for any
+        active resonator channels.
+    phase_excusrion_min: float
+        Default 3.0. In radians, the minimum response a channel must
+        have to be considered a detector coupled to the bias line.
+    psat_level: float
+        Default 0.9. Value of Rfrac to calculate Psat.
+    outfile: str
+        Filepath to save the output dictionary. Default is the
+        output directory in the iv_info dictionary plus the
+        basename ctime associated with the IV curve.
+
+    Returns
+    -------
+    outfile: str
+        Filepath where output dictionary is saved.
+    """
+
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+
+    iv_analyze = analyze_iv_info(iv_info_fp=iv_info_fp, phase=phase,
+                                 v_bias=v_bias, mask=mask,
+                                 phase_excursion_min=3.0, psat_level=0.9)
+
+    if outfile is None:
+        outfile = os.path.join(iv_info['output_dir'],
+                               iv_info['basename']+'_iv_analyze.npy')
+
+    np.save(outfile, iv_analyze)
     S.pub.register_file(outfile, 'iv_analyze', format='npy')
 
     return outfile
 
-def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,show_plot=False,save_plot=True):
+
+def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
+                     plot_dir=None, show_plot=False, save_plot=True):
     """
     Generates individual channel plots from an analyzed IV dictionary.
     Will make an IV plot, Rfrac plot, S_I vs. Rfrac plot, and RP plot.
@@ -769,7 +817,7 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,sh
 
         for c in chans_iter:
 
-            if iv_analyze[b][c]['p_sat'] < -1:
+            if np.isnan(iv_analyze[b][c]['p_sat']):
                 print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
@@ -791,9 +839,9 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,sh
                 r_inline /= iv_info['high_low_ratio']
 
             plt.figure()
-            plt.plot(v_bias,i_tes,color='black')
-            plt.plot(v_bias,v_bias/r_inline * (R_sh/(R_n + R_sh))*1e6,
-                     ls = '--',color='red',
+            plt.plot(v_bias, i_tes, color='black')
+            plt.plot(v_bias, v_bias/r_inline * (R_sh/(R_n + R_sh))*1e6,
+                     ls='--', color='red',
                      label=fr'Normal fit: R$_n$ = {R_n*1e3:.2f} m$\Omega$')
             plt.xlabel(r'V$_{bias}$ (V)')
             plt.ylabel(r'I$_{TES}$ ($\mu$A)')
@@ -802,36 +850,36 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,sh
             if show_plot:
                 plt.show()
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_iv.png'))
-            plt.close()
+                plt.savefig(os.path.join(plot_dir,
+                            iv_info['basename']+f'_b{b}c{c}_iv.png'))
 
             plt.figure()
-            plt.plot(v_bias,R/R_n,color='black')
+            plt.plot(v_bias, R/R_n, color='black')
             plt.xlabel(r'V$_{bias}$ (V)')
             plt.ylabel(r'R/R$_n$')
             plt.title(fr'Band {b}, Ch {c} R$_{{frac}}$ vs. Bias')
             if show_plot:
                 plt.show()
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
-            plt.close()
+                plt.savefig(os.path.join(plot_dir,
+                            iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
 
             sc_idx = iv_analyze[b][c]['idxs'][0]
 
             plt.figure()
-            plt.plot(R[sc_idx:-1]/R_n,si[sc_idx:],color='black')
+            plt.plot(R[sc_idx:-1]/R_n, si[sc_idx:], color='black')
             plt.xlabel(r'R/R$_n$')
             plt.ylabel(r'S$_I$')
             plt.title(fr'Band {b}, Ch {c} S$_I$ vs. Rfrac')
             if show_plot:
                 plt.show()
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_si.png'))
-            plt.close()
+                plt.savefig(os.path.join(plot_dir,
+                            iv_info['basename']+f'_b{b}c{c}_si.png'))
 
             plt.figure()
-            plt.plot(p_tes,R/R_n,color='black')
-            plt.axvline(p_sat,color='red',
+            plt.plot(p_tes, R/R_n, color='black')
+            plt.axvline(p_sat, color='red',
                         label=fr'P$_{{TES}}$ at 90% R$_n$ = {p_sat:.2f} pW')
             plt.legend()
             plt.xlabel(r'P$_{TES} (pW)$')
@@ -840,14 +888,16 @@ def iv_channel_plots(iv_info,iv_analyze,bands=None,chans=None,plot_dir = None,sh
             if show_plot:
                 plt.show()
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,iv_info['basename']+f'_b{b}c{c}_rp.png'))
-            plt.close()
+                plt.savefig(os.path.join(plot_dir,
+                            iv_info['basename']+f'_b{b}c{c}_rp.png'))
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
         return plot_dir
 
-def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=True):
+
+def iv_summary_plots(iv_info, iv_analyze,
+                     plot_dir=None, show_plot=False, save_plot=True):
     """
     Generates summary plots from an analyzed IV dictionary.
     Will make histograms of R_n and electrical power at 90% Rn (Psat).
@@ -883,14 +933,15 @@ def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=
     Rn_upper = 0.02
     Rn_lower = 0.0
 
-    print(f'Not including any channels with atypical normal resistances.')
+    print('Not including any channels with atypical normal resistances.')
 
     for b in iv_analyze.keys():
         for c in iv_analyze[b].keys():
-            if iv_analyze[b][c]['R_n'] < Rn_upper and iv_analyze[b][c]['R_n'] > Rn_lower:
+            if (iv_analyze[b][c]['R_n'] < Rn_upper
+                    and iv_analyze[b][c]['R_n'] > Rn_lower):
                 Rns.append(iv_analyze[b][c]['R_n']*1e3)
 
-            if iv_analyze[b][c]['p_sat'] > -1:
+            if np.isnan(iv_analyze[b][c]['p_sat']):
                 Psats.append(iv_analyze[b][c]['p_sat'])
 
     Rns = np.array(Rns)
@@ -899,8 +950,9 @@ def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=
     Rn_median = np.median(Rns)
 
     plt.figure()
-    plt.hist(Rns,ec='k',bins=np.arange(5,10,0.1),color='grey')
-    plt.axvline(Rn_median,color='purple',lw=2.0,label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
+    plt.hist(Rns, ec='k', bins=np.arange(5, 10, 0.1), color='grey')
+    plt.axvline(Rn_median, color='purple', lw=2.0,
+                label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
     plt.legend()
     plt.xlabel(r'R$_n$ (m$\Omega$)')
     plt.ylabel('Counts')
@@ -909,13 +961,13 @@ def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=
         plt.show()
     if save_plot:
         plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_rn_hist.png'))
-    plt.close()
 
-    Psat_median = np.median(Psats)
+    Psat_median = np.nanmedian(Psats)
 
     plt.figure()
-    plt.hist(Psats,ec='k',bins=np.arange(0,10,0.5),color='grey')
-    plt.axvline(Psat_median,color='purple',lw=2.0,label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
+    plt.hist(Psats, ec='k', bins=np.arange(0, 10, 0.5), color='grey')
+    plt.axvline(Psat_median, color='purple', lw=2.0,
+                label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
     plt.legend()
     plt.xlabel(r'P$_{{sat}} (pW)$')
     plt.ylabel('Counts')
@@ -923,8 +975,8 @@ def iv_summary_plots(iv_info,iv_analyze,plot_dir=None,show_plot=False,save_plot=
     if show_plot:
         plt.show()
     if save_plot:
-        plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_psat_hist.png'))
-    plt.close()
+        plt.savefig(os.path.join(plot_dir,
+                    iv_info['basename']+'_psat_hist.png'))
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
