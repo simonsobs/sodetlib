@@ -65,7 +65,7 @@ RUN mkdir build \
 #################################################################
 # SOTODLIB Install
 #################################################################
-RUN git clone --branch load_g3_file https://github.com/simonsobs/sotodlib.git
+RUN git clone https://github.com/simonsobs/sotodlib.git
 RUN pip3 install quaternionarray sqlalchemy
 RUN pip3 install ./sotodlib
 
@@ -91,6 +91,4 @@ WORKDIR /sodetlib
 
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
-RUN pip3 install -U jupyterlab
-RUN pip3 install jedi==0.17.1
 
