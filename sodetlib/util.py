@@ -8,8 +8,8 @@ import time
 import os
 from collections import namedtuple
 
-StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
+StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
 class TermColors:
     HEADER = '\n\033[95m'
@@ -128,3 +128,5 @@ class SectionTimer:
             out += f'{name:{name_len}s}\t{dur:.2f}\t{t:.0f}\n'
 
         return out
+
+

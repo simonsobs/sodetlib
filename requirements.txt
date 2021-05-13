@@ -1,3 +1,5 @@
-sphinx
-sphinx-argparse
-sphinx_rtd_theme
+jupyterlab
+tqdm
+setuptools >= 56.2.0
+ipykernel>=5.5.4
+jedi==0.17.1

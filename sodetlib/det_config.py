@@ -220,6 +220,9 @@ def make_parser(parser=None):
     parser.add_argument('--pysmurf-file',
                         help="Path to Pysmurf config file. "
                         "Defaults to the path specified in the sys_config.")
+    parser.add_argument('--uxm-file',
+                        help="Path to the uxm file. "
+                        "Defaults to the path specified in the sys_config")
     parser.add_argument('--slot', '-N', type=int, help="Smurf slot")
     parser.add_argument('--dump-configs', '-D', action='store_true',
                         help="If true, all config info will be written to "
@@ -234,6 +237,7 @@ class DetConfig:
         sys_file (path): Path to sys-config file used.
         dev_file (path): Path to device-config file used
         pysmurf_file (path): Path to pysmurf-config file used.
+        uxm_file (path): Path to uxm file
         sys (dict):
             System configuration dictionary, generated from the sys_config.yml
             file or ``--sys-file`` command line argument.
@@ -242,10 +246,12 @@ class DetConfig:
             file specified in the sys_config or specified by the ``--dev-file``
             command line argument
     """
-    def __init__(self, slot=None, sys_file=None, dev_file=None, pysmurf_file=None):
+    def __init__(self, slot=None, sys_file=None, dev_file=None,
+                 pysmurf_file=None, uxm_file=None):
         self.sys_file = sys_file
         self.dev_file = dev_file
         self.pysmurf_file = pysmurf_file
+        self.uxm_file = uxm_file
         self.slot = slot
         self.sys = None
         self.dev: DeviceConfig = None
@@ -283,13 +289,18 @@ class DetConfig:
             args.pysmurf_file = self.pysmurf_file
         if args.dev_file is None:
             args.dev_file = self.dev_file
+        if args.uxm_file is None:
+            args.uxm_file = self.uxm_file
 
-        self.load_config_files(args.slot, args.sys_file, args.dev_file,
-                               args.pysmurf_file)
+        self.load_config_files(
+            slot=args.slot, sys_file=args.sys_file, dev_file=args.dev_file,
+            pysmurf_file=args.pysmurf_file, uxm_file=args.uxm_file
+        )
 
         return args
 
-    def load_config_files(self, slot=None, sys_file=None, dev_file=None, pysmurf_file=None):
+    def load_config_files(self, slot=None, sys_file=None, dev_file=None,
+                          pysmurf_file=None, uxm_file=None):
         """
         Loads configuration files. If arguments are not specified, sensible
         defaults will be chosen.
@@ -308,6 +319,8 @@ class DetConfig:
             pysmurf_file (path, optional):
                 Path to pysmurf config file. If None, defaults to the file
                 specified in the sys-config (pysmurf_configs[slot-2]).
+            uxm_file (path, optional):
+                Path to uxm file
         """
         if sys_file is None:
             self.sys_file = os.path.expandvars('$OCS_CONFIG_DIR/sys_config.yml')
@@ -343,6 +356,17 @@ class DetConfig:
         else:
             self.pysmurf_file = pysmurf_file
 
+        if uxm_file is None:
+            if 'uxm_file' in slot_cfg:
+                self.uxm_file = os.path.expandvars(slot_cfg['uxm_file'])
+        else:
+            self.uxm_file = uxm_file
+        if self.uxm_file is not None:
+            with open(self.uxm_file) as f:
+                self.uxm = yaml.safe_load(f)
+        else:
+            self.uxm = None
+
     def dump_configs(self, output_dir, clobber=False, dump_rogue_tree=False):
         """
         Dumps any config information to an output directory
@@ -356,6 +380,7 @@ class DetConfig:
             run_out (path): path to output run file
             sys_out (path): path to output sys file
             dev_out (path): path to output device file.
+            uxm_out (path): path to uxm file
         """
         print(f"Dumping sodetlib configs to {output_dir}")
         if not os.path.exists(output_dir):
@@ -368,7 +393,7 @@ class DetConfig:
             start_action_ts = self.S.pub._action_ts
 
         try:
-            outfiles = []
+            outfiles = {}
             if self.S:
                 self.S.pub._action = "config"
                 self.S.pub._action_ts = self.S.get_timestamp()
@@ -386,7 +411,7 @@ class DetConfig:
             if self._argparse_args is not None:
                 run_info['cfg_args'] = self._argparse_args
             run_out = os.path.abspath(os.path.join(output_dir, 'run_info.yml'))
-            outfiles.append(run_out)
+            outfiles['run'] = run_out
             with open(run_out, 'w') as f:
                 yaml.dump(run_info, f)
             if self.S:
@@ -395,7 +420,7 @@ class DetConfig:
             # Dump sys file
             sys_out = os.path.abspath(os.path.join(output_dir,
                                                    'sys_config.yml'))
-            outfiles.append(sys_out)
+            outfiles['sys'] = sys_out
             with open(sys_out, 'w') as f:
                 yaml.dump(self.sys, f)
             if self.S:
@@ -403,7 +428,7 @@ class DetConfig:
 
             # Dump device file
             dev_out = os.path.abspath(os.path.join(output_dir, 'dev_cfg.yml'))
-            outfiles.append(dev_out)
+            outfiles['dev'] = dev_out
             self.dev.dump(dev_out, clobber=clobber)
             if self.S:
                 self.S.pub.register_file(dev_out, 'config', format='yaml')
@@ -411,10 +436,19 @@ class DetConfig:
             # Copy pysmurf file
             pysmurf_out = os.path.join(output_dir, 'pysmurf_cfg.yml')
             pysmurf_out = os.path.abspath(pysmurf_out)
-            outfiles.append(pysmurf_out)
+            outfiles['pysmurf'] = pysmurf_out
             shutil.copy(self.pysmurf_file, pysmurf_out)
             if self.S:
                 self.S.pub.register_file(pysmurf_out, 'config', format='yaml')
+
+            # Dump uxm file
+            if self.uxm is not None:
+                uxm_out = os.path.abspath(os.path.join(output_dir, 'uxm.yml'))
+                outfiles['uxm'] = uxm_out
+                with open(uxm_out, 'w') as f:
+                    yaml.dump(self.uxm, f)
+                if self.S:
+                    self.S.pub.register_file(uxm_out, 'config', format='yaml')
 
             if dump_rogue_tree:
                 print("Dumping state")

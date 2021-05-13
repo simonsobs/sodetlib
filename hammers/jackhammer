@@ -183,6 +183,11 @@ def enter_pysmurf(slot, agg=False):
             name=name, rm=False
         )
 
+def write_docker_env():
+    docker_env = sys_config.get('docker_env')
+    with open(os.path.join(os.environ["OCS_CONFIG_DIR"], ".env"), "w") as env_file:
+        for k,v in docker_env.items():
+            env_file.write(f'{k}={v}\n')
 
 def start_services(services, write_env=False):
     """
@@ -200,9 +205,7 @@ def start_services(services, write_env=False):
 
     # Writes docker_env to $OCS_CONFIG_DIR/.env so docker-compose still works
     if write_env and docker_env is not None:
-        with open(os.path.join(os.environ["OCS_CONFIG_DIR"], ".env"), "w") as env_file:
-            for k,v in docker_env.items():
-                env_file.write(f'{k}={v}\n')
+        write_docker_env()
 
     if isinstance(services, str):
         services = [services]
@@ -391,6 +394,11 @@ def dump_func(args):
             print(f"Could not connect to epics for slot {slot}")
 
 
+# Entrypoint for jackhammer write-env
+def write_env_func(args):
+    write_docker_env()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
@@ -445,6 +453,10 @@ if __name__ == '__main__':
     ########### Jackhammer dump parser ###########
     dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
     dump_parser.set_defaults(func=dump_func)
+
+    ########### Jackhammer write-env parser ###########
+    write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
+    write_env_parser.set_defaults(func=write_env_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):

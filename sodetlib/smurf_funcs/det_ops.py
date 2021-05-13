@@ -143,6 +143,7 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     iv_info = {}
     iv_info['plot_dir'] = S.plot_dir
     iv_info['output_dir'] = S.output_dir
+    iv_info['tune_file'] = S.tune_file
     iv_info['R_sh'] = S.R_sh
     iv_info['bias_line_resistance'] = S.bias_line_resistance
     iv_info['high_low_ratio'] = S.high_low_current_ratio

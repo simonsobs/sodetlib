@@ -17,10 +17,10 @@ def test_dev_cfg(cfg):
     cfg.dev.update_band(1, {'dc_att': 3, 'drive': 11})
     cfg.dev.update_bias_group(0, {'bias_high': 11, 'enabled': 1})
     cfg.dev.update_experiment({"amp_50k_Id": 12})
-    run, sys, dev = cfg.dump_configs('config', clobber=True)
-
+    out = cfg.dump_configs('config', clobber=True)
+    sys, dev, pysmurf = out['sys'], out['dev'], out['pysmurf']
     # Testing reloading written config file
-    cfg = DetConfig(sys_file=sys, dev_file=dev)
+    cfg = DetConfig(sys_file=sys, dev_file=dev, pysmurf_file=pysmurf)
     cfg.parse_args(args=['-N', '2'])
     assert (cfg.dev.bands[1]['dc_att'] == 3)
 
@@ -29,6 +29,12 @@ def test_failed_update(cfg):
     cfg.parse_args(args=[])
     with pytest.raises(ValueError):
         cfg.dev.update_experiment({'abcd': 12})
+
+
+def test_uxm_file(cfg):
+    cfg.uxm_file= 'input/uxm.yaml'
+    cfg.parse_args(args=['-N', '2'])
+    assert (cfg.uxm is not None)
 
 
 def test_offline_pysmurf_instance(cfg):

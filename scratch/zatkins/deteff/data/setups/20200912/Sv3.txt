@@ -1,5 +1,0 @@
-File: UFM_Si.csv
-Type: MF_F
-Center: 0, 0, -137.795
-Pin direction: 71.8817, -7.5587
-Phase center: 1.8715
