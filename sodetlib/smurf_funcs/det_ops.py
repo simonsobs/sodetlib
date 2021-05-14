@@ -90,8 +90,8 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     -------
     output_path : str
         Full path to IV raw npy file.
-    """        
-    
+    """
+
     n_bias_groups = S._n_bias_groups # This is the number of bias groups that the cryocard has
     if bias_groups is None:
         bias_groups = np.arange(12) # SO UFMs have 12 bias groups
@@ -270,3 +270,26 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
     S.pub.register_file(filename, 'tickle_summary', format='npy')
     print(f"Saved tickle summary to {filename}")
     return filename
+
+
+@set_action()
+def bias_detectors_from_sc(S, bias_points_fp, high_current_mode=False):
+
+    bias_points = np.load(bias_points_fp, allow_pickle=True).item()
+
+    bias_groups = np.fromiter(bias_points.keys(), dtype=int)
+    bias_values = np.fromiter(bias_points.values(), dtype=float)
+
+    # For now, this is hard-coded. Should be pulled from uxm_config
+    overbias_voltage = 19.9
+
+    bias_array = S.get_tes_bias_bipolar_array()
+    bias_array[bias_groups] = bias_values
+
+    print(f'Overbiasing and setting TES biases on bias groups {bias_groups}.')
+    S.overbias_tes_all(bias_groups=bias_groups,
+                       overbias_voltage=overbias_voltage,
+                       tes_bias=overbias_voltage,
+                       high_current_mode=high_current_mode)
+
+    S.set_tes_bias_bipolar_array(bias_array)
