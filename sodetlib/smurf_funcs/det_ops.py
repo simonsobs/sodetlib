@@ -9,7 +9,6 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
-import yaml
 
 from pysmurf.client.util.pub import set_action
 
@@ -92,9 +91,10 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         Full path to IV raw npy file.
     """
 
-    n_bias_groups = S._n_bias_groups # This is the number of bias groups that the cryocard has
+    # This is the number of bias groups that the cryocard has
+    n_bias_groups = S._n_bias_groups
     if bias_groups is None:
-        bias_groups = np.arange(12) # SO UFMs have 12 bias groups
+        bias_groups = np.arange(12)  # SO UFMs have 12 bias groups
     bias_groups = np.array(bias_groups)
     if overbias_voltage != 0.:
         overbias = True
@@ -120,7 +120,8 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
             S.log('Starting to take IV.', S.LOG_USER)
     S.log('Starting TES bias ramp.', S.LOG_USER)
     bias_group_bool = np.zeros((n_bias_groups,))
-    bias_group_bool[bias_groups] = 1  # only set things on the bias groups that are on
+    # only set things on the bias groups that are on
+    bias_group_bool[bias_groups] = 1
     S.set_tes_bias_bipolar_array(bias[0] * bias_group_bool)
     time.sleep(wait_time)
     start_time = S.get_timestamp()  # get time the IV starts
@@ -252,8 +253,6 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         time.sleep(2)  # Gives some time for g3 file to finish
 
     S.set_logfile(None)
-
-
 
     summary = {
         'tickle_freq': tickle_freq,
