@@ -712,7 +712,7 @@ def stream_g3_off(S, emulator=False):
     return sess_id
 
 
-def apply_dev_cfg(S, cfg):
+def apply_dev_cfg(S, cfg, load_tune=True):
     """
     Applies basic device config params (amplifier biases, attens, tone_powers)
     to a pysmurf instance based on the device cfg values. Note that this does
@@ -720,9 +720,11 @@ def apply_dev_cfg(S, cfg):
     tracking_setup.
     """
     S.set_amplifier_bias(
-            bias_hemt=cfg.exp['amp_hemt_Vg'], bias_50k=cfg.exp['amp_50k_Vg']
+        bias_hemt=cfg.dev.exp['amp_hemt_Vg'],
+        bias_50k=cfg.dev.exp['amp_50k_Vg']
     )
-    if cfg.dev.exp.get('tunefile') is not None:
+
+    if load_tune:
         S.load_tune(cfg.dev.exp['tunefile'])
 
     for b in S._bands:
