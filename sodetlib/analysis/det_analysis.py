@@ -7,8 +7,6 @@ from collections import namedtuple
 from sodetlib.util import cprint, make_filename
 from pysmurf.client.util.pub import set_action
 
-
-
 CHANS_PER_BAND = 512
 
 
@@ -154,14 +152,14 @@ def plot_tickle_summary(S, summary, save_dir=None, timestamp=None):
         timestamp = S.get_timestamp()
     bgs = summary['bg_assignments']
     res = summary['resistances']
-    r2s = summary['rsquared']
+    r2s = summary['rsquared']  # Jack can you look at this? flake error
     classes = summary['classifications']
     class_cmap = {
         "sc": "C0", "transition": "C1", "normal": "red", "no_tes": "grey"
     }
     cs = np.array([class_cmap[c] for c in classes])
 
-    ### Individual bias group plots
+    # Individual bias group plots
     for bg in np.unique(bgs):
         if bg == -1:
             continue
