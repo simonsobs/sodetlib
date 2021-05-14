@@ -941,7 +941,7 @@ def iv_summary_plots(iv_info, iv_analyze,
                     and iv_analyze[b][c]['R_n'] > Rn_lower):
                 Rns.append(iv_analyze[b][c]['R_n']*1e3)
 
-            if np.isnan(iv_analyze[b][c]['p_sat']):
+            if not np.isnan(iv_analyze[b][c]['p_sat']):
                 Psats.append(iv_analyze[b][c]['p_sat'])
 
     Rns = np.array(Rns)
