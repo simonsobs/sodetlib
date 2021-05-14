@@ -131,10 +131,8 @@ class DeviceConfig:
         def _format_yml(val):
             """Converts np dtypes to python types for yaml files"""
             if hasattr(val, 'dtype'):
-                print(f"x: {val}")
                 return val.item()
             else:
-                print(f"y: {val}")
                 return val
 
         data = YamlReps.Odict()
