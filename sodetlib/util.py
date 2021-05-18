@@ -164,7 +164,10 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
         'amp_50k_Vg': amp_biases['50K_Vg'],
         'amp_hemt_Id': amp_biases['hemt_Id'],
         'amp_hemt_Vg': amp_biases['hemt_Vg'],
-        'tunefile': tunefile
+        'tunefile': tunefile,
+        'bias_line_resistance': S._bias_line_resistance,
+        'high_low_current_ratio': S._high_low_current_ratio,
+        'pA_per_phi0': S._pA_per_phi0,
     })
 
     # Right now not getting any bias group info
