@@ -135,6 +135,10 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
     """
     Creates a populated device cfg object from a fully tuned pysmurf instance.
     If a save-file is specifed, the device config file will be written there.
+    By default this will not save the device config to a file!! If you want
+    overwrite the currently used device cfg, you can run::
+
+        dev_cfg_from_pysmurf(S, save_file=cfg.dev_file, clobber=True)
 
     Args
     ----
@@ -158,6 +162,7 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
     if hasattr(S, 'tune_file'):
         tunefile = S.tune_file
     else:
+        cprint("No tunefile is loaded! Loading tunefile=None", False)
         tunefile = None
     dev.exp.update({
         'amp_50k_Id': amp_biases['50K_Id'],
@@ -172,8 +177,17 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
 
     # Right now not getting any bias group info
     for band in S._bands:
-        tone_powers = S.get_amplitude_scale_array(band)
-        drive = np.median(tone_powers[tone_powers != 0])
+        tone_powers = S.get_amplitude_scale_array(band)[S.which_on(band)]
+        if len(tone_powers) == 0:
+            drive = S._amplitude_scale[band]
+            cprint(f"No channels are on in band {band}. Setting drive to "
+                   f"pysmurf-cfg value: {drive}", style=TermColors.WARNING)
+        else:
+            drives, counts = np.unique(tone_powers, return_counts=True)
+            drive = drives[np.argmax(counts)]
+            if len(drives) > 1:
+                print(f"Multiple drive powers exist for band {band} ({drives})!")
+                print(f"Using most common power: {drive}")
 
         feedback_start_frac = S._feedback_to_feedback_frac(band, S.get_feedback_start(band))
         feedback_end_frac = S._feedback_to_feedback_frac(band, S.get_feedback_end(band))
@@ -196,6 +210,7 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
         })
 
     if save_file is not None:
-        dev.dump(save_file, clobber=True)
+        if clobber and os.path.exists(save_file):
+            print(f"Rewriting existing file: {save_file}")
+        dev.dump(save_file, clobber=clobber)
     return dev
-
