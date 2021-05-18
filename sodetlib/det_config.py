@@ -6,6 +6,8 @@ import sys
 import time
 import shutil
 
+from sodetlib.smurf_funcs.smurf_ops import apply_dev_cfg
+
 class YamlReps:
     class FlowSeq(list):
         """Represents a list as a flow sequencey by default"""
@@ -464,9 +466,11 @@ class DetConfig:
 
         return outfiles
 
-    def get_smurf_control(self, offline=False, epics_root=None, smurfpub_id=None,
-                              make_logfile=False, setup=False, dump_configs=None,
-                              config_dir=None, **pysmurf_kwargs):
+    def get_smurf_control(self, offline=False, epics_root=None,
+                          smurfpub_id=None, make_logfile=False, setup=False,
+                          dump_configs=None, config_dir=None,
+                          apply_dev_configs=True, load_device_tune=True,
+                          **pysmurf_kwargs):
         """
         Creates pysmurf instance based off of configuration parameters.
         If not specified as keyword arguments ``epics_root`` and ``smurf_pub``
@@ -528,4 +532,9 @@ class DetConfig:
                     print("Warning! Being run in offline mode with no config "
                           f"directory specified! Writing to {config_dir}")
             self.dump_configs(config_dir)
+
+        if apply_dev_configs:
+            print("Applying device cfg parameters...")
+            apply_dev_cfg(S, self, load_tune=load_device_tune)
+
         return S
