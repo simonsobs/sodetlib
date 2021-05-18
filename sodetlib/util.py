@@ -7,6 +7,7 @@ from scipy import signal
 import time
 import os
 from collections import namedtuple
+from sodetlib import det_config
 
 
 StreamSeg = namedtuple("StreamSeg", "times sig mask")
@@ -130,3 +131,86 @@ class SectionTimer:
         return out
 
 
+def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
+    """
+    Creates a populated device cfg object from a fully tuned pysmurf instance.
+    If a save-file is specifed, the device config file will be written there.
+    By default this will not save the device config to a file!! If you want
+    overwrite the currently used device cfg, you can run::
+
+        dev_cfg_from_pysmurf(S, save_file=cfg.dev_file, clobber=True)
+
+    Args
+    ----
+    S : SmurfControl object
+        The pysmurf instance should be in a state where a tunefile is loaded,
+        attenuations, biases, and any other parameter are already set
+        correctly.
+    save_file : path
+        Path to save-file location. Remember that if you are running in a
+        docker container, you have to give the path as it is inside the
+        container. For example, the OCS_CONFIG_DIR is mapped to /config inside
+        the docker.
+    clobber : bool
+        If true, will overwrite the save_file if one already exists at that
+        location.
+    """
+    dev = det_config.DeviceConfig()
+
+    # Experiment setup
+    amp_biases = S.get_amplifier_biases()
+    if hasattr(S, 'tune_file'):
+        tunefile = S.tune_file
+    else:
+        cprint("No tunefile is loaded! Loading tunefile=None", False)
+        tunefile = None
+    dev.exp.update({
+        'amp_50k_Id': amp_biases['50K_Id'],
+        'amp_50k_Vg': amp_biases['50K_Vg'],
+        'amp_hemt_Id': amp_biases['hemt_Id'],
+        'amp_hemt_Vg': amp_biases['hemt_Vg'],
+        'tunefile': tunefile,
+        'bias_line_resistance': S._bias_line_resistance,
+        'high_low_current_ratio': S._high_low_current_ratio,
+        'pA_per_phi0': S._pA_per_phi0,
+    })
+
+    # Right now not getting any bias group info
+    for band in S._bands:
+        tone_powers = S.get_amplitude_scale_array(band)[S.which_on(band)]
+        if len(tone_powers) == 0:
+            drive = S._amplitude_scale[band]
+            cprint(f"No channels are on in band {band}. Setting drive to "
+                   f"pysmurf-cfg value: {drive}", style=TermColors.WARNING)
+        else:
+            drives, counts = np.unique(tone_powers, return_counts=True)
+            drive = drives[np.argmax(counts)]
+            if len(drives) > 1:
+                print(f"Multiple drive powers exist for band {band} ({drives})!")
+                print(f"Using most common power: {drive}")
+
+        feedback_start_frac = S._feedback_to_feedback_frac(band, S.get_feedback_start(band))
+        feedback_end_frac = S._feedback_to_feedback_frac(band, S.get_feedback_end(band))
+
+        flux_ramp_rate_khz = S.get_flux_ramp_freq()
+        lms_freq_hz = S.get_lms_freq_hz(band)
+        nphi0 = np.round(lms_freq_hz / flux_ramp_rate_khz / 1e3)
+
+        dev.bands[band].update({
+            'uc_att': S.get_att_uc(band),
+            'dc_att': S.get_att_dc(band),
+            'drive': drive,
+            'feedback_start_frac': feedback_start_frac,
+            'feedback_end_frac': feedback_end_frac,
+            'lms_gain': S.get_lms_gain(band),
+            'frac_pp': S.get_fraction_full_scale(),
+            'flux_ramp_rate_khz': flux_ramp_rate_khz,
+            'lms_freq_hz': lms_freq_hz,
+            'nphi0': nphi0
+        })
+
+    if save_file is not None:
+        if clobber and os.path.exists(save_file):
+            print(f"Rewriting existing file: {save_file}")
+        dev.dump(save_file, clobber=clobber)
+    return dev

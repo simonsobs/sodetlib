@@ -138,9 +138,12 @@ class DeviceConfig:
                 return val
 
         data = YamlReps.Odict()
-        data['experiment'] = self.exp
+        data['experiment'] = {
+            k: _format_yml(v) for k, v in self.exp.items()
+        }
+
         data['bias_groups'] = {
-            k: YamlReps.FlowSeq([bg[k] for bg in self.bias_groups])
+            k: YamlReps.FlowSeq([_format_yml(bg[k]) for bg in self.bias_groups])
             for k in self.bias_groups[0].keys()
         }
         data['bands'] = YamlReps.Odict([
