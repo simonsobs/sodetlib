@@ -562,9 +562,10 @@ def get_stream_session_id(S):
     return S._caget(reg)
 
 
-def get_session_files(cfg, session_id, idx=None):
+def get_session_files(cfg, session_id, idx=None, stream_id=None):
     base_dir = cfg.sys['g3_dir']
-    stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
+    if stream_id is None:
+        stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
     subdir = os.path.join(base_dir, str(session_id)[:5], stream_id)
     files = sorted([
         os.path.join(subdir, f) for f in os.listdir(subdir)
@@ -575,11 +576,11 @@ def get_session_files(cfg, session_id, idx=None):
         return files
     elif isinstance(idx, int):
         return files[idx]
-    else:  #list of indexes
+    else:  # list of indexes
         return [files[i] for i in idx]
 
 
-def load_session(cfg, session_id, idx=None):
+def load_session(cfg, session_id, idx=None, stream_id=None):
     """
     Loads a stream-session into an axis manager.
 
@@ -591,7 +592,7 @@ def load_session(cfg, session_id, idx=None):
         Session id corresonding with the stream session you wish to load
     idx: int, list(int), optional
     """
-    files = get_session_files(cfg, session_id, idx)
+    files = get_session_files(cfg, session_id, idx, stream_id=stream_id)
     return load_smurf.load_file(files)
 
 
