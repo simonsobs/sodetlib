@@ -8,6 +8,8 @@ from collections import namedtuple
 from sodetlib.util import cprint, make_filename
 from pysmurf.client.util.pub import set_action
 
+
+
 CHANS_PER_BAND = 512
 
 
@@ -153,14 +155,14 @@ def plot_tickle_summary(S, summary, save_dir=None, timestamp=None):
         timestamp = S.get_timestamp()
     bgs = summary['bg_assignments']
     res = summary['resistances']
-    r2s = summary['rsquared']  # Jack can you look at this? flake error
+    r2s = summary['rsquared']
     classes = summary['classifications']
     class_cmap = {
         "sc": "C0", "transition": "C1", "normal": "red", "no_tes": "grey"
     }
     cs = np.array([class_cmap[c] for c in classes])
 
-    # Individual bias group plots
+    ### Individual bias group plots
     for bg in np.unique(bgs):
         if bg == -1:
             continue
@@ -389,6 +391,7 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         return summary
 
 
+<<<<<<< HEAD
 def load_from_dat(S, datfile):
     """
     Loads data from .dat files and returns the timestamps,
@@ -991,3 +994,91 @@ def iv_summary_plots(iv_info, iv_analyze,
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
         return plot_dir
+
+
+@set_action()
+def make_bias_group_map(S, tsum_fp):
+    tsum = np.load(tsum_fp, allow_pickle=True).item()
+    band = tsum['abs_channels']//512
+    chan = tsum['abs_channels'] % 512
+
+    bg_map = {}
+    for i, c in enumerate(chan):
+        bg_map.setdefault(band[i], {})
+        bg_map[band[i]][c] = tsum['bg_assignments'][i]
+
+    # Save bg map to the folder on the smurf server
+    basename = os.path.split(tsum_fp)[1][:10]
+    bg_map_fp = os.path.join('/data/smurf_data/bias_group_maps',
+                             basename + '_bg_map.npy')
+
+    np.save(bg_map_fp, bg_map)
+    S.log(f'Writing bias group mapping to {bg_map_fp}.')
+    S.pub.register_file(bg_map_fp, 'bias_group_map', format='npy')
+
+    return bg_map_fp
+
+
+@set_action()
+def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
+                     bias_point=0.5, bias_groups=None):
+
+    iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
+    iv_info = np.load(iv_analyze['iv_info'])
+
+    if bias_groups is None:
+        bias_groups = iv_info['bias group']
+    elif bias_groups not in iv_info['bias group']:
+        print('Error: Specified bias groups not included in '
+              'analyzed IV curves.')
+        return  # should this return something specific?
+
+    bias_group_map = np.load(bias_group_map_fp, allow_pickle=True).item()
+
+    bg_ch_bias_targets = {}
+
+    for b in iv_analyze.keys():
+        for c in iv_analyze[b].keys():
+            try:
+                bg = bias_group_map[b][c]
+            except KeyError:
+                print(f'Band {b}, channel {c} does not have '
+                      'an assigned bias group in this map. '
+                      'Skipping pair.')
+                continue
+            if bg not in bias_groups:
+                print(f'Band {b}, channel {c} connected to '
+                      f'bias group {bg}, which is not included '
+                      'in this call. Skipping this pair.')
+                continue
+
+            bg_ch_bias_targets.set_default(bg, [])
+
+            Rn_upper = 0.02
+            Rn_lower = 0.0
+            print('Ignoring channels with atypical normal resistances '
+                  ' and non-physical Psats.')
+
+            if (iv_analyze[b][c]['R_n'] < Rn_upper
+                    and iv_analyze[b][c]['R_n'] > Rn_lower):
+                if not np.isnan(iv_analyze[b][c]['p_sat']):
+                    R_frac = iv_analyze[b][c]['R']/iv_analyze['R_n']
+                    bias_idx = np.argmin(np.abs(R_frac - bias_point))
+                    ch_v_bias_target = iv_analyze[b][c]['v_bias'][bias_idx]
+                    bg_ch_bias_targets[bg].append(ch_v_bias_target)
+
+    bg_biases = {}
+    for bg in bias_groups:
+
+        bg_biases[bg] = np.mean(bg_ch_bias_targets[bg])
+
+    # need to save the bg_biases object to some fp and then return the fp
+
+    biases_fp = os.path.join(iv_info['output_dir'],
+                             iv_info['basename'] + '_bias_points.npy')
+
+    np.save(biases_fp, bg_biases)
+    S.log(f'Writing chosen bias points to {biases_fp}.')
+    S.pub.register_file(biases_fp, 'bias_points', format='npy')
+
+    return biases_fp
