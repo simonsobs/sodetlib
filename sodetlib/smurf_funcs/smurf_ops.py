@@ -729,7 +729,7 @@ def apply_dev_cfg(S, cfg, load_tune=True):
         if os.path.exists(tunefile):
             S.load_tune(tunefile)
         else:
-            cprint("Cannot load tunefile {tunefile} because it doesn't exist",
+            cprint(f"Cannot load tunefile {tunefile} because it doesn't exist",
                    False)
 
     for b in S._bands:
