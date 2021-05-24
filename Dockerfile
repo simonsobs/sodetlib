@@ -75,7 +75,7 @@ RUN pip3 install ./sotodlib
 WORKDIR /usr/local/src
 RUN git clone https://github.com/simonsobs/ocs.git
 
-COPY ./requirements.txt ocs/requirements.txt
+RUN pip3 install cryptography==3.3.2
 RUN pip3 install -r ocs/requirements.txt
 RUN pip3 install ./ocs
 
