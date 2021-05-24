@@ -6,6 +6,7 @@ data streaming, or takes data for some duration.
 import matplotlib
 matplotlib.use('Agg')
 import argparse
+import sodetlib.smurf_funcs.smurf_ops as so
 
 from sodetlib.det_config import DetConfig
 
@@ -15,17 +16,28 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('state', choices=['on', 'off'])
     parser.add_argument('--duration', '-d', type=float)
+    parser.add_argument('--emulator', action='store_true')
+    parser.add_argument('--tag', type=str, default='')
+    parser.add_argument('--epics-root', type=str, default=None)
+    parser.add_argument('--skip-freq-mask', action='store_true')
+    parser.add_argument('--apply-dev-cfg', action='store_true')
+    parser.add_argument('--dump-configs', action='store_true')
     args = cfg.parse_args(parser)
 
-    S = cfg.get_smurf_control(dump_configs=True)
+    S = cfg.get_smurf_control(
+        dump_configs=args.dump_configs, epics_root=args.epics_root,
+        apply_dev_configs=args.apply_dev_cfg
+    )
 
     if args.state == 'on':
+        stream_kw = {
+            'emulator': args.emulator,
+            'tag': args.tag,
+            'make_freq_mask': not args.skip_freq_mask,
+        }
         if args.duration is not None:
-            datfile = S.take_stream_data(args.duration)
+            sid = so.take_g3_data(S, args.duration, **stream_kw)
         else:
-            datfile = S.stream_data_on()
+            sid = so.stream_g3_on(S, **stream_kw)
     else:
-        S.stream_data_off()
-
-
-
+        so.stream_g3_off(S, emulator=args.emulator)

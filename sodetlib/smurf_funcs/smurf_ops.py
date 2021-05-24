@@ -725,7 +725,12 @@ def apply_dev_cfg(S, cfg, load_tune=True):
     )
 
     if load_tune:
-        S.load_tune(cfg.dev.exp['tunefile'])
+        tunefile = cfg.dev.exp['tunefile']
+        if os.path.exists(tunefile):
+            S.load_tune(tunefile)
+        else:
+            cprint("Cannot load tunefile {tunefile} because it doesn't exist",
+                   False)
 
     for b in S._bands:
         band_cfg = cfg.dev.bands[b]
