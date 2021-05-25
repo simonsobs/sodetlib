@@ -214,3 +214,44 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
             print(f"Rewriting existing file: {save_file}")
         dev.dump(save_file, clobber=clobber)
     return dev
+
+
+def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
+    """
+    Gets white-noise levels for each channel from the axis manager returned
+    by smurf_ops.load_session.
+
+    Args
+    ----
+    am : AxisManager
+        Smurf data returned by so.load_session or the G3tSmurf class
+    nperseg : int
+        nperseg to be passed to welch
+    fmin : float
+        Min frequency to use for white noise mask
+    fmax : float
+        Max freq to use for white noise mask
+    pA_per_phi0 : float
+        S.pA_per_phi0 unit conversion. This will eventually make its way
+        into the axis manager, but for now I'm just hardcoding this here
+        as a keyword argument until we get there.
+
+    Returns
+    --------
+    wls : array of floats
+        Array of the white-noise level for each channel, indexed by readout-
+        channel number
+    band_medians : array of floats
+        Array of the median white noise level for each band.
+    """
+    fsamp = 1./np.median(np.diff(am.timestamps))
+    fs, pxx = signal.welch(am.signal * pA_per_phi0 / (2*np.pi),
+                           fs=fsamp, nperseg=nperseg)
+    pxx = np.sqrt(pxx)
+    fmask = (fmin < fs) & (fs < fmax)
+    wls = np.median(pxx[:, fmask], axis=1)
+    band_medians = np.zeros(8)
+    for i in range(8):
+        m = am.ch_info.band == i
+        band_medians[i] = np.median(wls[m])
+    return wls, band_medians
