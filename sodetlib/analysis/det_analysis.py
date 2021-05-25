@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from tqdm import tqdm
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from collections import namedtuple
@@ -537,7 +538,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
     bias_line_resistance = iv_info['bias_line_resistance']
     high_current_mode = iv_info['high_current_mode']
     high_low_current_ratio = iv_info['high_low_ratio']
-    bias_group = iv_info['bias group']
+    bias_group = np.atleast_1d(iv_info['bias group'])
 
     iv_full_dict = {}
 
@@ -810,18 +811,19 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         bands = iv_analyze.keys()
 
     for b in bands:
+        print(f'Making plots for band {b}')
         if chans is None:
             chans_iter = iv_analyze[b].keys()
         else:
             chans_iter = chans
 
-        for c in chans_iter:
+        for c in tqdm(chans_iter):
 
             if np.isnan(iv_analyze[b][c]['p_sat']):
                 print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
-            print(f'Making plots for band {b}, channel {c}.')
+            #print(f'Making plots for band {b}, channel {c}.')
 
             R_n = iv_analyze[b][c]['R_n']
             R_sh = iv_info['R_sh']
@@ -852,6 +854,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_iv.png'))
+                if not show_plot:
+                    plt.close()
 
             plt.figure()
             plt.plot(v_bias, R/R_n, color='black')
@@ -863,6 +867,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
+                if not show_plot:
+                    plt.close()
 
             sc_idx = iv_analyze[b][c]['idxs'][0]
 
@@ -876,6 +882,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_si.png'))
+                if not show_plot:
+                    plt.close()
 
             plt.figure()
             plt.plot(p_tes, R/R_n, color='black')
@@ -890,7 +898,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_rp.png'))
-
+                if not show_plot:
+                    plt.close()
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
         return plot_dir
@@ -961,6 +970,8 @@ def iv_summary_plots(iv_info, iv_analyze,
         plt.show()
     if save_plot:
         plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_rn_hist.png'))
+        if not show_plot:
+            plt.close()
 
     Psat_median = np.nanmedian(Psats)
 
@@ -977,6 +988,8 @@ def iv_summary_plots(iv_info, iv_analyze,
     if save_plot:
         plt.savefig(os.path.join(plot_dir,
                     iv_info['basename']+'_psat_hist.png'))
+        if not show_plot:
+            plt.close()
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
