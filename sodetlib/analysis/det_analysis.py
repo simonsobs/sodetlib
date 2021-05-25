@@ -390,7 +390,6 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         return summary
 
 
-<<<<<<< HEAD
 def load_from_dat(S, datfile):
     """
     Loads data from .dat files and returns the timestamps,
@@ -1012,7 +1011,11 @@ def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
                      bias_point=0.5, bias_groups=None):
 
     iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
-    iv_info = np.load(iv_analyze['iv_info'])
+    iv_analyze_first_key = np.fromiter(iv_analyze.keys(),dtype=int)[0]
+    iv_analyze_second_key = np.fromiter(iv_analyze[iv_analyze_first_key].keys(),
+                                        dtype=int)[0]
+    iv_info_fp = iv_analyze[iv_analyze_first_key][iv_analyze_second_key]['iv_info']
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
 
     if bias_groups is None:
         bias_groups = iv_info['bias group']
@@ -1040,7 +1043,7 @@ def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
                       'in this call. Skipping this pair.')
                 continue
 
-            bg_ch_bias_targets.set_default(bg, [])
+            bg_ch_bias_targets.setdefault(bg, [])
 
             Rn_upper = 0.02
             Rn_lower = 0.0
@@ -1050,7 +1053,7 @@ def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
             if (iv_analyze[b][c]['R_n'] < Rn_upper
                     and iv_analyze[b][c]['R_n'] > Rn_lower):
                 if not np.isnan(iv_analyze[b][c]['p_sat']):
-                    R_frac = iv_analyze[b][c]['R']/iv_analyze['R_n']
+                    R_frac = iv_analyze[b][c]['R']/iv_analyze[b][c]['R_n']
                     bias_idx = np.argmin(np.abs(R_frac - bias_point))
                     ch_v_bias_target = iv_analyze[b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
