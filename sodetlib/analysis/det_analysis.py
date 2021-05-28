@@ -823,8 +823,6 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
                 print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
-            #print(f'Making plots for band {b}, channel {c}.')
-
             R_n = iv_analyze[b][c]['R_n']
             R_sh = iv_info['R_sh']
             R = iv_analyze[b][c]['R']
@@ -849,26 +847,26 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.ylabel(r'I$_{TES}$ ($\mu$A)')
             plt.title(fr'Band {b}, Ch {c} IV Curve')
             plt.legend()
-            if show_plot:
-                plt.show()
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_iv.png'))
-                if not show_plot:
-                    plt.close()
+            if show_plot:
+                plt.show()
+            else:
+                plt.close()
 
             plt.figure()
             plt.plot(v_bias, R/R_n, color='black')
             plt.xlabel(r'V$_{bias}$ (V)')
             plt.ylabel(r'R/R$_n$')
             plt.title(fr'Band {b}, Ch {c} R$_{{frac}}$ vs. Bias')
-            if show_plot:
-                plt.show()
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
-                if not show_plot:
-                    plt.close()
+            if show_plot:
+                plt.show()
+            else:
+                plt.close()
 
             sc_idx = iv_analyze[b][c]['idxs'][0]
 
@@ -877,13 +875,13 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.xlabel(r'R/R$_n$')
             plt.ylabel(r'S$_I$')
             plt.title(fr'Band {b}, Ch {c} S$_I$ vs. Rfrac')
-            if show_plot:
-                plt.show()
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_si.png'))
-                if not show_plot:
-                    plt.close()
+            if show_plot:
+                plt.show()
+            else:
+                plt.close()
 
             plt.figure()
             plt.plot(p_tes, R/R_n, color='black')
@@ -893,13 +891,14 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.xlabel(r'P$_{TES} (pW)$')
             plt.ylabel(r'R/R$_n$')
             plt.title(f'Band {b}, Ch {c} R-P curve')
-            if show_plot:
-                plt.show()
             if save_plot:
                 plt.savefig(os.path.join(plot_dir,
                             iv_info['basename']+f'_b{b}c{c}_rp.png'))
-                if not show_plot:
-                    plt.close()
+            if show_plot:
+                plt.show()
+            else:
+                plt.close()
+
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
         return plot_dir
@@ -966,12 +965,12 @@ def iv_summary_plots(iv_info, iv_analyze,
     plt.xlabel(r'R$_n$ (m$\Omega$)')
     plt.ylabel('Counts')
     plt.title('Normal Resistance Distribution')
-    if show_plot:
-        plt.show()
     if save_plot:
         plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_rn_hist.png'))
-        if not show_plot:
-            plt.close()
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
 
     Psat_median = np.nanmedian(Psats)
 
@@ -983,13 +982,13 @@ def iv_summary_plots(iv_info, iv_analyze,
     plt.xlabel(r'P$_{{sat}} (pW)$')
     plt.ylabel('Counts')
     plt.title(r'Electrical Power at 90% R$_n$')
-    if show_plot:
-        plt.show()
     if save_plot:
         plt.savefig(os.path.join(plot_dir,
                     iv_info['basename']+'_psat_hist.png'))
-        if not show_plot:
-            plt.close()
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
