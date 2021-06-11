@@ -65,6 +65,7 @@ class DeviceConfig:
         self.bands = [{} for _ in range(8)]
         self.bias_groups = [{} for _ in range(12)]
         self.exp = {}
+        self.source_file = None
 
     @classmethod
     def from_dict(cls, data):
@@ -156,7 +157,7 @@ class DeviceConfig:
         with open(path, 'w') as f:
             yaml.dump(data, f)
 
-    def update_band(self, band_index, data):
+    def update_band(self, band_index, data, update_file=False):
         """
         Updates band configuration object.
 
@@ -170,13 +171,13 @@ class DeviceConfig:
         band = self.bands[band_index]
         for k, v in data.items():
             if k not in band.keys():
-                print(f"{k} is not an existing key! Adding it with the value "
-                      "None for all bands")
                 for b in self.bands:
                     b[k] = None
             band[k] = v
+        if update_file and self.source_file is not None:
+            self.dump(self.source_file, clobber=True)
 
-    def update_bias_group(self, bg_index, data):
+    def update_bias_group(self, bg_index, data, update_file=False):
         """
         Updates bias group configuration object.
 
@@ -190,11 +191,13 @@ class DeviceConfig:
         bg = self.bias_groups[bg_index]
         for k, v in data.items():
             if k not in bg.keys():
-                raise ValueError(f"{k} is not a valid bias_group key. "
-                                 f"Check dev-cfg file for available keys.")
+                for _bg in self.bias_groups:
+                    _bg[k] = None
             bg[k] = v
+        if update_file and self.source_file is not None:
+            self.dump(self.source_file, clobber=True)
 
-    def update_experiment(self, data):
+    def update_experiment(self, data, update_file=False):
         """
         Updates ``experiment`` configuration object.
 
@@ -204,10 +207,9 @@ class DeviceConfig:
                 the loaded dev-cfg file.
         """
         for k, v in data.items():
-            if k not in self.exp.keys():
-                raise ValueError(f"{k} is not a valid experiment key. "
-                                 f"Check dev-cfg file for available keys")
             self.exp[k] = v
+        if update_file and self.source_file is not None:
+            self.dump(self.source_file, clobber=True)
 
     def apply_to_pysmurf_instance(self, S, load_tune=True):
         """
