@@ -200,70 +200,6 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     S.set_lms_gain(band, lms_gain)
     return raw_data
 
-@set_action()
-def find_subbands(S, cfg, spur_width=5):
-    """
-    Do a noise sweep to find the coarse position of resonators.
-    Return active bands and a dictionary of active subbands.
-
-    Parameters
-    ----------
-    S : pysmurf.client.SmurfControl
-        Smurf control object
-    cfg : DetConfig
-        sodetlib config object
-    spur_width: float
-        Will throw out any resonators which are within ``spur_width`` MHz
-        from a multiple of 500 MHz to avoid picking up spurs.
-
-    Returns
-    -------
-    bands : int array
-        Active bands
-    subband_dict : dict
-        A dictionary containing the list of subbands in each band.
-    """
-    subband_dict = {}
-    bands = []
-
-    amc = S.which_bays()
-    if 0 in amc:
-        bands += [0, 1, 2, 3]
-    if 1 in amc:
-        bands += [4, 5, 6, 7]
-    if not bands:
-        print('No active AMC')
-        return bands, subband_dict
-
-    for band in bands:
-        freq, resp = S.full_band_resp(band)
-        peaks = S.find_peak(freq, resp, make_plot=True,show_plot=False, band=band)
-        fs_ = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
-
-        # Drops channels that are too close to 500 MHz multiple
-        fs = [f for f in fs_
-              if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
-        bad_fs = list(set(fs_) - set(fs))
-        bad_fs = [f for f in fs_
-                  if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
-
-        if bad_fs:
-            cprint(f"Dropping frequencies {bad_fs} because they are too close "
-                   "to a 500 MHz interval", style=TermColors.WARNING)
-
-        subbands=sorted(list({S.freq_to_subband(band,f)[0] for f in fs}))
-        subband_dict[band] = subbands
-
-        subband_strings = []
-        for i,b in enumerate(subbands):
-            subband_strings.append(f"{b} ({fs[i]:.2f}MHz)")
-
-        cprint(f"Subbands detected for band {band}:\n{subband_strings}",
-                style=TermColors.OKBLUE)
-        cfg.dev.update_band(band, {'active_subbands': subbands})
-
-    return bands, subband_dict
-
 
 def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     """
@@ -287,24 +223,17 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
         is a resonance.
     """
     num_resonators_on = 0
-    default_subbands = np.arange(13, 115)
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        subband = band_cfg.get('active_subbands', default_subbands)
-        if subband is True:
-            subband = default_subbands
-        elif not subband:
-            continue
-        S.find_freq(band, tone_power=band_cfg['drive'],
-                    make_plot=True,
-                    save_plot=True,
-                    subband=subband, amp_cut=amp_cut)
+        S.find_freq(band, tone_power=band_cfg['drive'], make_plot=True,
+                    save_plot=True, amp_cut=amp_cut)
+
         if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
-            cprint(f'Find freqs could not find resonators in '
-            f'band : {band} and subbands : {subband}', False)
+            cprint(f'Find freqs could not find resonators in  band {band}',
+                   False)
             continue
         S.setup_notches(band, tone_power=band_cfg['drive'],
-                    new_master_assignment=new_master_assignment)
+                        new_master_assignment=new_master_assignment)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
@@ -313,7 +242,7 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     tune_file = S.tune_file
     if not tune_file:
         cprint("Find freqs was unsuccessful! could not find resonators in the\
-                specified bands + subbands", False)
+                specified bands", False)
         return False
     print(f"Total num resonators on: {num_resonators_on}")
     print(f"Tune file: {tune_file}")
@@ -322,121 +251,6 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     cfg.dev.update_experiment({'tunefile': tune_file})
 
     return num_resonators_on, tune_file
-
-def res_shift(S, bands):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run. Typicaly paired w/ uc_att or flux steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    """
-    out_dict = {}
-    for band in bands:
-        for band in bands:
-            out_dict[band] = {}
-            #For all other steps run serial algs after changing flux bias but before 
-            #running setup notches to see how much eta and freq shift
-            print(f'Running serial algorithms on band {band}')
-            S.run_serial_gradient_descent(band)
-            S.run_serial_eta_scan(band)
-            out_dict[band]['fs_sg_b'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sg_b'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sg_b'] = S.get_eta_phase_array(band)
-            #Now run setup notches and get the new freqs and etas
-            print(f'Running setup_notches on band {band}')
-            S.setup_notches(band,new_master_assignment = True)
-            out_dict[band]['fs_sn'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sn'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sn'] = S.get_eta_phase_array(band)
-            #Run serial algs after and get the new freqs and etas
-            print(f'Running serial algorithms on band {band}')
-            S.run_serial_gradient_descent(band)
-            S.run_serial_eta_scan(band)
-            out_dict[band]['fs_sg_a'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sg_a'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sg_a'] = S.get_eta_phase_array(band)
-            out_dict[band]['channels'] = S.which_on(band)
-        #For each flux step write out a tunefile that contains both band freq_resp info
-        #this can be used for fitting.
-        out_dict['tunefile'] = S.tune_file
-        return out_dict
-
-def res_shift_vs_uc_att(S, uc_atts, bands, tunefile):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run over a range of uc attenuator steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    uc_atts : list[int]
-        uc attenuator values to step over.
-    tunefile : str
-        tunefile to use for retuning at each step.
-    """
-    #Initialize output dictionary
-    out_dict = {}
-    initial_uc_att = {}
-    #Step over uc attenuator values
-    for band in bands:
-        initial_uc_att[band] = S.get_att_uc(band)
-        S.set_att_uc(band,uc_atts[0])
-        #For the first step load the tunefile and relock then run serial
-        #algs to get freq and eta before setup_notches
-        S.load_tune(tunefile)
-        S.relock(band)
-    for uc_att in uc_atts:
-        #Loop over bands since serial algs and setup notches are per band operations
-        for band in bands:
-            print(f'Setting uc att in band {band} to {uc_att}')
-            S.set_att_uc(band,uc_att)
-        out_dict[uc_att] = res_shift(S, bands)
-    for band in bands:
-        S.set_att_uc(band,initial_uc_att[band])
-    return out_dict
-
-def res_shift_vs_flux_bias(S, frac_pp_steps, bands, tunefile):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run over a range of squid flux bias steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    frac_pp_steps : list[float]
-        list of flux bias steps to take in units of fraction full scale
-        of the flux ramp dac.
-    tunefile : str
-        tunefile to use for retuning at each step.
-    """
-    S.set_mode_dc()
-    #Initialize output dictionary
-    out_dict = {}
-    #Step over dc flux bias values
-    S.set_fixed_flux_ramp_bias(frac_pp_steps[0],do_config=False)
-    for band in bands:
-        #For the first step load the tunefile and relock then run serial
-        #algs to get freq and eta before setup_notches
-        S.load_tune(tunefile)
-        S.relock(band)
-    for frac_pp in frac_pp_steps:
-        print(f'Setting flux bias to {frac_pp} fraction full scale')
-        S.set_fixed_flux_ramp_bias(frac_pp,do_config=False)
-        out_dict[frac_pp] = res_shift(S, bands)
-    #Set flux bias back to 0
-    S.set_fixed_flux_ramp_bias(0,do_config = False)
-    return out_dict
 
 
 @set_action()
@@ -702,7 +516,6 @@ def stream_g3_off(S, emulator=False):
     reg_action = so_root + "pysmurf_action"
     reg_action_ts = so_root + "pysmurf_action_timestamp"
     reg_stream_tag = so_root + "stream_tag"
-
 
     if emulator:
         S._caput(reg_em_enable, 0)
