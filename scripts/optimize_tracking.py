@@ -22,4 +22,4 @@ if __name__ == '__main__':
     optimize_tracking(S, cfg, band=args.band, init_fracpp=None,
                       phi0_number=args.phi0_number,
                       reset_rate_khz=None, lms_gain=None,
-                      make_plots=args.plot, relock=True)
+                      make_plots=args.plot)
