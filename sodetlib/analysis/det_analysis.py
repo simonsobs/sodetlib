@@ -5,7 +5,7 @@ from tqdm import tqdm
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from collections import namedtuple
-from sodetlib.util import cprint, make_filename
+from sodetlib.util import cprint, make_filename, invert_mask, get_r2
 from pysmurf.client.util.pub import set_action
 
 
@@ -54,28 +54,6 @@ def fit_sine(times, sig, freq, nperiods=6):
         phase += np.pi
     phase %= 2*np.pi
     return amp, phase
-
-
-def invert_mask(mask):
-    """
-    Converts a readout mask from (band, chan)->rchan form to rchan->abs_chan
-    form.
-    """
-    bands, chans = np.where(mask != -1)
-    maskinv = np.zeros_like(bands, dtype=np.int16)
-    for b, c in zip(bands, chans):
-        maskinv[mask[b, c]] = b * CHANS_PER_BAND + c
-    return maskinv
-
-
-def get_r2(sig, sig_hat):
-    """ Gets r-squared value for a signal"""
-    sst = np.sum((sig - sig.mean())**2)
-    sse = np.sum((sig - sig_hat)**2)
-    r2 = 1 - sse / sst
-    if r2 < 0:
-        return 0
-    return r2
 
 
 def analyze_biasgroup_data(times, sig, mask, freq):
