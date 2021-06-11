@@ -867,17 +867,38 @@ def plot_optimize_attens(S, summary):
     wls = summary['wl_medians']
     grid = summary['atten_grid']
     shape = wls[0].shape
+
     xs = np.reshape(grid[:, 0], shape)
     ys = np.reshape(grid[:, 1], shape)
+
+    ucs = summary['uc_attens']
+    dcs = summary['dc_attens']
+
     for i, band in enumerate(summary['bands']):
         fig, ax = plt.subplots()
         fig.patch.set_facecolor('white')
-        wl = wls[i].copy()
-        wl[wl > 100] = np.nan
-        cbar = plt.contourf(xs, ys, wl,  levels=100)
-        ax.set(xlabel="UC atten", ylabel="DC atten",
-               title=f"Band {band} Atten Sweep")
-        fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
+        if len(ucs) == 1:  # Sweep is dc only
+            uc = ucs[0]
+            _wls = wls[i, 0, :]
+            ax.plot(dcs, _wls)
+            ax.set(xlabel="DC atten", ylabel="white noise (pA/rt(Hz))")
+            ax.set(title=f"Band {band}, uc-atten {uc}")
+
+        elif len(dcs) == 1:  # Sweep is uc only
+            dc = dcs[0]
+            _wls = wls[i, :, 0]
+            ax.plot(ucs, _wls)
+            ax.set(xlabel="UC atten", ylabel="white noise (pA/rt(Hz))")
+            ax.set(title=f"Band {band}, dc-atten {dc}")
+
+        else:
+            wl = wls[i].copy()
+            wl[wl > 100] = np.nan
+            cbar = plt.contourf(xs, ys, wl,  levels=100)
+            ax.set(xlabel="UC atten", ylabel="DC atten",
+                   title=f"Band {band} Atten Sweep")
+            fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
+
         fname = make_filename(S, f'atten_sweep_b{band}.png', plot=True)
         fig.savefig(fname)
 
