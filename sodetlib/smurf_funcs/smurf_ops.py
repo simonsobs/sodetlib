@@ -714,33 +714,4 @@ def stream_g3_off(S, emulator=False):
 
 
 def apply_dev_cfg(S, cfg, load_tune=True):
-    """
-    Applies basic device config params (amplifier biases, attens, tone_powers)
-    to a pysmurf instance based on the device cfg values. Note that this does
-    not set any of the tracking-related params since this shouldn't replace
-    tracking_setup.
-    """
-    S.set_amplifier_bias(
-        bias_hemt=cfg.dev.exp['amp_hemt_Vg'],
-        bias_50k=cfg.dev.exp['amp_50k_Vg']
-    )
-
-    if load_tune:
-        tunefile = cfg.dev.exp['tunefile']
-        if os.path.exists(tunefile):
-            S.load_tune(tunefile)
-        else:
-            cprint(f"Cannot load tunefile {tunefile} because it doesn't exist",
-                   False)
-
-    for b in S._bands:
-        band_cfg = cfg.dev.bands[b]
-        if 'uc_att' in band_cfg:
-            S.set_att_uc(b, band_cfg['uc_att'])
-        if 'dc_att' in band_cfg:
-            S.set_att_dc(b, band_cfg['dc_att'])
-        if 'drive' in band_cfg:
-            # Sets the tone power of all enabled channels to `drive`
-            amp_scales = S.get_amplitude_scale_array(b)
-            amp_scales[amp_scales != 0] = band_cfg['drive']
-            S.set_amplitude_scale_array(b, amp_scales)
+    cfg.dev.apply_to_pysmurf_instance(S, load_tune=load_tune)
