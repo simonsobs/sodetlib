@@ -6,7 +6,6 @@ import sys
 import time
 import shutil
 
-from sodetlib.smurf_funcs.smurf_ops import apply_dev_cfg
 
 class YamlReps:
     class FlowSeq(list):
@@ -209,6 +208,37 @@ class DeviceConfig:
                 raise ValueError(f"{k} is not a valid experiment key. "
                                  f"Check dev-cfg file for available keys")
             self.exp[k] = v
+
+    def apply_to_pysmurf_instance(self, S, load_tune=True):
+        """
+        Applies basic device config params (amplifier biases, attens,
+        tone_powers) to a pysmurf instance based on the device cfg values. Note
+        that this does not set any of the tracking-related params since this
+        shouldn't replace tracking_setup.
+        """
+        S.set_amplifier_bias(
+            bias_hemt=self.exp['amp_hemt_Vg'],
+            bias_50k=self.exp['amp_50k_Vg']
+        )
+
+        if load_tune:
+            tunefile = self.exp['tunefile']
+            if os.path.exists(tunefile):
+                S.load_tune(tunefile)
+            else:
+                print(f"Cannot load tunefile {tunefile} because it doesn't exist")
+
+        for b in S._bands:
+            band_cfg = self.bands[b]
+            if 'uc_att' in band_cfg:
+                S.set_att_uc(b, band_cfg['uc_att'])
+            if 'dc_att' in band_cfg:
+                S.set_att_dc(b, band_cfg['dc_att'])
+            if 'drive' in band_cfg:
+                # Sets the tone power of all enabled channels to `drive`
+                amp_scales = S.get_amplitude_scale_array(b)
+                amp_scales[amp_scales != 0] = band_cfg['drive']
+                S.set_amplitude_scale_array(b, amp_scales)
 
 
 def make_parser(parser=None):
@@ -538,6 +568,6 @@ class DetConfig:
 
         if apply_dev_configs:
             print("Applying device cfg parameters...")
-            apply_dev_cfg(S, self, load_tune=load_device_tune)
+            smurf_ops.apply_dev_cfg(S, self, load_tune=load_device_tune)
 
         return S
