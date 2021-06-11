@@ -240,7 +240,7 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         time.sleep(duration)
         stop_times[i] = time.time()
         S.stream_data_off()
-        S.stop_tes_bipolar_waveform(bg)
+        S.set_rtm_arb_waveform_enable(0)
         S.set_tes_bias_bipolar(bg, init_biases[bg])
 
         if new_bias is not None:
