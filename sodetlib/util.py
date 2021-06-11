@@ -56,7 +56,7 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
     tk = {
         'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
-        'lms_gain': band_cfg['lms_gain'],
+        'lms_gain': band_cfg.get('lms_gain', 0),
         'fraction_full_scale': band_cfg['frac_pp'],
         'make_plot': True, 'show_plot': True, 'channel': [],
         'nsamp': 2**18, 'return_data': True,
