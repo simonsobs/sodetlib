@@ -110,7 +110,7 @@ def full_optimize(S, cfg, args):
             })
         else:
             lms_freq, frac_pp, tracking_out = op.optimize_tracking(
-                S, cfg, band, relock=False
+                S, cfg, band
             )
             out.update({
                 'lms_freq_hz': lms_freq, 'frac_pp': frac_pp,
