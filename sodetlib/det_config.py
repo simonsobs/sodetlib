@@ -472,7 +472,7 @@ class DetConfig:
     def get_smurf_control(self, offline=False, epics_root=None,
                           smurfpub_id=None, make_logfile=False, setup=False,
                           dump_configs=None, config_dir=None,
-                          apply_dev_configs=True, load_device_tune=True,
+                          apply_dev_configs=False, load_device_tune=True,
                           **pysmurf_kwargs):
         """
         Creates pysmurf instance based off of configuration parameters.
