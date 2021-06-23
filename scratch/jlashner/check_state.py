@@ -20,6 +20,7 @@ from sodetlib.smurf_funcs import smurf_ops
 from sodetlib.util import get_wls_from_am, make_filename
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 
 CHANS_PER_BAND = 512
 NBANDS = 8
@@ -84,13 +85,27 @@ class ChannelState:
 
 
 @set_action()
-def compare_state_with_base(S, cfg, state=None):
+def compare_state_with_base(S, cfg, state=None, plot=True):
     """
     Checks the the current channel state against the one saved in the device
     config and lets you know major differences.
     """
     if state is None:
         state = get_channel_state(S, cfg)
+
+    base_state_file = cfg.dev.exp.get('channel_base_state_file')
+    if base_state_file is None:
+        raise Exception("No base state has been set!")
+    base = ChannelState.from_file(S, cfg, base_state_file)
+
+    out = '----------------------------------\n'
+    out += 'Current state summary...\n\n'
+    out += state.desc()
+    out += '----------------------------------\n'
+    out += 'Base state summary...\n\n'
+    out += base.desc()
+    out += '----------------------------------\n'
+
 
 
 @set_action()
