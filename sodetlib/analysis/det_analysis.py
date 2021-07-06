@@ -662,9 +662,14 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
         if len(cross_idx) == 1:
             cross_idx = cross_idx[0]
-            p_sat = interp1d(R[cross_idx-1:cross_idx+1]/R_n,
-                             p_tes[cross_idx-1:cross_idx+1])
-            p_sat = p_sat(level)
+            if cross_idx == 0:
+                print('Error when finding 90% Rfrac. Check channel manually.')
+                cross_idx = -1
+                p_sat = np.nan
+            else:
+                p_sat = interp1d(R[cross_idx-1:cross_idx+1]/R_n,
+                                p_tes[cross_idx-1:cross_idx+1])
+                p_sat = p_sat(level)
         else:
             cross_idx = -1
             p_sat = np.nan
