@@ -663,7 +663,8 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         if len(cross_idx) == 1:
             cross_idx = cross_idx[0]
             if cross_idx == 0:
-                print('Error when finding 90% Rfrac. Check channel manually.')
+                print(f'Error when finding 90% Rfrac for channel '
+                      f'{(bands[c], chans[c])}. Check channel manually.')
                 cross_idx = -1
                 p_sat = np.nan
             else:
