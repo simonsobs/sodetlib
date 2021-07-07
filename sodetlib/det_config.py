@@ -568,6 +568,6 @@ class DetConfig:
 
         if apply_dev_configs:
             print("Applying device cfg parameters...")
-            smurf_ops.apply_dev_cfg(S, self, load_tune=load_device_tune)
+            self.dev.apply_to_pysmurf_instance(S, load_tune=load_device_tune)
 
         return S
