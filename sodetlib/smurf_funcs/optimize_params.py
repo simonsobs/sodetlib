@@ -860,7 +860,7 @@ def optimize_power_per_band(S, cfg, band, tunefile=None, dr_start=None,
 
 
 @set_action()
-def plot_optimize_attens(S, summary):
+def plot_optimize_attens(S, summary, wlmax=1000):
     """
     Plots the results from the optimize_attens functions.
     """
@@ -893,7 +893,7 @@ def plot_optimize_attens(S, summary):
 
         else:
             wl = wls[i].copy()
-            wl[wl > 100] = np.nan
+            wl[wl > wlmax] = np.nan
             cbar = plt.contourf(xs, ys, wl,  levels=100)
             ax.set(xlabel="UC atten", ylabel="DC atten",
                    title=f"Band {band} Atten Sweep")
