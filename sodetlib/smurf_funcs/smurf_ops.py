@@ -203,7 +203,9 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     return raw_data
 
 
-def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
+def find_and_tune_freq(S, cfg, bands, new_master_assignment=True,
+                       grad_cut=0.01,amp_cut=0.01, show_plot=True,
+                       dump_cfg=True):
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
@@ -223,13 +225,21 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     amp_cut : float
         The fractiona distance from the median value to decide whether there
         is a resonance.
+    grad_cut : float
+        The value of the gradient of phase to look for. Default is 0.01
+    show_plot: bool
+        If True will show the find-freq plots
+    dump_cfg: bool
+        If True, will dump updated dev cfg (with new tunefile) to disk.
     """
+    bands = np.atleast_1d(bands)
     num_resonators_on = 0
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        S.find_freq(band, tone_power=band_cfg['drive'], make_plot=True,
-                    save_plot=True, amp_cut=amp_cut)
-
+        cprint(f"Tuning band {band}...")
+        S.find_freq(band, tone_power=band_cfg['drive'],
+                    make_plot=True, save_plot=True, show_plot=show_plot,
+                    amp_cut=amp_cut, grad_cut=grad_cut)
         if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
             cprint(f'Find freqs could not find resonators in  band {band}',
                    False)
@@ -251,6 +261,8 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
 
     print("Updating config tunefile...")
     cfg.dev.update_experiment({'tunefile': tune_file})
+    if dump_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
 
     return num_resonators_on, tune_file
 
