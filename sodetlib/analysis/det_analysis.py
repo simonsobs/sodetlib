@@ -6,6 +6,8 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from collections import namedtuple
 from sodetlib.util import cprint, make_filename, invert_mask, get_r2
+import sodetlib.smurf_funcs.smurf_ops as so
+
 from pysmurf.client.util.pub import set_action
 
 
@@ -476,7 +478,51 @@ def load_from_g3(archive_path, meta_path, db_path, start, stop):
     return timestamps, phase, mask, tes_biases
 
 
-def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
+def load_from_sid(cfg, iv_info_fp):
+    """
+    Loads data for IV analysis from the g3 session ID
+    stored in the iv_info file. 
+
+    Args
+    ----
+    cfg : DetConfig object
+        DetConfig object
+    iv_info_fp : str
+        full filepath to iv_info npy file
+
+    Returns
+    -------
+    timestamps: numpy.ndarray
+        timestamp data in seconds
+    phase: numpy.ndarray
+        resonator data in units of phi0
+    mask: numpy.ndarray
+        maskfile. The output array is a
+        2x<num_resonator> array, where the first row
+        is the band number 0-7 and the second row is the channel
+        number 0-511
+    tes_biases: numpy.ndarray
+        array containing tes biases in units of volts
+
+    """
+
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+    aman = so.load_session(cfg, iv_info['session id'])
+
+    timestamps = aman.timestamps
+    phase = aman.signal
+    mask = np.array([aman.ch_info.band, aman.ch_info.channel])
+    # this is hard-coded, and is a pysmurf constant.
+    # should be not hard-coded...
+    rtm_bit_to_volt = 1.9073486328125e-05
+
+    # there are 2 RTMs per bias line
+    tes_biases = 2 * aman.biases * rtm_bit_to_volt
+
+    return timestamps, phase, mask, tes_biases
+
+
+def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
                     phase_excursion_min=3.0, psat_level=0.9):
     """
     Analyzes an IV curve that was taken using sodetlib's take_iv function,
@@ -485,6 +531,8 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
     Args
     ----
+    cfg : DetConfig object
+        DetConfig object
     iv_info_fp: str
         Filepath to the iv_info.npy file generated when the IV
         was taken.
@@ -518,7 +566,11 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
     high_low_current_ratio = iv_info['high_low_ratio']
     bias_group = np.atleast_1d(iv_info['bias group'])
 
-    iv_full_dict = {}
+    iv_full_dict = {'metadata': {}, 'data': {}}
+
+    iv_full_dict['metadata']['iv_info'] = iv_info_fp
+    iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
+    iv_full_dict['metadata']['version'] = 'v1'
 
     bands = mask[0]
     chans = mask[1]
@@ -695,7 +747,6 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         iv_dict['v_tes'] = v_tes
         iv_dict['i_tes'] = i_tes
         iv_dict['si'] = si
-        iv_dict['iv_info'] = iv_info_fp
 
         iv_full_dict.setdefault(bands[c], {})
         iv_full_dict[bands[c]][chans[c]] = iv_dict
@@ -744,7 +795,8 @@ def analyze_iv_and_save(S, iv_info_fp, phase, v_bias, mask,
 
     iv_analyze = analyze_iv_info(iv_info_fp=iv_info_fp, phase=phase,
                                  v_bias=v_bias, mask=mask,
-                                 phase_excursion_min=3.0, psat_level=0.9)
+                                 phase_excursion_min=phase_excursion_min, 
+                                 psat_level=psat_level)
 
     if outfile is None:
         outfile = os.path.join(iv_info['output_dir'],
@@ -942,7 +994,7 @@ def iv_summary_plots(iv_info, iv_analyze,
     Rn_median = np.median(Rns)
 
     plt.figure()
-    plt.hist(Rns, ec='k', bins=np.arange(5, 10, 0.1), color='grey')
+    plt.hist(Rns, ec='k', bins=np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1), color='grey')
     plt.axvline(Rn_median, color='purple', lw=2.0,
                 label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
     plt.legend()
@@ -959,7 +1011,7 @@ def iv_summary_plots(iv_info, iv_analyze,
     Psat_median = np.nanmedian(Psats)
 
     plt.figure()
-    plt.hist(Psats, ec='k', bins=np.arange(0, 10, 0.5), color='grey')
+    plt.hist(Psats, ec='k', bins=np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5), color='grey')
     plt.axvline(Psat_median, color='purple', lw=2.0,
                 label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
     plt.legend()
@@ -1026,8 +1078,8 @@ def make_bias_group_map(S, tsum_fp):
 
 
 @set_action()
-def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
-                     bias_point=0.5, bias_groups=None):
+def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
+                           bias_point=0.5, bias_groups=None):
     """
     Finds ideal bias points for each bias group requested.
 
@@ -1058,10 +1110,7 @@ def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
     """
 
     iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
-    iv_analyze_first_key = np.fromiter(iv_analyze.keys(),dtype=int)[0]
-    iv_analyze_second_key = np.fromiter(iv_analyze[iv_analyze_first_key].keys(),
-                                        dtype=int)[0]
-    iv_info_fp = iv_analyze[iv_analyze_first_key][iv_analyze_second_key]['iv_info']
+    iv_info_fp = iv_analyze['metadata']['iv_info']
     iv_info = np.load(iv_info_fp, allow_pickle=True).item()
 
     if bias_groups is None:
@@ -1105,10 +1154,13 @@ def find_bias_points(S, iv_analyze_fp, bias_group_map_fp,
                     ch_v_bias_target = iv_analyze[b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
 
-    bg_biases = {}
+    bg_biases = {'metadata': {}, 'biases': {}}
+    bg_biases['metadata']['iv_analyze'] = iv_analyze_fp
+    bg_biases['metadata']['wafer_id'] = iv_info['wafer_id']
+
     for bg in bias_groups:
 
-        bg_biases[bg] = np.mean(bg_ch_bias_targets[bg])
+        bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
 
     # need to save the bg_biases object to some fp and then return the fp
 

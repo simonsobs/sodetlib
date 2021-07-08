@@ -9,6 +9,7 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
+import sodetlib.smurf_ops as so
 
 from pysmurf.client.util.pub import set_action
 
@@ -34,14 +35,10 @@ def get_current_mode(S, bias_group):
 
 
 @set_action()
-def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
-            bias_high=1.5, bias_low=0, bias_step=.005,
-            show_plot=False, overbias_wait=2., cool_wait=30,
-            make_plot=True, save_plot=True, plotname_append='',
-            channels=None, band=None, high_current_mode=True,
-            overbias_voltage=8., grid_on=True,
-            phase_excursion_min=3., bias_line_resistance=None,
-            do_analysis=True, cool_voltage=None):
+def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
+            bias_high=1.5, bias_low=0, bias_step=.005, 
+            overbias_wait=2., cool_wait=30, high_current_mode=True,
+            overbias_voltage=8., cool_voltage=None):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
     usage, as well as easier to edit as needed.  Steps the TES bias down
@@ -51,6 +48,10 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
 
     Args
     ----
+    S : 
+        SmurfControl object
+    cfg :
+        DetConfig object
     bias_groups : numpy.ndarray or None, optional, default None
         Which bias groups to take the IV on. If None, defaults to
         the groups in the config file.
@@ -73,22 +74,13 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
         The current mode to take the IV in.
     overbias_voltage : float, optional, default 8.0
         The voltage to set the TES bias in the overbias stage.
-    grid_on : bool, optional, default True
-        Grids on plotting.
-    phase_excursion_min : float, optional, default 3.0
-        The minimum phase excursion required for making plots.
-    bias_line_resistance : float or None, optional, default None
-        The resistance of the bias lines in Ohms. If None, loads value
-        in config file
-    do_analysis: bool, optional, default True
-        Whether to do the pysmurf IV analysis
     cool_voltage: float, optional, default None
         The voltage to bias at after overbiasing before taking the IV
         while the system cools.
     Returns
     -------
     output_path : str
-        Full path to IV raw npy file.
+        Full path to iv_info npy file.
     """
 
     # This is the number of bias groups that the cryocard has
@@ -126,16 +118,17 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     time.sleep(wait_time)
     start_time = S.get_timestamp()  # get time the IV starts
     S.log(f'Starting IV at {start_time}')
-    datafile = S.stream_data_on()
-    S.log(f'writing to {datafile}')
+    sid = so.stream_g3_on(S, make_freq_mask=False)  
+    S.log(f'g3 stream id: {sid}')
     for b in bias:
         S.log(f'Bias at {b:4.3f}')
         S.set_tes_bias_bipolar_array(b * bias_group_bool)
         time.sleep(wait_time)
-    S.stream_data_off()
+    datfile = S.get_data_file_name(as_string=True)
+    sid = so.stream_g3_off(S)
     stop_time = S.get_timestamp()  # get time the IV finishes
     S.log(f'Finishing IV at {stop_time}')
-    basename, _ = os.path.splitext(os.path.basename(datafile))
+    basename = sid
     path = os.path.join(S.output_dir, basename + '_iv_bias_all')
     np.save(path, bias)
     # publisher announcement
@@ -153,9 +146,12 @@ def take_iv(S, bias_groups=None, wait_time=.1, bias=None,
     iv_info['start_time'] = start_time
     iv_info['stop_time'] = stop_time
     iv_info['basename'] = basename
-    iv_info['datafile'] = datafile
+    iv_info['session id'] = sid
+    iv_info['datafile'] = datfile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
+    iv_info['wafer_id'] = cfg.ufm['wafer_id']
+    iv_info['version'] = 'v1'
 
     iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
 
