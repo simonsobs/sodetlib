@@ -9,6 +9,7 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
+from sodetlib.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
 
@@ -58,6 +59,8 @@ def take_iv(
     bias_line_resistance=None,
     do_analysis=True,
     cool_voltage=None,
+    phase_excursion_min=3.0,
+    psat_level=0.9,
 ):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
@@ -102,6 +105,14 @@ def take_iv(
     cool_voltage: float, optional, default None
         The voltage to bias at after overbiasing before taking the IV
         while the system cools.
+    phase_excursion_min: float
+        Default 3.0. In radians, the minimum response a channel must
+        have to be considered a detector coupled to the bias line.
+        Used if analyzing IV.
+    psat_level: float
+        Default 0.9. Fraction of R_n to calculate Psat.
+        Used if analyzing IV.
+
     Returns
     -------
     output_path : str
@@ -185,6 +196,19 @@ def take_iv(
     np.save(iv_info_fp, iv_info)
     S.log(f"Writing IV information to {iv_info_fp}.")
     S.pub.register_file(iv_info_fp, "iv_info", format="npy")
+
+    if do_analysis:
+        timestamp, phase, mask, v_bias = det_analysis.load_from_dat(S, datafile)
+        det_analysis.analyze_iv_and_save(
+                S,
+                iv_info_fp,
+                phase,
+                v_bias,
+                mask,
+                phase_excursion_min=phase_excursion_min,
+                psat_level=psat_level,
+                outfile=None,
+        )
 
     return iv_info_fp
 

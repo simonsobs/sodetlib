@@ -839,6 +839,7 @@ def iv_channel_plots(
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+
     Returns
     -------
     plot_dir: str
@@ -977,6 +978,7 @@ def iv_summary_plots(
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+
     Returns
     -------
     plot_dir: str
