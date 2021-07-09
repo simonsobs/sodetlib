@@ -569,7 +569,7 @@ def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
     iv_full_dict = {'metadata': {}, 'data': {}}
 
     iv_full_dict['metadata']['iv_info'] = iv_info_fp
-    iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
+    #iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
     iv_full_dict['metadata']['version'] = 'v1'
 
     bands = mask[0]
@@ -748,14 +748,14 @@ def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
         iv_dict['i_tes'] = i_tes
         iv_dict['si'] = si
 
-        iv_full_dict.setdefault(bands[c], {})
-        iv_full_dict[bands[c]][chans[c]] = iv_dict
+        iv_full_dict['data'].setdefault(bands[c], {})
+        iv_full_dict['data'][bands[c]][chans[c]] = iv_dict
 
     return iv_full_dict
 
 
 @set_action()
-def analyze_iv_and_save(S, iv_info_fp, phase, v_bias, mask,
+def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
                         phase_excursion_min=3.0, psat_level=0.9, outfile=None):
     """
     Runs analyze_iv_info and saves the output properly, archiving the
@@ -765,6 +765,8 @@ def analyze_iv_and_save(S, iv_info_fp, phase, v_bias, mask,
     ----
     S:
         Smurf Control object. Required for publishing output dict.
+    cfg:
+        DetConfig object
     iv_info_fp: str
         Filepath to the iv_info.npy file generated when the IV
         was taken.
@@ -793,7 +795,7 @@ def analyze_iv_and_save(S, iv_info_fp, phase, v_bias, mask,
 
     iv_info = np.load(iv_info_fp, allow_pickle=True).item()
 
-    iv_analyze = analyze_iv_info(iv_info_fp=iv_info_fp, phase=phase,
+    iv_analyze = analyze_iv_info(cfg, iv_info_fp=iv_info_fp, phase=phase,
                                  v_bias=v_bias, mask=mask,
                                  phase_excursion_min=phase_excursion_min, 
                                  psat_level=psat_level)
@@ -844,31 +846,31 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         plot_dir = iv_info['plot_dir']
 
     if bands is None:
-        bands = iv_analyze.keys()
+        bands = iv_analyze['data'].keys()
 
     for b in bands:
         print(f'Making plots for band {b}')
         if chans is None:
-            chans_iter = iv_analyze[b].keys()
+            chans_iter = iv_analyze['data'][b].keys()
         else:
             chans_iter = chans
 
         for c in tqdm(chans_iter):
 
-            if np.isnan(iv_analyze[b][c]['p_sat']):
+            if np.isnan(iv_analyze['data'][b][c]['p_sat']):
                 print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
-            R_n = iv_analyze[b][c]['R_n']
+            R_n = iv_analyze['data'][b][c]['R_n']
             R_sh = iv_info['R_sh']
-            R = iv_analyze[b][c]['R']
+            R = iv_analyze['data'][b][c]['R']
 
-            v_bias = iv_analyze[b][c]['v_bias']
-            i_tes = iv_analyze[b][c]['i_tes']
-            p_tes = iv_analyze[b][c]['p_tes']
-            p_sat = iv_analyze[b][c]['p_sat']
+            v_bias = iv_analyze['data'][b][c]['v_bias']
+            i_tes = iv_analyze['data'][b][c]['i_tes']
+            p_tes = iv_analyze['data'][b][c]['p_tes']
+            p_sat = iv_analyze['data'][b][c]['p_sat']
 
-            si = iv_analyze[b][c]['si']
+            si = iv_analyze['data'][b][c]['si']
 
             r_inline = iv_info['bias_line_resistance']
             if iv_info['high_current_mode']:
@@ -904,7 +906,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             else:
                 plt.close()
 
-            sc_idx = iv_analyze[b][c]['idxs'][0]
+            sc_idx = iv_analyze['data'][b][c]['idxs'][0]
 
             plt.figure()
             plt.plot(R[sc_idx:-1]/R_n, si[sc_idx:], color='black')
@@ -979,14 +981,14 @@ def iv_summary_plots(iv_info, iv_analyze,
 
     print('Not including any channels with atypical normal resistances.')
 
-    for b in iv_analyze.keys():
-        for c in iv_analyze[b].keys():
-            if (iv_analyze[b][c]['R_n'] < Rn_upper
-                    and iv_analyze[b][c]['R_n'] > Rn_lower):
-                Rns.append(iv_analyze[b][c]['R_n']*1e3)
+    for b in iv_analyze['data'].keys():
+        for c in iv_analyze['data'][b].keys():
+            if (iv_analyze['data'][b][c]['R_n'] < Rn_upper
+                    and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
+                Rns.append(iv_analyze['data'][b][c]['R_n']*1e3)
 
-            if not np.isnan(iv_analyze[b][c]['p_sat']):
-                Psats.append(iv_analyze[b][c]['p_sat'])
+            if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                Psats.append(iv_analyze['data'][b][c]['p_sat'])
 
     Rns = np.array(Rns)
     Psats = np.array(Psats)
@@ -1124,8 +1126,8 @@ def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
 
     bg_ch_bias_targets = {}
 
-    for b in iv_analyze.keys():
-        for c in iv_analyze[b].keys():
+    for b in iv_analyze['data'].keys():
+        for c in iv_analyze['data'][b].keys():
             try:
                 bg = bias_group_map[b][c]
             except KeyError:
@@ -1146,12 +1148,12 @@ def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
             print('Ignoring channels with atypical normal resistances '
                   ' and non-physical Psats.')
 
-            if (iv_analyze[b][c]['R_n'] < Rn_upper
-                    and iv_analyze[b][c]['R_n'] > Rn_lower):
-                if not np.isnan(iv_analyze[b][c]['p_sat']):
-                    R_frac = iv_analyze[b][c]['R']/iv_analyze[b][c]['R_n']
+            if (iv_analyze['data'][b][c]['R_n'] < Rn_upper
+                    and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
+                if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                    R_frac = iv_analyze['data'][b][c]['R']/iv_analyze['data'][b][c]['R_n']
                     bias_idx = np.argmin(np.abs(R_frac - bias_point))
-                    ch_v_bias_target = iv_analyze[b][c]['v_bias'][bias_idx]
+                    ch_v_bias_target = iv_analyze['data'][b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
 
     bg_biases = {'metadata': {}, 'biases': {}}
