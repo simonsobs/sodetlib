@@ -9,7 +9,7 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
-import sodetlib.smurf_ops as so
+import sodetlib.smurf_funcs.smurf_ops as so
 
 from pysmurf.client.util.pub import set_action
 
@@ -128,7 +128,7 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
     sid = so.stream_g3_off(S)
     stop_time = S.get_timestamp()  # get time the IV finishes
     S.log(f'Finishing IV at {stop_time}')
-    basename = sid
+    basename = str(sid)
     path = os.path.join(S.output_dir, basename + '_iv_bias_all')
     np.save(path, bias)
     # publisher announcement
@@ -150,7 +150,7 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
     iv_info['datafile'] = datfile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
-    iv_info['wafer_id'] = cfg.ufm['wafer_id']
+    #iv_info['wafer_id'] = cfg.ufm['wafer_id']
     iv_info['version'] = 'v1'
 
     iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
