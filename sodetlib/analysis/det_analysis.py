@@ -959,7 +959,7 @@ def iv_summary_plots(
 ):
     """
     Generates summary plots from an analyzed IV dictionary.
-    Will make histograms of R_n and electrical power at 90% Rn (Psat).
+    Will make histograms of R_n and Psat (default at 90% Rn).
     Will ignore any channels with unreasonable/unexpected normal
     resistance, or negative saturation powers.
 
