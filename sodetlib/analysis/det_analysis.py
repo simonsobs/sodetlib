@@ -560,10 +560,11 @@ def analyze_iv_info(
         phase_exc = np.ptp(phase_ch)
 
         if phase_exc < phase_excursion_min:
-            print(
-                f"Phase excursion too small."
-                f"Skipping band {bands[c]}, channel {chans[c]}"
-            )
+            if verbose:
+                print(
+                    f"Phase excursion too small."
+                    f"Skipping band {bands[c]}, channel {chans[c]}"
+                )
             continue
 
         # assumes biases are the same on all bias groups
@@ -823,6 +824,7 @@ def iv_channel_plots(
     show_plot=False,
     save_plot=True,
     verbose=False,
+    S=None,
 ):
     """
     Generates individual channel plots from an analyzed IV dictionary.
@@ -905,9 +907,12 @@ def iv_channel_plots(
             plt.title(fr"Band {b}, Ch {c} IV Curve")
             plt.legend()
             if save_plot:
-                plt.savefig(
-                    os.path.join(plot_dir, iv_info["basename"] + f"_b{b}c{c}_iv.png")
+                iv_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_iv.png"
                 )
+                plt.savefig(iv_plot_filename)
+                if S is not None:
+                    S.pub.register_file(iv_plot_filename, 'iv', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -919,9 +924,11 @@ def iv_channel_plots(
             plt.ylabel(r"R/R$_n$")
             plt.title(fr"Band {b}, Ch {c} R$_{{frac}}$ vs. Bias")
             if save_plot:
-                plt.savefig(
-                    os.path.join(plot_dir, iv_info["basename"] + f"_b{b}c{c}_rfrac.png")
-                )
+                rfrac_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_rfrac.png")
+                plt.savefig(rfrac_plot_filename)
+                if S is not None:
+                    S.pub.register_file(rfrac_plot_filename, 'rfrac', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -935,9 +942,12 @@ def iv_channel_plots(
             plt.ylabel(r"S$_I$")
             plt.title(fr"Band {b}, Ch {c} S$_I$ vs. Rfrac")
             if save_plot:
-                plt.savefig(
-                    os.path.join(plot_dir, iv_info["basename"] + f"_b{b}c{c}_si.png")
+                si_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_si.png"
                 )
+                plt.savefig(si_plot_filename)
+                if S is not None:
+                    S.pub.register_file(si_plot_filename, 'si', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -953,9 +963,12 @@ def iv_channel_plots(
             plt.ylabel(r"R/R$_n$")
             plt.title(f"Band {b}, Ch {c} R-P curve")
             if save_plot:
-                plt.savefig(
-                    os.path.join(plot_dir, iv_info["basename"] + f"_b{b}c{c}_rp.png")
+                rp_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_rp.png"
                 )
+                plt.savefig(rp_plot_filename)
+                if S is not None:
+                    S.pub.register_file(rp_plot_filename, 'rp', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -967,7 +980,12 @@ def iv_channel_plots(
 
 
 def iv_summary_plots(
-    iv_info, iv_analyze, plot_dir=None, show_plot=False, save_plot=True
+    iv_info,
+    iv_analyze,
+    plot_dir=None,
+    show_plot=False,
+    save_plot=True,
+    S=None,
 ):
     """
     Generates summary plots from an analyzed IV dictionary.
@@ -1036,7 +1054,10 @@ def iv_summary_plots(
     plt.ylabel("Counts")
     plt.title("Normal Resistance Distribution")
     if save_plot:
-        plt.savefig(os.path.join(plot_dir, iv_info["basename"] + "_rn_hist.png"))
+        rn_hist_filename = os.path.join(plot_dir, iv_info["basename"] + "_rn_hist.png")
+        plt.savefig(rn_hist_filename)
+        if S is not None:
+            S.pub.register_file(rn_hist_filename, 'rn_hist', plot=True)
     if show_plot:
         plt.show()
     else:
@@ -1057,7 +1078,12 @@ def iv_summary_plots(
     plt.ylabel("Counts")
     plt.title(r"Electrical Power at 90% R$_n$")
     if save_plot:
-        plt.savefig(os.path.join(plot_dir, iv_info["basename"] + "_psat_hist.png"))
+        psat_hist_filename = os.path.join(
+            plot_dir, iv_info["basename"] + "_psat_hist.png"
+        )
+        plt.savefig(psat_hist_filename)
+        if S is not None:
+            S.pub.register_file(psat_hist_filename, 'psat_hist', plot=True)
     if show_plot:
         plt.show()
     else:

@@ -210,6 +210,7 @@ def take_iv(
                 show_plot=False,
                 save_plot=save_plots,
                 verbose=verbose,
+                S=S,
             )
 
         if make_summary_plots:
@@ -219,6 +220,7 @@ def take_iv(
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
                 save_plot=save_plots,
+                S=S,
             )
 
     return iv_info_fp
