@@ -53,8 +53,9 @@ def take_iv(
     phase_excursion_min=3.0,
     psat_level=0.9,
     make_channel_plots=True,
-    make_summary_plots=True
+    make_summary_plots=True,
     save_plots=True,
+    verbose=False,
 ):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
@@ -202,15 +203,13 @@ def take_iv(
         iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
 
         if make_channel_plots:
-            bands, chans = np.where(mask != -1)
             det_analysis.iv_channel_plots(
                 iv_info,
                 iv_analyze,
-                bands=bands,
-                chans=chans,
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
                 save_plot=save_plots,
+                verbose=verbose,
             )
 
         if make_summary_plots:

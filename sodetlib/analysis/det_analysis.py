@@ -501,7 +501,13 @@ def load_from_g3(archive_path, meta_path, db_path, start, stop):
 
 
 def analyze_iv_info(
-    iv_info_fp, phase, v_bias, mask, phase_excursion_min=3.0, psat_level=0.9
+    iv_info_fp,
+    phase,
+    v_bias,
+    mask,
+    phase_excursion_min=3.0,
+    psat_level=0.9,
+    verbose=False,
 ):
     """
     Analyzes an IV curve that was taken using sodetlib's take_iv function,
@@ -649,10 +655,11 @@ def analyze_iv_info(
         R_L = np.mean(R[1:sc_idx])
 
         if R_n < 0:
-            print(
-                f"Fitted normal resistance is negative. "
-                f"Skipping band {bands[c]}, channel {chans[c]}"
-            )
+            if verbose:
+                print(
+                    f"Fitted normal resistance is negative. "
+                    f"Skipping band {bands[c]}, channel {chans[c]}"
+                )
             continue
 
         v_tes = i_bias_bin * R_sh * R / (R + R_sh)  # voltage over TES
@@ -748,6 +755,7 @@ def analyze_iv_and_save(
     phase_excursion_min=3.0,
     psat_level=0.9,
     outfile=None,
+    verbose=False,
 ):
     """
     Runs analyze_iv_info and saves the output properly, archiving the
@@ -792,6 +800,7 @@ def analyze_iv_and_save(
         mask=mask,
         phase_excursion_min=phase_excursion_min,
         psat_level=psat_level,
+        verbose=verbose,
     )
 
     if outfile is None:
@@ -813,6 +822,7 @@ def iv_channel_plots(
     plot_dir=None,
     show_plot=False,
     save_plot=True,
+    verbose=False,
 ):
     """
     Generates individual channel plots from an analyzed IV dictionary.
@@ -852,7 +862,8 @@ def iv_channel_plots(
         bands = iv_analyze.keys()
 
     for b in bands:
-        print(f"Making plots for band {b}")
+        if verbose:
+            print(f"Making plots for band {b}")
         if chans is None:
             chans_iter = iv_analyze[b].keys()
         else:
@@ -861,7 +872,8 @@ def iv_channel_plots(
         for c in tqdm(chans_iter):
 
             if np.isnan(iv_analyze[b][c]["p_sat"]):
-                print(f"Non-physical P_sat. Skipping band {b}, channel {c}.")
+                if verbose:
+                    print(f"Non-physical P_sat. Skipping band {b}, channel {c}.")
                 continue
 
             R_n = iv_analyze[b][c]["R_n"]
