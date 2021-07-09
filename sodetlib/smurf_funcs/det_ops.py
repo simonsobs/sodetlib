@@ -201,7 +201,7 @@ def take_iv(
 
         iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
 
-        if make_plot:
+        if make_channel_plots:
             bands, chans = np.where(mask != -1)
             det_analysis.iv_channel_plots(
                 iv_info,
