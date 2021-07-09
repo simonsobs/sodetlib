@@ -524,7 +524,7 @@ def analyze_iv_info(
         Default 3.0. In radians, the minimum response a channel must
         have to be considered a detector coupled to the bias line.
     psat_level: float
-        Default 0.9. Value of Rfrac to calculate Psat.
+        Default 0.9. Fraction of R_n to calculate Psat.
 
     Returns
     -------
@@ -670,7 +670,7 @@ def analyze_iv_info(
             cross_idx = cross_idx[0]
             if cross_idx == 0:
                 print(
-                    f"Error when finding 90% Rfrac for channel "
+                    f"Error when finding {level}R_n for channel "
                     f"{(bands[c], chans[c])}. Check channel manually."
                 )
                 cross_idx = -1
@@ -771,7 +771,7 @@ def analyze_iv_and_save(
         Default 3.0. In radians, the minimum response a channel must
         have to be considered a detector coupled to the bias line.
     psat_level: float
-        Default 0.9. Value of Rfrac to calculate Psat.
+        Default 0.9. Fraction of R_n to calculate Psat.
     outfile: str
         Filepath to save the output dictionary. Default is the
         output directory in the iv_info dictionary plus the
@@ -790,8 +790,8 @@ def analyze_iv_and_save(
         phase=phase,
         v_bias=v_bias,
         mask=mask,
-        phase_excursion_min=3.0,
-        psat_level=0.9,
+        phase_excursion_min=phase_excursion_min,
+        psat_level=psat_level,
     )
 
     if outfile is None:
