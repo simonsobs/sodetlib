@@ -542,7 +542,7 @@ def apply_dev_cfg(S, cfg, load_tune=True):
     cfg.dev.apply_to_pysmurf_instance(S, load_tune=load_tune)
 
 @set_action()
-def health_check(S, cfg):
+def cryo_amp_check(S, cfg):
     """
     Performs a system health check. This includes checking/adjusting amplifier
     biases, checking timing, checking the jesd connection, and checking that
