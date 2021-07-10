@@ -4,7 +4,7 @@ import os
 matplotlib.use('Agg')
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs import health_check
+from sodetlib.smurf_funcs.smurf_ops import health_check
 
 if __name__ == '__main__':
     cfg = DetConfig()
