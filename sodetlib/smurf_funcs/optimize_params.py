@@ -197,9 +197,7 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
 
             # Calculates actual tracking params
             lms_meas = S.lms_freq_hz[band]
-            print(phi0_number, tk['reset_rate_khz'])
             lms_freq = phi0_number * tk['reset_rate_khz'] * 1e3
-            print(tk['fraction_full_scale'], lms_freq)
             frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
 
             tk['meas_lms_freq'] = False
