@@ -123,9 +123,8 @@ def optimize_nphi0(S, cfg, band):
     return lms_freq_opt, frac_pp_opt, nphi0_opt
 
 
-def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=5,
-                      reset_rate_khz=None, lms_gain=None,
-                      make_channel_plots=False):
+def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
+                      reset_rate_khz=None, show_plot=True, update_cfg=True):
     """
     This starts with some default parameters and optimizes the amplitude
     of the flux ramp and tracking frequency used in the tracking algorithm
@@ -152,90 +151,101 @@ def optimize_tracking(S, cfg, band, init_fracpp=None, phi0_number=5,
         reset_rate_khz:
             Rate of the flux ramp in kHz. Default is taken from device
             config file.
-        lms_gain:
-            Tracking frequency lock loop feedback loop gain. Default is
-            taken from device config file.
     """
-    cprint("Loading tune and running initial tracking setup")
-    tk = get_tracking_kwargs(
-        S, cfg, band, kwargs={'lms_freq': None, 'meas_lms_freq': True}
-    )
-    if init_fracpp is not None:
-        tk['fraction_full_scale'] = init_fracpp
-    if lms_gain is not None:
-        tk['lms_gain'] = lms_gain
-    if reset_rate_khz is not None:
-        tk['reset_rate_khz'] = reset_rate_khz
+    # Channel data which will go into the output file
+    out = {}
+    bands = np.atleast_1d(bands)
+    with np.errstate(invalid='ignore'):
+        for band in bands:
+            cprint(f"Optimizing tracking setup for band {band}")
+            S.log("Loading tune and running initial tracking setup")
+            tk = get_tracking_kwargs(
+                S, cfg, band, kwargs={'lms_freq_hz': None, 'meas_lms_freq': True}
+            )
 
-    ## Runs first tracking quality to do initial cut of bad chans
-    rs, f, df, sync = smurf_ops.tracking_quality(
-        S, cfg, tracking_kwargs=tk, make_channel_plots=make_channel_plots,
-        nphi0=1
-    )
-    good_chans = np.where(rs > 0.95)[0]
-    num_good, num_total = len(good_chans), len(rs)
-    cprint(f"{num_good}/{num_total} channels have r-squared > 0.95")
-    if num_good/num_total < 0.5:
-        cprint("This is less than 50%, so something is wrong with the tune.",
-               False)
-        cprint("Not continuing with optimization...", False)
-        return
-    else:
-        cprint("This is more than 50%, shutting off bad channels.", True)
-        bad_chans = np.where(rs < 95)[0]
-        for c in bad_chans:
-            S.channel_off(band, c)
+            if init_fracpp is not None:
+                tk['fraction_full_scale'] = init_fracpp
+            if reset_rate_khz is not None:
+                tk['reset_rate_khz'] = reset_rate_khz
+            else: # This  sets this var based on the dev cfg
+                reset_rate_khz = tk['reset_rate_khz']
 
-    # Reruns to get re-estimate of tracking freq
-    rs, f, df, sync = smurf_ops.tracking_quality(
-        S, cfg, tracking_kwargs=tk, make_channel_plots=make_channel_plots,
-        nphi0=1
-    )
+            ## Runs first tracking quality to do initial cut of bad chans
+            rs, f, df, sync = smurf_ops.tracking_quality(
+                S, cfg, band, tracking_kwargs=tk, nphi0=1,
+            )
 
-    # Calculates actual tracking params
-    lms_meas = S.lms_freq_hz[band]
-    lms_freq = phi0_number * reset_rate_khz * 1e3
-    frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
+            good_chans = np.where(rs > 0.95)[0]
+            amp_scale_array = S.get_amplitude_scale_array(band)
+            num_good, num_total = len(good_chans), np.sum(amp_scale_array != 0)
+            cprint(f"{num_good}/{num_total} channels have r-squared > 0.95")
+            if num_good/num_total < 0.5:
+                cprint("This is less than 50%, so something is wrong with the tune.",
+                       False)
+                cprint("Not continuing with optimization...", False)
+                return
+            else:
+                cprint("This is more than 50%, shutting off bad channels.", True)
+                bad_chans = np.where((rs < 0.95) & (amp_scale_array != 0))[0]
+                for c in bad_chans:
+                    S.channel_off(band, c)
 
-    tk['meas_lms_freq'] = False
-    tk['fraction_full_scale'] = frac_pp
-    tk['lms_freq_hz'] = lms_freq
+            # Reruns to get re-estimate of tracking freq
+            rs, f, df, sync = smurf_ops.tracking_quality(
+                S, cfg, band, tracking_kwargs=tk, nphi0 = 1,
+            )
 
-    # Turns channels back on
-    print("Relocking and running serial ops")
-    S.relock(band)
-    for _ in range(2):
-        S.run_serial_gradient_descent(band)
-        S.run_serial_eta_scan(band)
+            # Calculates actual tracking params
+            lms_meas = S.lms_freq_hz[band]
+            print(phi0_number, tk['reset_rate_khz'])
+            lms_freq = phi0_number * tk['reset_rate_khz'] * 1e3
+            print(tk['fraction_full_scale'], lms_freq)
+            frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
 
-    chans = S.which_on(band)
-    rs, f, df, sync = smurf_ops.tracking_quality(
-        S, cfg, band, tracking_kwargs=tk
-    )
+            tk['meas_lms_freq'] = False
+            tk['fraction_full_scale'] = frac_pp
+            tk['lms_freq_hz'] = lms_freq
 
-    outdict = {
-        'chans': chans,
-        'r2s': rs,
-        'f': f,
-        'df': df,
-        'sync': sync
-    }
+            # Turns channels back on
+            S.log("Relocking and running serial ops")
+            S.relock(band)
+            S.run_serial_gradient_descent(band)
+            S.run_serial_eta_scan(band)
+
+            chans = S.which_on(band)
+            rs, f, df, sync = smurf_ops.tracking_quality(
+                S, cfg, band, tracking_kwargs=tk, show_plot=show_plot
+            )
+
+            nchans = len(S.which_on(band))
+            nbad_chans = len(np.where(rs < 0.9)[0])
+            cprint(f"{nbad_chans}/{nchans} Channels not tracking on band {band}")
+            cprint(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
+
+            out[band] = {
+                'chans': chans,
+                'r2s': rs,
+                'f': f,
+                'df': df,
+                'sync': sync,
+                'frac_pp': frac_pp,
+                'lms_freq_hz': lms_freq,
+                'flux_ramp_rate_khz': reset_rate_khz
+            }
+        if update_cfg:
+            cfg.dev.update_band(
+                band, {'frac_pp': frac_pp, 'lms_freq_hz': lms_freq,
+                       'flux_ramp_rate_khz': reset_rate_khz}
+            )
 
     fname = make_filename(S, 'optimize_tracking.pkl')
-    pkl.dump(outdict, open(fname, 'wb'))
+    pkl.dump(out, open(fname, 'wb'))
     S.pub.register_file(fname, 'tracking_optimization', format='pkl')
 
-    bad_track_chans = np.where(rs < 0.9)[0]
-    print(f'Number of bad tracking channels {len(bad_track_chans)}')
-    print(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
+    if update_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
 
-    cfg.dev.update_band(band, {'frac_pp': frac_pp,
-                               'lms_freq_hz': lms_freq,
-                               'optimized_tracking': True})
-    cfg.dev.dump(os.path.abspath(os.path.expandvars(cfg.dev_file)),
-                 clobber=True)
-
-    return lms_freq, frac_pp, outdict
+    return out
 
 
 def lowpass_fit(x, scale, cutoff, fs=4e3):
