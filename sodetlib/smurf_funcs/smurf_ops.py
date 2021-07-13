@@ -333,11 +333,14 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     # calculates quality of estimate wrt real data
     y_real = f[si[0]:si[-1], :]
     # Averaged cycle repeated nstack times
-    y_est = np.vstack([fstack for _ in range(nstacks)])
-    sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
-    ssres = np.sum((y_real - y_est)**2, axis=0)
 
-    r = 1 - ssres/sstot
+    with np.errstate(invalid='ignore'):
+        y_est = np.vstack([fstack for _ in range(nstacks)])
+        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
+        ssres = np.sum((y_real - y_est)**2, axis=0)
+
+        r = 1 - ssres/sstot
+
     # Probably means it's a bugged debug channels.
     r[np.isnan(r) & active_chans] = 1
 
