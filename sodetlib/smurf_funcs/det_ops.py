@@ -294,8 +294,8 @@ def bias_detectors_from_sc(S, bias_points_fp, high_current_mode=False):
 
     bias_points = np.load(bias_points_fp, allow_pickle=True).item()
 
-    bias_groups = np.fromiter(bias_points.keys(), dtype=int)
-    bias_values = np.fromiter(bias_points.values(), dtype=float)
+    bias_groups = np.fromiter(bias_points['biases'].keys(), dtype=int)
+    bias_values = np.fromiter(bias_points['biases'].values(), dtype=float)
 
     # For now, this is hard-coded. Should be pulled from uxm_config
     overbias_voltage = 19.9
