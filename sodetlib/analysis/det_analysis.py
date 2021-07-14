@@ -514,7 +514,7 @@ def load_from_sid(cfg, iv_info_fp):
     mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
-    rtm_bit_to_volt = su.rtm_bit_to_volt
+    rtm_bit_to_volt = 1.9073486328125e-05
 
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
