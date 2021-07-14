@@ -150,7 +150,10 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
     iv_info['datafile'] = datfile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
-    #iv_info['wafer_id'] = cfg.ufm['wafer_id']
+    if cfg.uxm is not None:
+        iv_info['wafer_id'] = cfg.uxm.get('wafer_id')
+    else:
+        iv_info['wafer_id'] = None
     iv_info['version'] = 'v1'
 
     iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')

@@ -514,7 +514,7 @@ def load_from_sid(cfg, iv_info_fp):
     mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
-    rtm_bit_to_volt = 1.9073486328125e-05
+    rtm_bit_to_volt = su.rtm_bit_to_volt
 
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
@@ -522,7 +522,7 @@ def load_from_sid(cfg, iv_info_fp):
     return timestamps, phase, mask, tes_biases
 
 
-def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
+def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
                     phase_excursion_min=3.0, psat_level=0.9):
     """
     Analyzes an IV curve that was taken using sodetlib's take_iv function,
@@ -531,8 +531,6 @@ def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
 
     Args
     ----
-    cfg : DetConfig object
-        DetConfig object
     iv_info_fp: str
         Filepath to the iv_info.npy file generated when the IV
         was taken.
@@ -569,7 +567,10 @@ def analyze_iv_info(cfg, iv_info_fp, phase, v_bias, mask,
     iv_full_dict = {'metadata': {}, 'data': {}}
 
     iv_full_dict['metadata']['iv_info'] = iv_info_fp
-    #iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
+    if iv_info['wafer_id'] is not None:
+        iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
+    else:
+        iv_full_dict['metadata']['wafer_id'] = None
     iv_full_dict['metadata']['version'] = 'v1'
 
     bands = mask[0]
@@ -942,7 +943,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         return plot_dir
 
 
-def iv_summary_plots(iv_info, iv_analyze,
+def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
                      plot_dir=None, show_plot=False, save_plot=True):
     """
     Generates summary plots from an analyzed IV dictionary.
@@ -995,8 +996,13 @@ def iv_summary_plots(iv_info, iv_analyze,
 
     Rn_median = np.median(Rns)
 
+    if Rn_bins is None:
+        Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
+    if Psat_bins is None:
+        Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
+
     plt.figure()
-    plt.hist(Rns, ec='k', bins=np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1), color='grey')
+    plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
     plt.axvline(Rn_median, color='purple', lw=2.0,
                 label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
     plt.legend()
@@ -1013,7 +1019,7 @@ def iv_summary_plots(iv_info, iv_analyze,
     Psat_median = np.nanmedian(Psats)
 
     plt.figure()
-    plt.hist(Psats, ec='k', bins=np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5), color='grey')
+    plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
     plt.axvline(Psat_median, color='purple', lw=2.0,
                 label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
     plt.legend()
@@ -1080,8 +1086,8 @@ def make_bias_group_map(S, tsum_fp):
 
 
 @set_action()
-def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
-                           bias_point=0.5, bias_groups=None):
+def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
+                           rfrac=0.5, bias_groups=None):
     """
     Finds ideal bias points for each bias group requested.
 
@@ -1095,7 +1101,7 @@ def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
     bias_group_map_fp: str
         filepath to the bias group map dictionary, which map the band/channel
         pair to the connected bias group.
-    bias_point: float, default = 0.5
+    rfrac: float, default = 0.5
         Number between 0 and 1. Specifies the %Rn that you would like to bias
         the detectors to.
     bias_groups: list or numpy.ndarray, default None
@@ -1152,13 +1158,16 @@ def find_bias_points_rfrac(S, iv_analyze_fp, bias_group_map_fp,
                     and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
                 if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
                     R_frac = iv_analyze['data'][b][c]['R']/iv_analyze['data'][b][c]['R_n']
-                    bias_idx = np.argmin(np.abs(R_frac - bias_point))
+                    bias_idx = np.argmin(np.abs(R_frac - rfrac))
                     ch_v_bias_target = iv_analyze['data'][b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
 
     bg_biases = {'metadata': {}, 'biases': {}}
     bg_biases['metadata']['iv_analyze'] = iv_analyze_fp
-    bg_biases['metadata']['wafer_id'] = iv_info['wafer_id']
+    if iv_info['wafer_id'] is not None:
+        bg_biases['metadata']['wafer_id'] = iv_info['wafer_id']
+    else:
+        bg_biases['metadata']['wafer_id'] = None
 
     for bg in bias_groups:
 
