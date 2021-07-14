@@ -240,6 +240,13 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
         Resistance (Ohm) above which detector will be classified as "normal"
     sc_thresh: float
         Resistance (Ohms) below which detector will be classified as "sc"
+
+    Returns
+    -------
+    summary:
+        Dictionary that has the tickle summary generated
+    fname:
+        filepath to the saved tickle summary    
     """
     tickle_info = np.load(tickle_file, allow_pickle=True).item()
     biasgroups = tickle_info['bias_groups']
@@ -366,9 +373,9 @@ def analyze_tickle_data(S, tickle_file, assignment_thresh=0.9,
     cprint("Making summary plots")
     plot_tickle_summary(S, summary, save_dir=plot_dir)
     if return_segs:
-        return summary, segs
+        return summary, segs, fname
     else:
-        return summary
+        return summary, fname
 
 
 def load_from_dat(S, datfile):
