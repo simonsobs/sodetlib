@@ -13,7 +13,7 @@ from sodetlib import det_config
 # Max bias voltage is 20 V, and there are 20 bits
 # so this number is 20/2**20 = 1.907e-5
 rtm_bit_to_volt = 1.9073486328125e-05
-
+CHANS_PER_BAND = 512
 
 StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
