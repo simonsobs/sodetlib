@@ -10,6 +10,7 @@ import os
 import time
 import sys
 import matplotlib
+from scipy import signal
 
 try:
     import matplotlib.pyplot as plt
@@ -727,3 +728,76 @@ def cryo_amp_check(S, cfg):
         status_bools.extend([jesd_tx1, jesd_rx1])
 
     return all(status_bools)
+
+
+def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
+    """
+    Gets white-noise levels for each channel from the axis manager returned
+    by smurf_ops.load_session.
+
+    Args
+    ----
+    am : AxisManager
+        Smurf data returned by so.load_session or the G3tSmurf class
+    nperseg : int
+        nperseg to be passed to welch
+    fmin : float
+        Min frequency to use for white noise mask
+    fmax : float
+        Max freq to use for white noise mask
+    pA_per_phi0 : float
+        S.pA_per_phi0 unit conversion. This will eventually make its way
+        into the axis manager, but for now I'm just hardcoding this here
+        as a keyword argument until we get there.
+
+    Returns
+    --------
+    wls : array of floats
+        Array of the white-noise level for each channel, indexed by readout-
+        channel number
+    band_medians : array of floats
+        Array of the median white noise level for each band.
+    """
+    fsamp = 1./np.median(np.diff(am.timestamps))
+    fs, pxx = signal.welch(am.signal * pA_per_phi0 / (2*np.pi),
+                           fs=fsamp, nperseg=nperseg)
+    pxx = np.sqrt(pxx)
+    fmask = (fmin < fs) & (fs < fmax)
+    wls = np.median(pxx[:, fmask], axis=1)
+    band_medians = np.zeros(8)
+    for i in range(8):
+        m = am.ch_info.band == i
+        band_medians[i] = np.median(wls[m])
+    return wls, band_medians
+
+
+def plot_band_noise(am, nbins=40):
+    bands = am.ch_info.band
+    wls, _ = get_wls_from_am(am)
+
+    fig, axes = plt.subplots(4, 2, figsize=(16, 8),
+                             gridspec_kw={'hspace': 0})
+    bins = np.logspace(1, 4, nbins)
+    max_bins = 0
+
+    for b in range(8):
+        ax = axes[b % 4, b // 4]
+        m = bands == b
+        x = ax.hist(wls[m], bins=bins)
+        text  = f"Median: {np.median(wls[m]):0.2f}\n"
+        text += f"Chans pictured: {np.sum(x[0]):0.0f}"
+#         text += f"{}/{} channels < 100"
+        ax.text(0.75, .7, text, transform=ax.transAxes)
+        ax.axvline(np.median(wls[m]), color='red')
+        max_bins = max(np.max(x[0]), max_bins)
+        ax.set(xscale='log', ylabel=f'Band {b}')
+
+    axes[0][0].set(title="AMC 0")
+    axes[0][1].set(title="AMC 1")
+    axes[-1][0].set(xlabel="White Noise (pA/rt(Hz))")
+    axes[-1][1].set(xlabel="White Noise (pA/rt(Hz))")
+    for _ax in axes:
+        for ax in _ax:
+            ax.set(ylim=(0, max_bins * 1.1))
+
+    return fig, axes
