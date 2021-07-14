@@ -796,7 +796,7 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
 
     iv_info = np.load(iv_info_fp, allow_pickle=True).item()
 
-    iv_analyze = analyze_iv_info(cfg, iv_info_fp=iv_info_fp, phase=phase,
+    iv_analyze = analyze_iv_info(iv_info_fp=iv_info_fp, phase=phase,
                                  v_bias=v_bias, mask=mask,
                                  phase_excursion_min=phase_excursion_min, 
                                  psat_level=psat_level)
