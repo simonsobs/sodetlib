@@ -1131,6 +1131,8 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
     bias_group_map = np.load(bias_group_map_fp, allow_pickle=True).item()
 
     bg_ch_bias_targets = {}
+    print('Ignoring channels with atypical normal resistances '
+          ' and non-physical Psats.')
 
     for b in iv_analyze['data'].keys():
         for c in iv_analyze['data'][b].keys():
@@ -1151,8 +1153,6 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
 
             Rn_upper = 0.02
             Rn_lower = 0.0
-            print('Ignoring channels with atypical normal resistances '
-                  ' and non-physical Psats.')
 
             if (iv_analyze['data'][b][c]['R_n'] < Rn_upper
                     and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
