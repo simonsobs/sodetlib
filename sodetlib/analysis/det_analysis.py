@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from collections import namedtuple
 from sodetlib.util import cprint, make_filename, invert_mask, get_r2
 import sodetlib.smurf_funcs.smurf_ops as so
-
+import sodetlib.util as su
 from pysmurf.client.util.pub import set_action
 
 
@@ -470,7 +470,7 @@ def load_from_g3(archive_path, meta_path, db_path, start, stop):
     mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
-    rtm_bit_to_volt = 1.9073486328125e-05
+    rtm_bit_to_volt = su.rtm_bit_to_volt
 
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
@@ -514,7 +514,7 @@ def load_from_sid(cfg, iv_info_fp):
     mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
-    rtm_bit_to_volt = 1.9073486328125e-05
+    rtm_bit_to_volt = su.rtm_bit_to_volt
 
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
