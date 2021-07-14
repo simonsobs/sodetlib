@@ -108,7 +108,7 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
 
             chans = S.which_on(band)
             rs, f, df, sync = smurf_ops.tracking_quality(
-                S, cfg, band, tracking_kwargs=tk, show_plot=show_plot
+                S, cfg, band, tracking_kwargs=tk, show_plots=show_plot
             )
 
             nchans = len(S.which_on(band))
