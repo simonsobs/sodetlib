@@ -547,12 +547,18 @@ class DetConfig:
         # Pysmurf publisher will check this to determine publisher id.
         os.environ['SMURFPUB_ID'] = smurfpub_id
 
+        # Pysmurf data dir
+        data_dir = os.path.join(
+            self.sys.get('smurf_data_dir', '/data/smurf_data'), smurfpub_id
+        )
+
         if offline:
             S = pysmurf.client.SmurfControl(offline=True)
         else:
             S = pysmurf.client.SmurfControl(
                 epics_root=epics_root, cfg_file=self.pysmurf_file, setup=setup,
-                make_logfile=make_logfile, **pysmurf_kwargs)
+                make_logfile=make_logfile, data_dir=data_dir,
+                **pysmurf_kwargs)
         self.S = S
 
         # Dump config outputs
