@@ -9,6 +9,11 @@ import os
 from collections import namedtuple
 from sodetlib import det_config
 
+# This is a pysmurf constant
+# Max bias voltage is 20 V, and there are 20 bits
+# so this number is 20/2**20 = 1.907e-5
+rtm_bit_to_volt = 1.9073486328125e-05
+CHANS_PER_BAND = 512
 
 StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
@@ -51,7 +56,7 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
     tk = {
         'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
-        'lms_gain': band_cfg['lms_gain'],
+        'lms_gain': band_cfg.get('lms_gain', 0),
         'fraction_full_scale': band_cfg['frac_pp'],
         'make_plot': True, 'show_plot': True, 'channel': [],
         'nsamp': 2**18, 'return_data': True,
@@ -255,3 +260,26 @@ def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
         m = am.ch_info.band == i
         band_medians[i] = np.median(wls[m])
     return wls, band_medians
+
+
+# useful functions for analysis etc.
+def invert_mask(mask):
+    """
+    Converts a readout mask from (band, chan)->rchan form to rchan->abs_chan
+    form.
+    """
+    bands, chans = np.where(mask != -1)
+    maskinv = np.zeros_like(bands, dtype=np.int16)
+    for b, c in zip(bands, chans):
+        maskinv[mask[b, c]] = b * CHANS_PER_BAND + c
+    return maskinv
+
+
+def get_r2(sig, sig_hat):
+    """ Gets r-squared value for a signal"""
+    sst = np.sum((sig - sig.mean())**2)
+    sse = np.sum((sig - sig_hat)**2)
+    r2 = 1 - sse / sst
+    if r2 < 0:
+        return 0
+    return r2

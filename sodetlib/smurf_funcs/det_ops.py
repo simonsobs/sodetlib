@@ -9,7 +9,7 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
-from sodetlib.analysis import det_analysis
+import sodetlib.smurf_funcs.smurf_ops as so
 
 from pysmurf.client.util.pub import set_action
 
@@ -38,6 +38,7 @@ def get_current_mode(S, bias_group):
 @set_action()
 def take_iv(
     S,
+    cfg,
     bias_groups=None,
     overbias_voltage=8.0,
     overbias_wait=2.0,
@@ -55,7 +56,6 @@ def take_iv(
     make_channel_plots=True,
     make_summary_plots=True,
     save_plots=True,
-    verbose=False,
 ):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
@@ -66,6 +66,10 @@ def take_iv(
 
     Args
     ----
+    S : 
+        SmurfControl object
+    cfg :
+        DetConfig object
     bias_groups : numpy.ndarray or None, optional, default None
         Which bias groups to take the IV on. If None, defaults to
         the groups in the config file.
@@ -106,7 +110,7 @@ def take_iv(
     Returns
     -------
     output_path : str
-        Full path to IV raw npy file.
+        Full path to iv_info npy file.
     """
 
     # This is the number of bias groups that the cryocard has
@@ -149,46 +153,53 @@ def take_iv(
     S.set_tes_bias_bipolar_array(bias[0] * bias_group_bool)
     time.sleep(wait_time)
     start_time = S.get_timestamp()  # get time the IV starts
-    S.log(f"Starting IV at {start_time}")
-    datafile = S.stream_data_on()
-    S.log(f"writing to {datafile}")
+    S.log(f'Starting IV at {start_time}')
+    sid = so.stream_g3_on(S, make_freq_mask=False)  
+    S.log(f'g3 stream id: {sid}')
     for b in bias:
         S.log(f"Bias at {b:4.3f}")
         S.set_tes_bias_bipolar_array(b * bias_group_bool)
         time.sleep(wait_time)
-    S.stream_data_off()
+    datfile = S.get_data_file_name(as_string=True)
+    sid = so.stream_g3_off(S)
     stop_time = S.get_timestamp()  # get time the IV finishes
-    S.log(f"Finishing IV at {stop_time}")
-    basename, _ = os.path.splitext(os.path.basename(datafile))
-    path = os.path.join(S.output_dir, basename + "_iv_bias_all")
+    S.log(f'Finishing IV at {stop_time}')
+    basename = str(sid)
+    path = os.path.join(S.output_dir, basename + '_iv_bias_all')
     np.save(path, bias)
     # publisher announcement
     S.pub.register_file(path, "iv_bias", format="npy")
 
     iv_info = {}
-    iv_info["plot_dir"] = S.plot_dir
-    iv_info["output_dir"] = S.output_dir
-    iv_info["tune_file"] = S.tune_file
-    iv_info["R_sh"] = S.R_sh
-    iv_info["bias_line_resistance"] = S.bias_line_resistance
-    iv_info["high_low_ratio"] = S.high_low_current_ratio
-    iv_info["pA_per_phi0"] = S.pA_per_phi0
-    iv_info["high_current_mode"] = high_current_mode
-    iv_info["start_time"] = start_time
-    iv_info["stop_time"] = stop_time
-    iv_info["basename"] = basename
-    iv_info["datafile"] = datafile
-    iv_info["bias"] = bias
-    iv_info["bias group"] = bias_groups
+    iv_info['plot_dir'] = S.plot_dir
+    iv_info['output_dir'] = S.output_dir
+    iv_info['tune_file'] = S.tune_file
+    iv_info['R_sh'] = S.R_sh
+    iv_info['bias_line_resistance'] = S.bias_line_resistance
+    iv_info['high_low_ratio'] = S.high_low_current_ratio
+    iv_info['pA_per_phi0'] = S.pA_per_phi0
+    iv_info['high_current_mode'] = high_current_mode
+    iv_info['start_time'] = start_time
+    iv_info['stop_time'] = stop_time
+    iv_info['basename'] = basename
+    iv_info['session id'] = sid
+    iv_info['datafile'] = datfile
+    iv_info['bias'] = bias
+    iv_info['bias group'] = bias_groups
+    if cfg.uxm is not None:
+        iv_info['wafer_id'] = cfg.uxm.get('wafer_id')
+    else:
+        iv_info['wafer_id'] = None
+    iv_info['version'] = 'v1'
 
-    iv_info_fp = os.path.join(S.output_dir, basename + "_iv_info.npy")
+    iv_info_fp = os.path.join(S.output_dir, basename + '_iv_info.npy')
 
     np.save(iv_info_fp, iv_info)
     S.log(f"Writing IV information to {iv_info_fp}.")
     S.pub.register_file(iv_info_fp, "iv_info", format="npy")
 
     if do_analysis:
-        timestamp, phase, mask, v_bias = det_analysis.load_from_dat(S, datafile)
+        timestamp, phase, mask, v_bias = det_analysis.load_from_sid(cfg, iv_info_fp)
         iv_analyze_fp = det_analysis.analyze_iv_and_save(
                 S,
                 iv_info_fp,
@@ -209,7 +220,6 @@ def take_iv(
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
                 save_plot=save_plots,
-                verbose=verbose,
                 S=S,
             )
 
@@ -244,6 +254,10 @@ def take_tickle(
 
     Args
     ----
+    S : 
+        SmurfControl object
+    cfg :
+        DetConfig object
     bias_group : (int, list[int])
         bias group or list of bias groups to tickle.
     tickle_freq : float
@@ -366,8 +380,8 @@ def bias_detectors_from_sc(S, bias_points_fp, high_current_mode=False):
 
     bias_points = np.load(bias_points_fp, allow_pickle=True).item()
 
-    bias_groups = np.fromiter(bias_points.keys(), dtype=int)
-    bias_values = np.fromiter(bias_points.values(), dtype=float)
+    bias_groups = np.fromiter(bias_points['biases'].keys(), dtype=int)
+    bias_values = np.fromiter(bias_points['biases'].values(), dtype=float)
 
     # For now, this is hard-coded. Should be pulled from uxm_config
     overbias_voltage = 19.9

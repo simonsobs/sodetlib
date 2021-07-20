@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs import find_and_tune_freq
+from sodetlib.smurf_funcs.smurf_ops import find_and_tune_freq
 
 
 if __name__ == '__main__':

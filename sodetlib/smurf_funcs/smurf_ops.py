@@ -3,12 +3,15 @@ Module for general smurf operations.
 """
 from sodetlib.util import cprint, TermColors, make_filename, \
                           get_tracking_kwargs
+
+from sodetlib.smurf_funcs.optimize_params import optimize_bias
 import numpy as np
 import os
 import time
 import sys
-
 import matplotlib
+from scipy import signal
+
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -200,72 +203,10 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     S.set_lms_gain(band, lms_gain)
     return raw_data
 
-@set_action()
-def find_subbands(S, cfg, spur_width=5):
-    """
-    Do a noise sweep to find the coarse position of resonators.
-    Return active bands and a dictionary of active subbands.
 
-    Parameters
-    ----------
-    S : pysmurf.client.SmurfControl
-        Smurf control object
-    cfg : DetConfig
-        sodetlib config object
-    spur_width: float
-        Will throw out any resonators which are within ``spur_width`` MHz
-        from a multiple of 500 MHz to avoid picking up spurs.
-
-    Returns
-    -------
-    bands : int array
-        Active bands
-    subband_dict : dict
-        A dictionary containing the list of subbands in each band.
-    """
-    subband_dict = {}
-    bands = []
-
-    amc = S.which_bays()
-    if 0 in amc:
-        bands += [0, 1, 2, 3]
-    if 1 in amc:
-        bands += [4, 5, 6, 7]
-    if not bands:
-        print('No active AMC')
-        return bands, subband_dict
-
-    for band in bands:
-        freq, resp = S.full_band_resp(band)
-        peaks = S.find_peak(freq, resp, make_plot=True,show_plot=False, band=band)
-        fs_ = np.array(peaks*1.0E-6) + S.get_band_center_mhz(band)
-
-        # Drops channels that are too close to 500 MHz multiple
-        fs = [f for f in fs_
-              if (np.abs((f + 500/2) % 500 - 500/2) > spur_width)]
-        bad_fs = list(set(fs_) - set(fs))
-        bad_fs = [f for f in fs_
-                  if np.abs((f + 500/2) % 500 - 500/2) <= spur_width]
-
-        if bad_fs:
-            cprint(f"Dropping frequencies {bad_fs} because they are too close "
-                   "to a 500 MHz interval", style=TermColors.WARNING)
-
-        subbands=sorted(list({S.freq_to_subband(band,f)[0] for f in fs}))
-        subband_dict[band] = subbands
-
-        subband_strings = []
-        for i,b in enumerate(subbands):
-            subband_strings.append(f"{b} ({fs[i]:.2f}MHz)")
-
-        cprint(f"Subbands detected for band {band}:\n{subband_strings}",
-                style=TermColors.OKBLUE)
-        cfg.dev.update_band(band, {'active_subbands': subbands})
-
-    return bands, subband_dict
-
-
-def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
+def find_and_tune_freq(S, cfg, bands, new_master_assignment=True,
+                       grad_cut=0.01,amp_cut=0.01, show_plot=True,
+                       dump_cfg=True):
     """
     Find_freqs to identify resonance, measure eta parameters + setup channels
     using setup_notches, run serial gradient + eta to refine
@@ -285,26 +226,27 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     amp_cut : float
         The fractiona distance from the median value to decide whether there
         is a resonance.
+    grad_cut : float
+        The value of the gradient of phase to look for. Default is 0.01
+    show_plot: bool
+        If True will show the find-freq plots
+    dump_cfg: bool
+        If True, will dump updated dev cfg (with new tunefile) to disk.
     """
+    bands = np.atleast_1d(bands)
     num_resonators_on = 0
-    default_subbands = np.arange(13, 115)
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        subband = band_cfg.get('active_subbands', default_subbands)
-        if subband is True:
-            subband = default_subbands
-        elif not subband:
-            continue
+        cprint(f"Tuning band {band}...")
         S.find_freq(band, tone_power=band_cfg['drive'],
-                    make_plot=True,
-                    save_plot=True,
-                    subband=subband, amp_cut=amp_cut)
+                    make_plot=True, save_plot=True, show_plot=show_plot,
+                    amp_cut=amp_cut, grad_cut=grad_cut)
         if len(S.freq_resp[band]['find_freq']['resonance']) == 0:
-            cprint(f'Find freqs could not find resonators in '
-            f'band : {band} and subbands : {subband}', False)
+            cprint(f'Find freqs could not find resonators in  band {band}',
+                   False)
             continue
         S.setup_notches(band, tone_power=band_cfg['drive'],
-                    new_master_assignment=new_master_assignment)
+                        new_master_assignment=new_master_assignment)
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
@@ -313,135 +255,23 @@ def find_and_tune_freq(S, cfg, bands, new_master_assignment=True, amp_cut=0.1):
     tune_file = S.tune_file
     if not tune_file:
         cprint("Find freqs was unsuccessful! could not find resonators in the\
-                specified bands + subbands", False)
+                specified bands", False)
         return False
     print(f"Total num resonators on: {num_resonators_on}")
     print(f"Tune file: {tune_file}")
 
     print("Updating config tunefile...")
     cfg.dev.update_experiment({'tunefile': tune_file})
+    if dump_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
 
     return num_resonators_on, tune_file
-
-def res_shift(S, bands):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run. Typicaly paired w/ uc_att or flux steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    """
-    out_dict = {}
-    for band in bands:
-        for band in bands:
-            out_dict[band] = {}
-            #For all other steps run serial algs after changing flux bias but before 
-            #running setup notches to see how much eta and freq shift
-            print(f'Running serial algorithms on band {band}')
-            S.run_serial_gradient_descent(band)
-            S.run_serial_eta_scan(band)
-            out_dict[band]['fs_sg_b'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sg_b'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sg_b'] = S.get_eta_phase_array(band)
-            #Now run setup notches and get the new freqs and etas
-            print(f'Running setup_notches on band {band}')
-            S.setup_notches(band,new_master_assignment = True)
-            out_dict[band]['fs_sn'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sn'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sn'] = S.get_eta_phase_array(band)
-            #Run serial algs after and get the new freqs and etas
-            print(f'Running serial algorithms on band {band}')
-            S.run_serial_gradient_descent(band)
-            S.run_serial_eta_scan(band)
-            out_dict[band]['fs_sg_a'] = S.channel_to_freq(band)
-            out_dict[band]['eta_mags_sg_a'] = S.get_eta_mag_array(band)
-            out_dict[band]['eta_ps_sg_a'] = S.get_eta_phase_array(band)
-            out_dict[band]['channels'] = S.which_on(band)
-        #For each flux step write out a tunefile that contains both band freq_resp info
-        #this can be used for fitting.
-        out_dict['tunefile'] = S.tune_file
-        return out_dict
-
-def res_shift_vs_uc_att(S, uc_atts, bands, tunefile):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run over a range of uc attenuator steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    uc_atts : list[int]
-        uc attenuator values to step over.
-    tunefile : str
-        tunefile to use for retuning at each step.
-    """
-    #Initialize output dictionary
-    out_dict = {}
-    initial_uc_att = {}
-    #Step over uc attenuator values
-    for band in bands:
-        initial_uc_att[band] = S.get_att_uc(band)
-        S.set_att_uc(band,uc_atts[0])
-        #For the first step load the tunefile and relock then run serial
-        #algs to get freq and eta before setup_notches
-        S.load_tune(tunefile)
-        S.relock(band)
-    for uc_att in uc_atts:
-        #Loop over bands since serial algs and setup notches are per band operations
-        for band in bands:
-            print(f'Setting uc att in band {band} to {uc_att}')
-            S.set_att_uc(band,uc_att)
-        out_dict[uc_att] = res_shift(S, bands)
-    for band in bands:
-        S.set_att_uc(band,initial_uc_att[band])
-    return out_dict
-
-def res_shift_vs_flux_bias(S, frac_pp_steps, bands, tunefile):
-    """
-    Calculates the resonance frequency from serial gradient descent before and 
-    after setup_notches is run over a range of squid flux bias steps.
-
-    Parameters
-    ----------
-    S: pysmurf.client.SmurfControl
-        Pysmurf control instance
-    bands : List[int]
-        bands to perform operation on.
-    frac_pp_steps : list[float]
-        list of flux bias steps to take in units of fraction full scale
-        of the flux ramp dac.
-    tunefile : str
-        tunefile to use for retuning at each step.
-    """
-    S.set_mode_dc()
-    #Initialize output dictionary
-    out_dict = {}
-    #Step over dc flux bias values
-    S.set_fixed_flux_ramp_bias(frac_pp_steps[0],do_config=False)
-    for band in bands:
-        #For the first step load the tunefile and relock then run serial
-        #algs to get freq and eta before setup_notches
-        S.load_tune(tunefile)
-        S.relock(band)
-    for frac_pp in frac_pp_steps:
-        print(f'Setting flux bias to {frac_pp} fraction full scale')
-        S.set_fixed_flux_ramp_bias(frac_pp,do_config=False)
-        out_dict[frac_pp] = res_shift(S, bands)
-    #Set flux bias back to 0
-    S.set_fixed_flux_ramp_bias(0,do_config = False)
-    return out_dict
 
 
 @set_action()
 def tracking_quality(S, cfg, band, tracking_kwargs=None,
-                     make_channel_plots=False, r_thresh=0.9, show_plots=False):
+                     make_channel_plots=False, r_thresh=0.9, show_plots=False,
+                     nphi0=1):
     """
     Runs tracking setup and returns how good at tracking each channel is
 
@@ -457,6 +287,11 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
             Dictionary of additional custom args to pass to tracking setup
         r_thresh : float
             Threshold used to set color on plots
+        nphi0 : optional(int)
+            Number of segments to divide FluxRamp cycle into. Will default to
+            1, which will use the entire flux ramp period to stack instead of
+            dividing into NPHI0 segments, which is necessary if the FR period
+            isn't an integer number of phi0.
     Returns
     --------
         rs : np.ndarray
@@ -477,15 +312,18 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
 
     f, df, sync = S.tracking_setup(band, **tk)
     si = S.make_sync_flag(sync)
-    nphi0 = int(round(tk['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+
+    if nphi0 is None:
+        nphi0 = int(round(tk['lms_freq_hz'] / S.get_flux_ramp_freq()/1000))
+
+    # Average cycles to get single period estimate
+    seg_size = (si[1] - si[0]) // nphi0
+    nstacks = (len(si) - 1) * nphi0
 
     active_chans = np.zeros_like(f[0], dtype=bool)
     active_chans[S.which_on(band)] = True
 
-    # Average cycles to get single period estimate
-    seg_size = (si[1] - si[0]) // nphi0
     fstack = np.zeros((seg_size, len(f[0])))
-    nstacks = (len(si)-1) * nphi0
     for i in range(len(si) - 1):
         s = si[i]
         for j in range(nphi0):
@@ -496,11 +334,14 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     # calculates quality of estimate wrt real data
     y_real = f[si[0]:si[-1], :]
     # Averaged cycle repeated nstack times
-    y_est = np.vstack([fstack for _ in range(nstacks)])
-    sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
-    ssres = np.sum((y_real - y_est)**2, axis=0)
 
-    r = 1 - ssres/sstot
+    with np.errstate(invalid='ignore'):
+        y_est = np.vstack([fstack for _ in range(nstacks)])
+        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
+        ssres = np.sum((y_real - y_est)**2, axis=0)
+
+        r = 1 - ssres/sstot
+
     # Probably means it's a bugged debug channels.
     r[np.isnan(r) & active_chans] = 1
 
@@ -694,7 +535,6 @@ def stream_g3_off(S, emulator=False):
     reg_action_ts = so_root + "pysmurf_action_timestamp"
     reg_stream_tag = so_root + "stream_tag"
 
-
     if emulator:
         S._caput(reg_em_enable, 0)
 
@@ -713,5 +553,251 @@ def stream_g3_off(S, emulator=False):
     return sess_id
 
 
+@set_action()
 def apply_dev_cfg(S, cfg, load_tune=True):
     cfg.dev.apply_to_pysmurf_instance(S, load_tune=load_tune)
+
+@set_action()
+def cryo_amp_check(S, cfg):
+    """
+    Performs a system health check. This includes checking/adjusting amplifier
+    biases, checking timing, checking the jesd connection, and checking that
+    noise can be seen through the system.
+
+    Parameters
+    ----------
+    S : pysmurf.client.SmurfControl
+        Smurf control object
+    cfg : DetConfig
+        sodetlib config object
+
+    Returns
+    -------
+    success: bool
+        Returns true if all of the following checks were successful:
+            - hemt and 50K are able to be biased
+            - Id is in range for hemt and 50K
+            - jesd_tx and jesd_rx connections are working on specified bays
+            - response check for band 0
+    """
+    amp_hemt_Id = cfg.dev.exp['amp_hemt_Id']
+    amp_50K_Id = cfg.dev.exp['amp_50k_Id']
+
+    bays = S.which_bays()
+    bay0 = 0 in bays
+    bay1 = 1 in bays
+
+    # Turns on both amplifiers and checks biasing.
+
+    cprint("Checking biases", TermColors.HEADER)
+    S.C.write_ps_en(11)
+    amp_biases = S.get_amplifier_biases()
+    biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
+    biased_50K = np.abs(amp_biases['50K_Id']) > 0.2
+    if not biased_hemt:
+        cprint("hemt amplifier could not be biased. Check for loose cable",
+               False)
+    if not biased_50K:
+        cprint("50K amplifier could not be biased. Check for loose cable",
+               False)
+
+    # Optimize bias voltages
+    if biased_hemt and biased_50K:
+        cprint("Scanning hemt bias voltage", TermColors.HEADER)
+        Id_hemt_in_range = optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
+        cprint("Scanning 50K bias voltage", TermColors.HEADER)
+        Id_50K_in_range = optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
+        time.sleep(0.2)
+        amp_biases = S.get_amplifier_biases()
+        Vg_hemt, Vg_50K = amp_biases['hemt_Vg'], amp_biases['50K_Vg']
+        print(f"Final hemt current = {amp_biases['hemt_Id']}")
+        print(f"Desired hemt current = {amp_hemt_Id}")
+        cprint(f"hemt current within range of desired value: "
+                            f" {Id_hemt_in_range}",Id_hemt_in_range)
+        print(f"Final hemt gate voltage is {amp_biases['hemt_Vg']}")
+
+        print(f"Final 50K current = {amp_biases['50K_Id']}")
+        print(f"Desired 50K current = {amp_50K_Id}")
+        cprint(f"50K current within range of desired value:"
+                            f"{Id_50K_in_range}", Id_50K_in_range)
+        print(f"Final 50K gate voltage is {amp_biases['50K_Vg']}")
+    else:
+        cprint("Both amplifiers could not be biased... skipping bias voltage "
+               "scan", False)
+        Id_hemt_in_range = False
+        Id_50K_in_range = False
+
+    # Check timing is active.
+    # Waiting for smurf timing card to be defined
+    # Ask if there is a way to add 122.8 MHz external clock check
+
+    # Check JESD connection on bay 0 and bay 1
+    # Return connections for both bays, or passes if bays not active
+    cprint("Checking JESD Connections", TermColors.HEADER)
+    if bay0:
+        jesd_tx0, jesd_rx0, status = S.check_jesd(0)
+        if jesd_tx0:
+            cprint(f"bay 0 jesd_tx connection working", True)
+        else:
+            cprint(f"bay 0 jesd_tx connection NOT working. "
+                    "Rest of script may not function", False)
+        if jesd_rx0:
+            cprint(f"bay 0 jesd_rx connection working", True)
+        else:
+            cprint(f"bay 0 jesd_rx connection NOT working. "
+                    "Rest of script may not function", False)
+    else:
+        jesd_tx0, jesd_rx0 = False, False
+        print("Bay 0 not enabled. Skipping connection check")
+
+    if bay1:
+        jesd_tx1, jesd_rx1, status = S.check_jesd(1)
+        if jesd_tx1:
+            cprint(f"bay 1 jesd_tx connection working", True)
+        else:
+            cprint(f"bay 1 jesd_tx connection NOT working. Rest of script may "
+                   "not function", False)
+        if jesd_rx1:
+            cprint(f"bay 1 jesd_rx connection working", True)
+        else:
+            cprint(f"bay 1 jesd_rx connection NOT working. Rest of script may "
+                    "not function", False)
+    else:
+        jesd_tx1, jesd_rx1 = False, False
+        print("Bay 1 not enabled. Skipping connection check")
+
+    # Full band response. This is a binary test to determine that things are
+    # plugged in.  Typical in-band noise values are around ~2-7, so here check
+    # that average value of noise through band 0 is above 1.  
+
+    # Check limit makes sense when through system
+    cprint("Checking full-band response for band 0", TermColors.HEADER)
+    band_cfg = cfg.dev.bands[0]
+    S.set_att_uc(0, band_cfg['uc_att'])
+
+    freq, response = S.full_band_resp(band=0)
+    # Get the response in-band
+    resp_inband = []
+    band_width = 500e6  # Each band is 500 MHz wide
+    for f, r in zip(freq, np.abs(response)):
+        if -band_width/2 < f < band_width/2:
+            resp_inband.append(r)
+    # If the mean is > 1, say response received
+    if np.mean(resp_inband) > 1: #LESS THAN CHANGE
+        resp_check = True
+        cprint("Full band response check passed", True)
+    else:
+        resp_check = False
+        cprint("Full band response check failed - maybe something isn't "
+               "plugged in?", False)
+
+    # Check if ADC is clipping. Probably should be a different script, after
+    # characterizing system to know what peak data amplitude to simulate
+    # Should result in ADC_clipping = T/F
+    # Iterate through lowest to highest band, stop when no clipping.
+    # Find max value of output of S.read_adc_data(0), compare to pre-set threshold
+    # Probably should have a 'good' 'warning', and 'failed' output
+    # Above functions are 'startup_check", this is a seperate function
+
+    cfg.dev.update_experiment({
+        'amp_hemt_Vg': Vg_hemt,
+        'amp_50k_Vg': Vg_50K,
+    })
+
+    cprint("Health check finished! Final status", TermColors.HEADER)
+    cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
+    cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
+    print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
+    cprint(f" - 50K biased: \t\t{biased_50K}", biased_50K)
+    cprint(f" - 50K Id in range: \t{Id_50K_in_range}", Id_50K_in_range)
+    print(f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
+    cprint(f" - Response check: \t{resp_check}", resp_check)
+
+    if bay0:
+        cprint(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}",
+               jesd_tx0 and jesd_rx0)
+    if bay1:
+        cprint(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}",
+               jesd_tx1 and jesd_rx1)
+
+    status_bools = [biased_hemt, biased_50K, Id_hemt_in_range, Id_50K_in_range,
+                    resp_check]
+    if bay0:
+        status_bools.extend([jesd_tx0, jesd_rx0])
+    if bay1:
+        status_bools.extend([jesd_tx1, jesd_rx1])
+
+    return all(status_bools)
+
+
+def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
+    """
+    Gets white-noise levels for each channel from the axis manager returned
+    by smurf_ops.load_session.
+
+    Args
+    ----
+    am : AxisManager
+        Smurf data returned by so.load_session or the G3tSmurf class
+    nperseg : int
+        nperseg to be passed to welch
+    fmin : float
+        Min frequency to use for white noise mask
+    fmax : float
+        Max freq to use for white noise mask
+    pA_per_phi0 : float
+        S.pA_per_phi0 unit conversion. This will eventually make its way
+        into the axis manager, but for now I'm just hardcoding this here
+        as a keyword argument until we get there.
+
+    Returns
+    --------
+    wls : array of floats
+        Array of the white-noise level for each channel, indexed by readout-
+        channel number
+    band_medians : array of floats
+        Array of the median white noise level for each band.
+    """
+    fsamp = 1./np.median(np.diff(am.timestamps))
+    fs, pxx = signal.welch(am.signal * pA_per_phi0 / (2*np.pi),
+                           fs=fsamp, nperseg=nperseg)
+    pxx = np.sqrt(pxx)
+    fmask = (fmin < fs) & (fs < fmax)
+    wls = np.median(pxx[:, fmask], axis=1)
+    band_medians = np.zeros(8)
+    for i in range(8):
+        m = am.ch_info.band == i
+        band_medians[i] = np.median(wls[m])
+    return wls, band_medians
+
+
+def plot_band_noise(am, nbins=40):
+    bands = am.ch_info.band
+    wls, _ = get_wls_from_am(am)
+
+    fig, axes = plt.subplots(4, 2, figsize=(16, 8),
+                             gridspec_kw={'hspace': 0})
+    bins = np.logspace(1, 4, nbins)
+    max_bins = 0
+
+    for b in range(8):
+        ax = axes[b % 4, b // 4]
+        m = bands == b
+        x = ax.hist(wls[m], bins=bins)
+        text  = f"Median: {np.median(wls[m]):0.2f}\n"
+        text += f"Chans pictured: {np.sum(x[0]):0.0f}"
+#         text += f"{}/{} channels < 100"
+        ax.text(0.75, .7, text, transform=ax.transAxes)
+        ax.axvline(np.median(wls[m]), color='red')
+        max_bins = max(np.max(x[0]), max_bins)
+        ax.set(xscale='log', ylabel=f'Band {b}')
+
+    axes[0][0].set(title="AMC 0")
+    axes[0][1].set(title="AMC 1")
+    axes[-1][0].set(xlabel="White Noise (pA/rt(Hz))")
+    axes[-1][1].set(xlabel="White Noise (pA/rt(Hz))")
+    for _ax in axes:
+        for ax in _ax:
+            ax.set(ylim=(0, max_bins * 1.1))
+
+    return fig, axes

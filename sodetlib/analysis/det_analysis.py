@@ -5,7 +5,9 @@ from tqdm import tqdm
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from collections import namedtuple
-from sodetlib.util import cprint, make_filename
+from sodetlib.util import cprint, make_filename, invert_mask, get_r2
+import sodetlib.smurf_funcs.smurf_ops as so
+import sodetlib.util as su
 from pysmurf.client.util.pub import set_action
 
 
@@ -52,28 +54,6 @@ def fit_sine(times, sig, freq, nperiods=6):
         phase += np.pi
     phase %= 2 * np.pi
     return amp, phase
-
-
-def invert_mask(mask):
-    """
-    Converts a readout mask from (band, chan)->rchan form to rchan->abs_chan
-    form.
-    """
-    bands, chans = np.where(mask != -1)
-    maskinv = np.zeros_like(bands, dtype=np.int16)
-    for b, c in zip(bands, chans):
-        maskinv[mask[b, c]] = b * CHANS_PER_BAND + c
-    return maskinv
-
-
-def get_r2(sig, sig_hat):
-    """Gets r-squared value for a signal"""
-    sst = np.sum((sig - sig.mean()) ** 2)
-    sse = np.sum((sig - sig_hat) ** 2)
-    r2 = 1 - sse / sst
-    if r2 < 0:
-        return 0
-    return r2
 
 
 def analyze_biasgroup_data(times, sig, mask, freq):
@@ -257,6 +237,13 @@ def analyze_tickle_data(
         Resistance (Ohm) above which detector will be classified as "normal"
     sc_thresh: float
         Resistance (Ohms) below which detector will be classified as "sc"
+
+    Returns
+    -------
+    summary:
+        Dictionary that has the tickle summary generated
+    fname:
+        filepath to the saved tickle summary    
     """
     tickle_info = np.load(tickle_file, allow_pickle=True).item()
     biasgroups = tickle_info["bias_groups"]
@@ -390,9 +377,9 @@ def analyze_tickle_data(
     cprint("Making summary plots")
     plot_tickle_summary(S, summary, save_dir=plot_dir)
     if return_segs:
-        return summary, segs
+        return summary, segs, fname
     else:
-        return summary
+        return summary, fname
 
 
 def load_from_dat(S, datfile):
@@ -492,7 +479,51 @@ def load_from_g3(archive_path, meta_path, db_path, start, stop):
     mask = np.array([aman.ch_info.band, aman.ch_info.channel])
     # this is hard-coded, and is a pysmurf constant.
     # should be not hard-coded...
-    rtm_bit_to_volt = 1.9073486328125e-05
+    rtm_bit_to_volt = su.rtm_bit_to_volt
+
+    # there are 2 RTMs per bias line
+    tes_biases = 2 * aman.biases * rtm_bit_to_volt
+
+    return timestamps, phase, mask, tes_biases
+
+
+def load_from_sid(cfg, iv_info_fp):
+    """
+    Loads data for IV analysis from the g3 session ID
+    stored in the iv_info file. 
+
+    Args
+    ----
+    cfg : DetConfig object
+        DetConfig object
+    iv_info_fp : str
+        full filepath to iv_info npy file
+
+    Returns
+    -------
+    timestamps: numpy.ndarray
+        timestamp data in seconds
+    phase: numpy.ndarray
+        resonator data in units of phi0
+    mask: numpy.ndarray
+        maskfile. The output array is a
+        2x<num_resonator> array, where the first row
+        is the band number 0-7 and the second row is the channel
+        number 0-511
+    tes_biases: numpy.ndarray
+        array containing tes biases in units of volts
+
+    """
+
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+    aman = so.load_session(cfg, iv_info['session id'])
+
+    timestamps = aman.timestamps
+    phase = aman.signal
+    mask = np.array([aman.ch_info.band, aman.ch_info.channel])
+    # this is hard-coded, and is a pysmurf constant.
+    # should be not hard-coded...
+    rtm_bit_to_volt = su.rtm_bit_to_volt
 
     # there are 2 RTMs per bias line
     tes_biases = 2 * aman.biases * rtm_bit_to_volt
@@ -507,7 +538,6 @@ def analyze_iv_info(
     mask,
     phase_excursion_min=3.0,
     psat_level=0.9,
-    verbose=False,
 ):
     """
     Analyzes an IV curve that was taken using sodetlib's take_iv function,
@@ -549,7 +579,14 @@ def analyze_iv_info(
     high_low_current_ratio = iv_info["high_low_ratio"]
     bias_group = np.atleast_1d(iv_info["bias group"])
 
-    iv_full_dict = {}
+    iv_full_dict = {'metadata': {}, 'data': {}}
+
+    iv_full_dict['metadata']['iv_info'] = iv_info_fp
+    if iv_info['wafer_id'] is not None:
+        iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
+    else:
+        iv_full_dict['metadata']['wafer_id'] = None
+    iv_full_dict['metadata']['version'] = 'v1'
 
     bands = mask[0]
     chans = mask[1]
@@ -560,11 +597,10 @@ def analyze_iv_info(
         phase_exc = np.ptp(phase_ch)
 
         if phase_exc < phase_excursion_min:
-            if verbose:
-                print(
-                    f"Phase excursion too small."
-                    f"Skipping band {bands[c]}, channel {chans[c]}"
-                )
+            print(
+                f"Phase excursion too small."
+                f"Skipping band {bands[c]}, channel {chans[c]}"
+            )
             continue
 
         # assumes biases are the same on all bias groups
@@ -656,11 +692,10 @@ def analyze_iv_info(
         R_L = np.mean(R[1:sc_idx])
 
         if R_n < 0:
-            if verbose:
-                print(
-                    f"Fitted normal resistance is negative. "
-                    f"Skipping band {bands[c]}, channel {chans[c]}"
-                )
+            print(
+                f"Fitted normal resistance is negative. "
+                f"Skipping band {bands[c]}, channel {chans[c]}"
+            )
             continue
 
         v_tes = i_bias_bin * R_sh * R / (R + R_sh)  # voltage over TES
@@ -738,10 +773,9 @@ def analyze_iv_info(
         iv_dict["v_tes"] = v_tes
         iv_dict["i_tes"] = i_tes
         iv_dict["si"] = si
-        iv_dict["iv_info"] = iv_info_fp
 
-        iv_full_dict.setdefault(bands[c], {})
-        iv_full_dict[bands[c]][chans[c]] = iv_dict
+        iv_full_dict['data'].setdefault(bands[c], {})
+        iv_full_dict['data'][bands[c]][chans[c]] = iv_dict
 
     return iv_full_dict
 
@@ -749,6 +783,7 @@ def analyze_iv_info(
 @set_action()
 def analyze_iv_and_save(
     S,
+    cfg,
     iv_info_fp,
     phase,
     v_bias,
@@ -756,7 +791,6 @@ def analyze_iv_and_save(
     phase_excursion_min=3.0,
     psat_level=0.9,
     outfile=None,
-    verbose=False,
 ):
     """
     Runs analyze_iv_info and saves the output properly, archiving the
@@ -766,6 +800,8 @@ def analyze_iv_and_save(
     ----
     S:
         Smurf Control object. Required for publishing output dict.
+    cfg:
+        DetConfig object
     iv_info_fp: str
         Filepath to the iv_info.npy file generated when the IV
         was taken.
@@ -801,7 +837,6 @@ def analyze_iv_and_save(
         mask=mask,
         phase_excursion_min=phase_excursion_min,
         psat_level=psat_level,
-        verbose=verbose,
     )
 
     if outfile is None:
@@ -823,7 +858,6 @@ def iv_channel_plots(
     plot_dir=None,
     show_plot=False,
     save_plot=True,
-    verbose=False,
     S=None,
 ):
     """
@@ -851,6 +885,8 @@ def iv_channel_plots(
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+    S : SmurfControl object, optional
+        Required for publishing plots.
 
     Returns
     -------
@@ -861,33 +897,31 @@ def iv_channel_plots(
         plot_dir = iv_info["plot_dir"]
 
     if bands is None:
-        bands = iv_analyze.keys()
+        bands = iv_analyze['data'].keys()
 
     for b in bands:
-        if verbose:
-            print(f"Making plots for band {b}")
+        print(f"Making plots for band {b}")
         if chans is None:
-            chans_iter = iv_analyze[b].keys()
+            chans_iter = iv_analyze['data'][b].keys()
         else:
             chans_iter = chans
 
         for c in tqdm(chans_iter):
 
-            if np.isnan(iv_analyze[b][c]["p_sat"]):
-                if verbose:
-                    print(f"Non-physical P_sat. Skipping band {b}, channel {c}.")
+            if np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
-            R_n = iv_analyze[b][c]["R_n"]
-            R_sh = iv_info["R_sh"]
-            R = iv_analyze[b][c]["R"]
+            R_n = iv_analyze['data'][b][c]['R_n']
+            R_sh = iv_info['R_sh']
+            R = iv_analyze['data'][b][c]['R']
 
-            v_bias = iv_analyze[b][c]["v_bias"]
-            i_tes = iv_analyze[b][c]["i_tes"]
-            p_tes = iv_analyze[b][c]["p_tes"]
-            p_sat = iv_analyze[b][c]["p_sat"]
+            v_bias = iv_analyze['data'][b][c]['v_bias']
+            i_tes = iv_analyze['data'][b][c]['i_tes']
+            p_tes = iv_analyze['data'][b][c]['p_tes']
+            p_sat = iv_analyze['data'][b][c]['p_sat']
 
-            si = iv_analyze[b][c]["si"]
+            si = iv_analyze['data'][b][c]['si']
 
             r_inline = iv_info["bias_line_resistance"]
             if iv_info["high_current_mode"]:
@@ -934,7 +968,7 @@ def iv_channel_plots(
             else:
                 plt.close()
 
-            sc_idx = iv_analyze[b][c]["idxs"][0]
+            sc_idx = iv_analyze['data'][b][c]['idxs'][0]
 
             plt.figure()
             plt.plot(R[sc_idx:-1] / R_n, si[sc_idx:], color="black")
@@ -982,6 +1016,8 @@ def iv_channel_plots(
 def iv_summary_plots(
     iv_info,
     iv_analyze,
+    Rn_bins=None,
+    Psat_bins=None,
     plot_dir=None,
     show_plot=False,
     save_plot=True,
@@ -1008,6 +1044,8 @@ def iv_summary_plots(
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+    S : SmurfControl object, optional
+        Required for publishing plots.
 
     Returns
     -------
@@ -1025,29 +1063,34 @@ def iv_summary_plots(
 
     print("Not including any channels with atypical normal resistances.")
 
-    for b in iv_analyze.keys():
-        for c in iv_analyze[b].keys():
+    for b in iv_analyze['data'].keys():
+        for c in iv_analyze['data'][b].keys():
             if (
-                iv_analyze[b][c]["R_n"] < Rn_upper
-                and iv_analyze[b][c]["R_n"] > Rn_lower
+                iv_analyze['data'][b][c]['R_n'] < Rn_upper
+                and iv_analyze['data'][b][c]['R_n'] > Rn_lower
             ):
-                Rns.append(iv_analyze[b][c]["R_n"] * 1e3)
+                Rns.append(iv_analyze['data'][b][c]['R_n'] * 1e3)
 
-            if not np.isnan(iv_analyze[b][c]["p_sat"]):
-                Psats.append(iv_analyze[b][c]["p_sat"])
+            if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                Psats.append(iv_analyze['data'][b][c]['p_sat'])
 
     Rns = np.array(Rns)
     Psats = np.array(Psats)
 
     Rn_median = np.median(Rns)
 
+    if Rn_bins is None:
+        Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
+    if Psat_bins is None:
+        Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
+
     plt.figure()
-    plt.hist(Rns, ec="k", bins=np.arange(5, 10, 0.1), color="grey")
+    plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
     plt.axvline(
         Rn_median,
-        color="purple",
+        color='purple',
         lw=2.0,
-        label=fr"Median R$_n$ = {Rn_median:.2f} m$\Omega$",
+        label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$',
     )
     plt.legend()
     plt.xlabel(r"R$_n$ (m$\Omega$)")
@@ -1066,12 +1109,12 @@ def iv_summary_plots(
     Psat_median = np.nanmedian(Psats)
 
     plt.figure()
-    plt.hist(Psats, ec="k", bins=np.arange(0, 10, 0.5), color="grey")
+    plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
     plt.axvline(
         Psat_median,
-        color="purple",
+        color='purple',
         lw=2.0,
-        label=fr"Median P$_{{sat}}$ = {Psat_median:.2f} pW",
+        label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW',
     )
     plt.legend()
     plt.xlabel(r"P$_{{sat}} (pW)$")
@@ -1142,8 +1185,12 @@ def make_bias_group_map(S, tsum_fp):
 
 
 @set_action()
-def find_bias_points(
-    S, iv_analyze_fp, bias_group_map_fp, bias_point=0.5, bias_groups=None
+def bias_points_from_rfrac(
+    S,
+    iv_analyze_fp,
+    bias_group_map_fp,
+    rfrac=0.5,
+    bias_groups=None,
 ):
     """
     Finds ideal bias points for each bias group requested.
@@ -1158,7 +1205,7 @@ def find_bias_points(
     bias_group_map_fp: str
         filepath to the bias group map dictionary, which map the band/channel
         pair to the connected bias group.
-    bias_point: float, default = 0.5
+    rfrac: float, default = 0.5
         Number between 0 and 1. Specifies the %Rn that you would like to bias
         the detectors to.
     bias_groups: list or numpy.ndarray, default None
@@ -1175,11 +1222,7 @@ def find_bias_points(
     """
 
     iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
-    iv_analyze_first_key = np.fromiter(iv_analyze.keys(), dtype=int)[0]
-    iv_analyze_second_key = np.fromiter(
-        iv_analyze[iv_analyze_first_key].keys(), dtype=int
-    )[0]
-    iv_info_fp = iv_analyze[iv_analyze_first_key][iv_analyze_second_key]["iv_info"]
+    iv_info_fp = iv_analyze['metadata']['iv_info']
     iv_info = np.load(iv_info_fp, allow_pickle=True).item()
 
     if bias_groups is None:
@@ -1191,9 +1234,11 @@ def find_bias_points(
     bias_group_map = np.load(bias_group_map_fp, allow_pickle=True).item()
 
     bg_ch_bias_targets = {}
+    print('Ignoring channels with atypical normal resistances '
+          ' and non-physical Psats.')
 
-    for b in iv_analyze.keys():
-        for c in iv_analyze[b].keys():
+    for b in iv_analyze['data'].keys():
+        for c in iv_analyze['data'][b].keys():
             try:
                 bg = bias_group_map[b][c]
             except KeyError:
@@ -1215,25 +1260,25 @@ def find_bias_points(
 
             Rn_upper = 0.02
             Rn_lower = 0.0
-            print(
-                "Ignoring channels with atypical normal resistances "
-                " and non-physical Psats."
-            )
 
-            if (
-                iv_analyze[b][c]["R_n"] < Rn_upper
-                and iv_analyze[b][c]["R_n"] > Rn_lower
-            ):
-                if not np.isnan(iv_analyze[b][c]["p_sat"]):
-                    R_frac = iv_analyze[b][c]["R"] / iv_analyze[b][c]["R_n"]
-                    bias_idx = np.argmin(np.abs(R_frac - bias_point))
-                    ch_v_bias_target = iv_analyze[b][c]["v_bias"][bias_idx]
+            if (iv_analyze['data'][b][c]['R_n'] < Rn_upper
+                    and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
+                if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                    R_frac = iv_analyze['data'][b][c]['R']/iv_analyze['data'][b][c]['R_n']
+                    bias_idx = np.argmin(np.abs(R_frac - rfrac))
+                    ch_v_bias_target = iv_analyze['data'][b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
 
-    bg_biases = {}
+    bg_biases = {'metadata': {}, 'biases': {}}
+    bg_biases['metadata']['iv_analyze'] = iv_analyze_fp
+    if iv_info['wafer_id'] is not None:
+        bg_biases['metadata']['wafer_id'] = iv_info['wafer_id']
+    else:
+        bg_biases['metadata']['wafer_id'] = None
+
     for bg in bias_groups:
 
-        bg_biases[bg] = np.mean(bg_ch_bias_targets[bg])
+        bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
 
     # need to save the bg_biases object to some fp and then return the fp
 
