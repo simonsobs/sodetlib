@@ -9,6 +9,7 @@ import numpy as np
 import time
 import os
 from sodetlib.util import make_filename
+from sodetlib.analysis import det_analysis
 import sodetlib.smurf_funcs.smurf_ops as so
 
 from pysmurf.client.util.pub import set_action
