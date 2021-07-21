@@ -27,6 +27,10 @@ if __name__=='__main__':
     cfg.load_config_files(slot=2)
     S = cfg.get_smurf_control()
     
+    #hard-coding this for now
+    S.load_tune('/data/smurf_data/tune/1626836367_tune.npy')
+    S.R_sh = 0.0004
+
     # Parse args
     args = parser.parse_args()
     
@@ -34,7 +38,7 @@ if __name__=='__main__':
     bgs = np.arange(12)
 
     temp = args.temp
-    outfile = args.outfile
+    outfile = args.out_file
 
     if temp == 0.095:
         output_dict = {}
