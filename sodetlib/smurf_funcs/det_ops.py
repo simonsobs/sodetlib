@@ -196,6 +196,7 @@ def take_iv(
         timestamp, phase, mask, v_bias = det_analysis.load_from_sid(cfg, iv_info_fp)
         iv_analyze_fp = det_analysis.analyze_iv_and_save(
                 S,
+                cfg,
                 iv_info_fp,
                 phase,
                 v_bias,
