@@ -362,7 +362,7 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
 
 
 @set_action()
-def plot_optimize_attens(S, summary, wlmax=1000):
+def plot_optimize_attens(S, summary, wlmax=1000, vmin=None, vmax=None):
     """
     Plots the results from the optimize_attens functions.
     """
@@ -376,30 +376,45 @@ def plot_optimize_attens(S, summary, wlmax=1000):
     ucs = summary['uc_attens']
     dcs = summary['dc_attens']
 
+    fig, axes = plt.subplots(2, 4, figsize=(18, 6),
+                             gridspec_kw={'hspace': 0.4, 'wspace': 0.4})
+    fig.patch.set_facecolor('white')
+
+    if len(ucs) == 1:
+        fig.suptitle(f"Median White Noise, UC Atten = {ucs[0]}")
+    elif len(dcs) == 1:
+        fig.suptitle(f"Median White Noise, DC Atten = {dcs[0]}")
+
+    if vmin is None:
+        vmin = np.min(wls) * 0.9
+    if vmax is None:
+        vmax = min(np.max(wls) * 1.1, 500) # We don't rly care if wl > 800
+
     for i, band in enumerate(summary['bands']):
-        fig, ax = plt.subplots()
-        fig.patch.set_facecolor('white')
+        ax = axes[band // 4, band % 4]
+
         if len(ucs) == 1:  # Sweep is dc only
             uc = ucs[0]
             _wls = wls[i, 0, :]
             ax.plot(dcs, _wls)
             ax.set(xlabel="DC atten", ylabel="white noise (pA/rt(Hz))")
-            ax.set(title=f"Band {band}, uc-atten {uc}")
+            ax.set(title=f"Band {band}")
+            ax.set(ylim=(vmin, vmax))
 
         elif len(dcs) == 1:  # Sweep is uc only
             dc = dcs[0]
             _wls = wls[i, :, 0]
             ax.plot(ucs, _wls)
             ax.set(xlabel="UC atten", ylabel="white noise (pA/rt(Hz))")
-            ax.set(title=f"Band {band}, dc-atten {dc}")
+            ax.set(title=f"Band {band}")
+            ax.set(ylim=(vmin, vmax))
 
-        else:
-            wl = wls[i].copy()
-            wl[wl > wlmax] = np.nan
-            cbar = plt.contourf(xs, ys, wl,  levels=100)
-            ax.set(xlabel="UC atten", ylabel="DC atten",
-                   title=f"Band {band} Atten Sweep")
-            fig.colorbar(cbar, label='Median White Noise [pA/rt(Hz)]')
+        else:  # Do full 2d heat map
+            im = ax.pcolor(ucs, dcs, wls[band].T, vmin=vmin, vmax=vmax)
+            ax.set(xlabel="UC atten", ylabel="DC atten", title=f"Band {band}")
+            if i == 0:
+                fig.colorbar(im, label='Median White Noise [pA/rt(Hz)]',
+                             ax=axes.ravel().tolist())
 
         fname = make_filename(S, f'atten_sweep_b{band}.png', plot=True)
         fig.savefig(fname)
