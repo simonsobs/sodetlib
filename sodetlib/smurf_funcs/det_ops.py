@@ -53,7 +53,7 @@ def take_iv(
     do_analysis=True,
     phase_excursion_min=3.0,
     psat_level=0.9,
-    make_channel_plots=True,
+    make_channel_plots=False,
     make_summary_plots=True,
     save_plots=True,
 ):
