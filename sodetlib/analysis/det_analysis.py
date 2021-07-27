@@ -1024,52 +1024,59 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     Rns = np.array(Rns)
     Psats = np.array(Psats)
 
-    Rn_median = np.median(Rns)
-
-    if Rn_bins is None:
-        Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
-    if Psat_bins is None:
-        Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
-
-    plt.figure()
-    plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
-    plt.axvline(Rn_median, color='purple', lw=2.0,
-                label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
-    plt.legend()
-    plt.xlabel(r'R$_n$ (m$\Omega$)')
-    plt.ylabel('Counts')
-    plt.title('Normal Resistance Distribution')
-    if save_plot:
-        rn_hist_filename = os.path.join(plot_dir, iv_info["basename"] + "_rn_hist.png")
-        plt.savefig(rn_hist_filename)
-        if S is not None:
-            S.pub.register_file(rn_hist_filename, 'rn_hist', plot=True)
-    if show_plot:
-        plt.show()
+    if len(Rns) == 0:
+        print("No valid Rn data. Skipping Rn plot.")
     else:
-        plt.close()
+        Rn_median = np.nanmedian(Rns)
 
-    Psat_median = np.nanmedian(Psats)
+        if Rn_bins is None:
+            Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
 
-    plt.figure()
-    plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
-    plt.axvline(Psat_median, color='purple', lw=2.0,
-                label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
-    plt.legend()
-    plt.xlabel(r'P$_{{sat}} (pW)$')
-    plt.ylabel('Counts')
-    plt.title(r'Electrical Power at 90% R$_n$')
-    if save_plot:
-        psat_hist_filename = os.path.join(
-            plot_dir, iv_info["basename"] + "_psat_hist.png"
-        )
-        plt.savefig(psat_hist_filename)
-        if S is not None:
-            S.pub.register_file(psat_hist_filename, 'psat_hist', plot=True)
-    if show_plot:
-        plt.show()
+        plt.figure()
+        plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
+        plt.axvline(Rn_median, color='purple', lw=2.0,
+                    label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
+        plt.legend()
+        plt.xlabel(r'R$_n$ (m$\Omega$)')
+        plt.ylabel('Counts')
+        plt.title('Normal Resistance Distribution')
+        if save_plot:
+            rn_hist_filename = os.path.join(plot_dir, iv_info["basename"] + "_rn_hist.png")
+            plt.savefig(rn_hist_filename)
+            if S is not None:
+                S.pub.register_file(rn_hist_filename, 'rn_hist', plot=True)
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
+
+    if len(Psats) == 0:
+        print("No valid Psat data. Skipping Psat plot.")
     else:
-        plt.close()
+        Psat_median = np.nanmedian(Psats)
+
+        if Psat_bins is None:
+            Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
+
+        plt.figure()
+        plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
+        plt.axvline(Psat_median, color='purple', lw=2.0,
+                    label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
+        plt.legend()
+        plt.xlabel(r'P$_{{sat}} (pW)$')
+        plt.ylabel('Counts')
+        plt.title(r'Electrical Power at 90% R$_n$')
+        if save_plot:
+            psat_hist_filename = os.path.join(
+                plot_dir, iv_info["basename"] + "_psat_hist.png"
+            )
+            plt.savefig(psat_hist_filename)
+            if S is not None:
+                S.pub.register_file(psat_hist_filename, 'psat_hist', plot=True)
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
