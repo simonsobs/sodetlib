@@ -1130,7 +1130,9 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
 
     if bias_groups is None:
         bias_groups = iv_info['bias group']
-    elif bias_groups not in iv_info['bias group']:
+    else:
+        bias_groups = np.intersect1d(bias_groups, iv_info['bias group'])
+    if len(bias_groups) == 0:
         print('Error: Specified bias groups not included in '
               'analyzed IV curves.')
         return  # should this return something specific?
@@ -1177,8 +1179,10 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
         bg_biases['metadata']['wafer_id'] = None
 
     for bg in bias_groups:
-
-        bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+        try:
+            bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+        except KeyError:
+            print(f'No channels found on bias group {bg}.')
 
     # need to save the bg_biases object to some fp and then return the fp
 
