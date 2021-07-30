@@ -560,8 +560,10 @@ class DetConfig:
         if dump_configs:
             if config_dir is None:
                 if not offline:
-                    config_dir = os.path.join(S.base_dir, S.date, S.name,
-                                              'config', S.get_timestamp())
+                    config_dir = os.path.join(
+                        S.base_dir, S.date, smurfpub_id, S.name, 'config',
+                        S.get_timestamp(),
+                    )
 
                 else:
                     config_dir = os.path.join('config', S.get_timestamp())
