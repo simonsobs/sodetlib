@@ -28,7 +28,7 @@ if __name__=='__main__':
     S = cfg.get_smurf_control()
     
     #hard-coding this for now
-    S.load_tune('/data/smurf_data/tune/1626836367_tune.npy')
+    S.load_tune('/data/smurf_data/tune/1627194437_tune.npy')
     S.R_sh = 0.0004
 
     # Parse args
