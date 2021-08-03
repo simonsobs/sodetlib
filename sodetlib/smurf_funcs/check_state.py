@@ -1,7 +1,9 @@
 """
 The goal of the check-state function is to determine of the system is in a
-state where it is ready to take data. This will primarily be decided based on
-white-noise levels.
+state where it is ready to take data. This will allow you to compare white
+noise levels to a saved base_state, which will tell you if you're tuned,
+but not necessarily if the detectors are biased to the correct state. For this
+you still need to use a tickle function to make sure.
 
 Since the noise level and yield will presumably be different for each system,
 this will require the existance of a `channel_state` configuration file which
@@ -30,9 +32,14 @@ NCHANS = NBANDS * CHANS_PER_BAND
 class ChannelState:
     """
     Container for channel specific information (kind of like a tune file)
+
+    Args
+    -----
+        S : SmurfControl
+            Pysmurf instance that can be used to set a timestamp and other
+            pysmurf variables on creation
     """
     def __init__(self, S=None):
-        self.S = S
         self.save_path = None
 
         self.abs_chans = np.arange(NCHANS)
@@ -50,11 +57,27 @@ class ChannelState:
                 self.enabled[m] = (S.get_amplitude_scale_array(b) > 0)
 
     def set_channel_wls(self, am):
+        """
+        Sets the wls and band_medians arrays from an axis manager
+
+        Args
+        -----
+            am : AxisManager
+                Axis Manager with a noise timestream
+        """
         wls, self.band_medians = get_wls_from_am(am)
         achans = CHANS_PER_BAND * am.ch_info.band + am.ch_info.channel
         self.wls[achans] = wls
 
     def save(self, path):
+        """
+        Saves the state to an npz file.
+
+        Args
+        -----
+            path: path
+                File where state is saved
+        """
         general = {
             'timestamp': self.timestamp
         }
@@ -65,7 +88,15 @@ class ChannelState:
         self.save_path = path
 
     @classmethod
-    def from_file(cls, S, cfg, path):
+    def from_file(cls, path):
+        """
+        Creates a ChannelState instance from a state npz file.
+
+        Args
+        -----
+            path: path
+                File where state is saved
+        """
         self = cls()
         npz = np.load(path, allow_pickle=True)
         self.enabled = npz['enabled']
@@ -77,6 +108,9 @@ class ChannelState:
         return self
 
     def desc(self):
+        """
+        Returns a short description of the channel state
+        """
         desc = f"timestamp: {self.timestamp}\n"
         desc += f"channels enabled: {np.sum(self.enabled)}\n"
         desc += "Band medians:\n"
@@ -85,19 +119,32 @@ class ChannelState:
         return desc
 
 
-@set_action()
-def compare_state_with_base(S, cfg, state):
+def compare_state_with_base(cfg, state):
     """
-    Checks the the current channel state against the one saved in the device
-    config and lets you know major differences.
+    Creates a plot comparing a specified state object with a base state
+
+    Args
+    -----
+        cfg : DetConfig
+            Sodetlib det-config object
+        state : ChannelState
+            state object to be compared with the base state.
     """
-    base = get_base_state(S, cfg)
+    base = get_base_state(cfg)
     fig, axes = plot_state_noise(state, alpha=0.5, state_label='current')
     plot_state_noise(base, alpha=0.5, axes=axes, state_idx=1, state_label='base')
     return fig, axes
 
 
-def get_base_state(S, cfg):
+def get_base_state(cfg):
+    """
+    Returns the base state specified in the device cfg
+
+    Args
+    -----
+        cfg : DetConfig
+            Sodetlib det-config object
+    """
     base_state_file = cfg.dev.exp.get('channel_base_state_file')
     if base_state_file is None:
         raise Exception("No base state has been set!")
@@ -105,15 +152,23 @@ def get_base_state(S, cfg):
     return base
 
 
-
 @set_action()
-def set_base_state(S, cfg, state, dump_cfg=True):
+def set_base_state(S, cfg, state):
     """
     Sets a given state to be the "base state". It will be saved to the
     directory ``/data/so/channel_states`` with the same base-name and saved
-    to the device config file. It is moved out of the smurf output directory,
-    because the state file must be permanent for the duration of a cooldown
-    and the smurf outputs can be deleted after archiving.
+    to the device config file. It is moved out of the smurf output directory
+    to prevent it from accidentally being deleted with the rest of the smurf
+    outputs.
+
+    Args
+    -----
+        S : SmurfControl
+            Pysmurf instance
+        cfg : DetConfig
+            Sodetlib det-config instance
+        state : ChannelState
+            State to set as the base
     """
     if state.save_path is None:
         path = make_filename(S, 'channel_state.npz')
@@ -131,7 +186,18 @@ def set_base_state(S, cfg, state, dump_cfg=True):
 
 
 @set_action()
-def get_channel_state(S, cfg, save=True):
+def get_channel_state(S, cfg):
+    """
+    Gets a channel state from a pysmurf control object. This will take a noise
+    timestream and use that to generate the state object.
+
+    Args
+    -----
+        S : SmurfControl
+            Pysmurf instance
+        cfg : DetConfig
+            Sodetlib det-config instance
+    """
     chan_state = ChannelState(S=S)
 
     print("Taking noise data for 30 seconds...")
@@ -147,6 +213,25 @@ def get_channel_state(S, cfg, save=True):
 
 
 def plot_state_noise(state, nbins=40, axes=None, alpha=1, state_idx=0, state_label=None):
+    """
+    Creates a plot displaying the channel noise levels for each band.
+
+    Args
+    -----
+        state : ChannelState
+            State to plot
+        nbins : int
+            Number of bins in each histogram
+        axes : np.ndarray([Axis])
+            If specified, will plot on existing set of axes instead of creating
+            a new one.
+        alpha : float
+            Alpha value of hist
+        state_idx : int
+            Index of the state being plotted. This will change the color and
+            position of the text box so two states can clearly be plotted
+            on the same axes.
+    """
     if axes is None:
         fig, axes = plt.subplots(4, 2, figsize=(16, 8),
                                  gridspec_kw={'hspace': 0})
