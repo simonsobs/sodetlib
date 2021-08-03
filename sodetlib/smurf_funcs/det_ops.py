@@ -14,7 +14,6 @@ from sodetlib.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
 
-
 def get_current_mode(S, bias_group):
     """
     Returns 1 if requested bias_group is in high_current_mode and 0

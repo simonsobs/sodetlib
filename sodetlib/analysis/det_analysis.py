@@ -14,6 +14,9 @@ from pysmurf.client.util.pub import set_action
 
 CHANS_PER_BAND = 512
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 def sine(ts, amp, phi, freq):
     return amp * np.sin(2*np.pi*freq*ts + phi)
@@ -589,7 +592,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         phase_exc = np.ptp(phase_ch)
 
         if phase_exc < phase_excursion_min:
-            print(f'Phase excursion too small.'
+            logger.debug(f'Phase excursion too small.'
                   f'Skipping band {bands[c]}, channel {chans[c]}')
             continue
 
@@ -684,7 +687,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         R_L = np.mean(R[1:sc_idx])
 
         if R_n < 0:
-            print(f'Fitted normal resistance is negative. '
+            logger.debug(f'Fitted normal resistance is negative. '
                   f'Skipping band {bands[c]}, channel {chans[c]}')
             continue
 
@@ -701,7 +704,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         if len(cross_idx) == 1:
             cross_idx = cross_idx[0]
             if cross_idx == 0:
-                print(f'Error when finding 90% Rfrac for channel '
+                logger.warning(f'Error when finding 90% Rfrac for channel '
                       f'{(bands[c], chans[c])}. Check channel manually.')
                 cross_idx = -1
                 p_sat = np.nan
@@ -861,7 +864,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         bands = iv_analyze['data'].keys()
 
     for b in bands:
-        print(f'Making plots for band {b}')
+        logger.info(f'Making plots for band {b}')
         if chans is None:
             chans_iter = iv_analyze['data'][b].keys()
         else:
@@ -870,7 +873,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         for c in tqdm(chans_iter):
 
             if np.isnan(iv_analyze['data'][b][c]['p_sat']):
-                print(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
+                logger.debug(f'Non-physical P_sat. Skipping band {b}, channel {c}.')
                 continue
 
             R_n = iv_analyze['data'][b][c]['R_n']
@@ -965,7 +968,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
                 plt.close()
 
     if save_plot:
-        print(f'Plots saved to {plot_dir}.')
+        logger.info(f'Plots saved to {plot_dir}.')
         return plot_dir
 
 
@@ -1010,7 +1013,7 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     Rn_upper = 0.02
     Rn_lower = 0.0
 
-    print('Not including any channels with atypical normal resistances.')
+    logger.info('Not including any channels with atypical normal resistances.')
 
     for b in iv_analyze['data'].keys():
         for c in iv_analyze['data'][b].keys():
@@ -1025,7 +1028,7 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     Psats = np.array(Psats)
 
     if len(Rns) == 0:
-        print("No valid Rn data. Skipping Rn plot.")
+        logger.info("No valid Rn data. Skipping Rn plot.")
     else:
         Rn_median = np.nanmedian(Rns)
 
@@ -1051,7 +1054,7 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
             plt.close()
 
     if len(Psats) == 0:
-        print("No valid Psat data. Skipping Psat plot.")
+        logger.info("No valid Psat data. Skipping Psat plot.")
     else:
         Psat_median = np.nanmedian(Psats)
 
@@ -1079,7 +1082,7 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
             plt.close()
 
     if save_plot:
-        print(f'Plots saved to {plot_dir}.')
+        logger.info(f'Plots saved to {plot_dir}.')
         return plot_dir
 
 
@@ -1123,7 +1126,7 @@ def make_bias_group_map(S, tsum_fp):
                              basename + '_bg_map.npy')
 
     np.save(bg_map_fp, bg_map)
-    S.log(f'Writing bias group mapping to {bg_map_fp}.')
+    logger.info(f'Writing bias group mapping to {bg_map_fp}.')
     S.pub.register_file(bg_map_fp, 'bias_group_map', format='npy')
 
     return bg_map_fp
@@ -1167,15 +1170,17 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
 
     if bias_groups is None:
         bias_groups = iv_info['bias group']
-    elif bias_groups not in iv_info['bias group']:
-        print('Error: Specified bias groups not included in '
+    else:
+        bias_groups = np.intersect1d(bias_groups, iv_info['bias group'])
+    if len(bias_groups) == 0:
+        logger.error('Error: Specified bias groups not included in '
               'analyzed IV curves.')
-        return  # should this return something specific?
+        return 
 
     bias_group_map = np.load(bias_group_map_fp, allow_pickle=True).item()
 
     bg_ch_bias_targets = {}
-    print('Ignoring channels with atypical normal resistances '
+    logger.info('Ignoring channels with atypical normal resistances '
           ' and non-physical Psats.')
 
     for b in iv_analyze['data'].keys():
@@ -1183,12 +1188,12 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
             try:
                 bg = bias_group_map[b][c]
             except KeyError:
-                print(f'Band {b}, channel {c} does not have '
+                logger.debug(f'Band {b}, channel {c} does not have '
                       'an assigned bias group in this map. '
                       'Skipping pair.')
                 continue
             if bg not in bias_groups:
-                print(f'Band {b}, channel {c} connected to '
+                logger.debug(f'Band {b}, channel {c} connected to '
                       f'bias group {bg}, which is not included '
                       'in this call. Skipping this pair.')
                 continue
@@ -1214,8 +1219,10 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
         bg_biases['metadata']['wafer_id'] = None
 
     for bg in bias_groups:
-
-        bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+        try:
+            bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+        except KeyError:
+            logger.warning(f'No channels found on bias group {bg}.')
 
     # need to save the bg_biases object to some fp and then return the fp
 
@@ -1223,7 +1230,7 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
                              iv_info['basename'] + '_bias_points.npy')
 
     np.save(biases_fp, bg_biases)
-    S.log(f'Writing chosen bias points to {biases_fp}.')
+    logger.info(f'Writing chosen bias points to {biases_fp}.')
     S.pub.register_file(biases_fp, 'bias_points', format='npy')
 
     return biases_fp
