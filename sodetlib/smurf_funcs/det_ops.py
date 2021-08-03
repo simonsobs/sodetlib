@@ -10,6 +10,7 @@ import time
 import os
 from sodetlib.util import make_filename
 import sodetlib.smurf_funcs.smurf_ops as so
+from sodetlib.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
 
@@ -35,10 +36,27 @@ def get_current_mode(S, bias_group):
 
 
 @set_action()
-def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
-            bias_high=1.5, bias_low=0, bias_step=.005, 
-            overbias_wait=2., cool_wait=30, high_current_mode=True,
-            overbias_voltage=8., cool_voltage=None):
+def take_iv(
+    S,
+    cfg,
+    bias_groups=None,
+    overbias_voltage=8.0,
+    overbias_wait=2.0,
+    high_current_mode=True,
+    cool_wait=30,
+    cool_voltage=None,
+    bias=None,
+    bias_high=1.5,
+    bias_low=0,
+    bias_step=0.005,
+    wait_time=0.1,
+    do_analysis=True,
+    phase_excursion_min=3.0,
+    psat_level=0.9,
+    make_channel_plots=False,
+    make_summary_plots=True,
+    save_plots=True,
+):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
     usage, as well as easier to edit as needed.  Steps the TES bias down
@@ -55,8 +73,18 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
     bias_groups : numpy.ndarray or None, optional, default None
         Which bias groups to take the IV on. If None, defaults to
         the groups in the config file.
-    wait_time : float, optional, default 0.1
-        The amount of time between changing TES biases in seconds.
+    overbias_voltage : float, optional, default 8.0
+        The voltage to set the TES bias in the overbias stage.
+    overbias_wait : float, optional, default 2.0
+        The time to stay in the overbiased state in seconds.
+    high_current_mode : bool, optional, default True
+        The current mode to take the IV in.
+    cool_wait : float, optional, default 30.0
+        The time to stay in the low current state after
+        overbiasing before taking the IV.
+    cool_voltage: float, optional, default None
+        The voltage to bias at after overbiasing before taking the IV
+        while the system cools.
     bias : float array or None, optional, default None
         A float array of bias values. Must go high to low.
     bias_high : float, optional, default 1.5
@@ -65,18 +93,20 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
         The minimum TES bias in volts.
     bias_step : float, optional, default 0.005
         The step size in volts.
-    overbias_wait : float, optional, default 2.0
-        The time to stay in the overbiased state in seconds.
-    cool_wait : float, optional, default 30.0
-        The time to stay in the low current state after
-        overbiasing before taking the IV.
-    high_current_mode : bool, optional, default True
-        The current mode to take the IV in.
-    overbias_voltage : float, optional, default 8.0
-        The voltage to set the TES bias in the overbias stage.
-    cool_voltage: float, optional, default None
-        The voltage to bias at after overbiasing before taking the IV
-        while the system cools.
+    wait_time : float, optional, default 0.1
+        The amount of time between changing TES biases in seconds.
+    do_analysis: bool, optional, default True
+        Whether to do the pysmurf IV analysis
+    phase_excursion_min : float, optional, default 3.0
+        The minimum phase excursion required for making plots.
+    psat_level: float
+        Default 0.9. Fraction of R_n to calculate Psat.
+        Used if analyzing IV.
+    make_channel_plots: bool
+        Generates individual channel plots of IV, Rfrac, S_I vs. Rfrac, and RP.
+    make_summary_plots: bool
+        Make histograms of R_n and Psat.
+
     Returns
     -------
     output_path : str
@@ -161,6 +191,42 @@ def take_iv(S, cfg, bias_groups=None, wait_time=.1, bias=None,
     np.save(iv_info_fp, iv_info)
     S.log(f'Writing IV information to {iv_info_fp}.')
     S.pub.register_file(iv_info_fp, 'iv_info', format='npy')
+
+    if do_analysis:
+        timestamp, phase, mask, v_bias = det_analysis.load_from_sid(cfg, iv_info_fp)
+        iv_analyze_fp = det_analysis.analyze_iv_and_save(
+                S,
+                cfg,
+                iv_info_fp,
+                phase,
+                v_bias,
+                mask,
+                phase_excursion_min=phase_excursion_min,
+                psat_level=psat_level,
+                outfile=None,
+        )
+
+        iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
+
+        if make_channel_plots:
+            det_analysis.iv_channel_plots(
+                iv_info,
+                iv_analyze,
+                plot_dir=iv_info["plot_dir"],
+                show_plot=False,
+                save_plot=save_plots,
+                S=S,
+            )
+
+        if make_summary_plots:
+            det_analysis.iv_summary_plots(
+                iv_info,
+                iv_analyze,
+                plot_dir=iv_info["plot_dir"],
+                show_plot=False,
+                save_plot=save_plots,
+                S=S,
+            )
 
     return iv_info_fp
 

@@ -552,7 +552,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         Default 3.0. In radians, the minimum response a channel must
         have to be considered a detector coupled to the bias line.
     psat_level: float
-        Default 0.9. Value of Rfrac to calculate Psat.
+        Default 0.9. Fraction of R_n to calculate Psat.
 
     Returns
     -------
@@ -789,7 +789,7 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
         Default 3.0. In radians, the minimum response a channel must
         have to be considered a detector coupled to the bias line.
     psat_level: float
-        Default 0.9. Value of Rfrac to calculate Psat.
+        Default 0.9. Fraction of R_n to calculate Psat.
     outfile: str
         Filepath to save the output dictionary. Default is the
         output directory in the iv_info dictionary plus the
@@ -819,7 +819,8 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
 
 
 def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
-                     plot_dir=None, show_plot=False, save_plot=True):
+                     plot_dir=None, show_plot=False, save_plot=True,
+                     S=None):
     """
     Generates individual channel plots from an analyzed IV dictionary.
     Will make an IV plot, Rfrac plot, S_I vs. Rfrac plot, and RP plot.
@@ -845,6 +846,9 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+    S : SmurfControl object, optional
+        Required for publishing plots.
+
     Returns
     -------
     plot_dir: str
@@ -894,8 +898,12 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.title(fr'Band {b}, Ch {c} IV Curve')
             plt.legend()
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,
-                            iv_info['basename']+f'_b{b}c{c}_iv.png'))
+                iv_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_iv.png"
+                )
+                plt.savefig(iv_plot_filename)
+                if S is not None:
+                    S.pub.register_file(iv_plot_filename, 'iv', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -907,8 +915,11 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.ylabel(r'R/R$_n$')
             plt.title(fr'Band {b}, Ch {c} R$_{{frac}}$ vs. Bias')
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,
-                            iv_info['basename']+f'_b{b}c{c}_rfrac.png'))
+                rfrac_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_rfrac.png")
+                plt.savefig(rfrac_plot_filename)
+                if S is not None:
+                    S.pub.register_file(rfrac_plot_filename, 'rfrac', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -922,8 +933,12 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.ylabel(r'S$_I$')
             plt.title(fr'Band {b}, Ch {c} S$_I$ vs. Rfrac')
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,
-                            iv_info['basename']+f'_b{b}c{c}_si.png'))
+                si_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_si.png"
+                )
+                plt.savefig(si_plot_filename)
+                if S is not None:
+                    S.pub.register_file(si_plot_filename, 'si', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -938,8 +953,12 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
             plt.ylabel(r'R/R$_n$')
             plt.title(f'Band {b}, Ch {c} R-P curve')
             if save_plot:
-                plt.savefig(os.path.join(plot_dir,
-                            iv_info['basename']+f'_b{b}c{c}_rp.png'))
+                rp_plot_filename = os.path.join(
+                    plot_dir, iv_info["basename"] + f"_b{b}c{c}_rp.png"
+                )
+                plt.savefig(rp_plot_filename)
+                if S is not None:
+                    S.pub.register_file(rp_plot_filename, 'rp', plot=True)
             if show_plot:
                 plt.show()
             else:
@@ -951,10 +970,11 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
 
 
 def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
-                     plot_dir=None, show_plot=False, save_plot=True):
+                     plot_dir=None, show_plot=False, save_plot=True,
+                     S=None):
     """
     Generates summary plots from an analyzed IV dictionary.
-    Will make histograms of R_n and electrical power at 90% Rn (Psat).
+    Will make histograms of R_n and Psat (default at 90% Rn).
     Will ignore any channels with unreasonable/unexpected normal
     resistance, or negative saturation powers.
 
@@ -973,6 +993,9 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
         Default False. Whether or not to show the plots.
     save_plot: bool
         Default True. Whether or not to save the plots.
+    S : SmurfControl object, optional
+        Required for publishing plots.
+
     Returns
     -------
     plot_dir: str
@@ -1001,45 +1024,59 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     Rns = np.array(Rns)
     Psats = np.array(Psats)
 
-    Rn_median = np.median(Rns)
-
-    if Rn_bins is None:
-        Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
-    if Psat_bins is None:
-        Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
-
-    plt.figure()
-    plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
-    plt.axvline(Rn_median, color='purple', lw=2.0,
-                label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
-    plt.legend()
-    plt.xlabel(r'R$_n$ (m$\Omega$)')
-    plt.ylabel('Counts')
-    plt.title('Normal Resistance Distribution')
-    if save_plot:
-        plt.savefig(os.path.join(plot_dir, iv_info['basename']+'_rn_hist.png'))
-    if show_plot:
-        plt.show()
+    if len(Rns) == 0:
+        print("No valid Rn data. Skipping Rn plot.")
     else:
-        plt.close()
+        Rn_median = np.nanmedian(Rns)
 
-    Psat_median = np.nanmedian(Psats)
+        if Rn_bins is None:
+            Rn_bins = np.arange(np.min(Rns)-1, np.max(Rns)+1, 0.1)
 
-    plt.figure()
-    plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
-    plt.axvline(Psat_median, color='purple', lw=2.0,
-                label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
-    plt.legend()
-    plt.xlabel(r'P$_{{sat}} (pW)$')
-    plt.ylabel('Counts')
-    plt.title(r'Electrical Power at 90% R$_n$')
-    if save_plot:
-        plt.savefig(os.path.join(plot_dir,
-                    iv_info['basename']+'_psat_hist.png'))
-    if show_plot:
-        plt.show()
+        plt.figure()
+        plt.hist(Rns, ec='k', bins=Rn_bins, color='grey')
+        plt.axvline(Rn_median, color='purple', lw=2.0,
+                    label=fr'Median R$_n$ = {Rn_median:.2f} m$\Omega$')
+        plt.legend()
+        plt.xlabel(r'R$_n$ (m$\Omega$)')
+        plt.ylabel('Counts')
+        plt.title('Normal Resistance Distribution')
+        if save_plot:
+            rn_hist_filename = os.path.join(plot_dir, iv_info["basename"] + "_rn_hist.png")
+            plt.savefig(rn_hist_filename)
+            if S is not None:
+                S.pub.register_file(rn_hist_filename, 'rn_hist', plot=True)
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
+
+    if len(Psats) == 0:
+        print("No valid Psat data. Skipping Psat plot.")
     else:
-        plt.close()
+        Psat_median = np.nanmedian(Psats)
+
+        if Psat_bins is None:
+            Psat_bins = np.arange(np.min(Psats)-1, np.max(Psats)+1, 0.5)
+
+        plt.figure()
+        plt.hist(Psats, ec='k', bins=Psat_bins, color='grey')
+        plt.axvline(Psat_median, color='purple', lw=2.0,
+                    label=fr'Median P$_{{sat}}$ = {Psat_median:.2f} pW')
+        plt.legend()
+        plt.xlabel(r'P$_{{sat}} (pW)$')
+        plt.ylabel('Counts')
+        plt.title(r'Electrical Power at 90% R$_n$')
+        if save_plot:
+            psat_hist_filename = os.path.join(
+                plot_dir, iv_info["basename"] + "_psat_hist.png"
+            )
+            plt.savefig(psat_hist_filename)
+            if S is not None:
+                S.pub.register_file(psat_hist_filename, 'psat_hist', plot=True)
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
 
     if save_plot:
         print(f'Plots saved to {plot_dir}.')
