@@ -148,7 +148,7 @@ def get_base_state(cfg):
     base_state_file = cfg.dev.exp.get('channel_base_state_file')
     if base_state_file is None:
         raise Exception("No base state has been set!")
-    base = ChannelState.from_file(S, cfg, base_state_file)
+    base = ChannelState.from_file(base_state_file)
     return base
 
 
