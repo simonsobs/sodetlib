@@ -1130,8 +1130,8 @@ def make_bias_group_map(S, tsum_fp):
 
 
 @set_action()
-def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
-                           rfrac=0.5, bias_groups=None):
+def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
+                           rfrac=0.5, bias_groups=None, dump_cfg=True):
     """
     Finds ideal bias points for each bias group requested.
 
@@ -1139,6 +1139,8 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
     ----
     S:
         SmurfControl object
+    cfg:
+        DetConfig object
     iv_analyze_fp: str
         path to a .npy file containing the iv_analyze dict generated
         in the sodetlib IV analysis functions.
@@ -1151,6 +1153,8 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
     bias_groups: list or numpy.ndarray, default None
         Which bias groups you want to find bias points for. If None, will use whatever
         bias groups are specified in the iv_info file corresponding to the analyzed IV.
+    dump_cfg: bool
+        If True, will dump updated dev cfg (with new tunefile) to disk.
 
     Returns
     -------
@@ -1229,5 +1233,10 @@ def bias_points_from_rfrac(S, iv_analyze_fp, bias_group_map_fp,
     np.save(biases_fp, bg_biases)
     S.log(f'Writing chosen bias points to {biases_fp}.')
     S.pub.register_file(biases_fp, 'bias_points', format='npy')
+
+    print("Updating config tunefile...")
+    cfg.dev.update_experiment({'bias_points_from_rfrac': biases_fp})
+    if dump_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
 
     return biases_fp
