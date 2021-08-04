@@ -1234,7 +1234,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
     S.log(f'Writing chosen bias points to {biases_fp}.')
     S.pub.register_file(biases_fp, 'bias_points', format='npy')
 
-    print("Updating config tunefile...")
+    print("Updating config bias file...")
     cfg.dev.update_experiment({'bias_points_from_rfrac': biases_fp})
     if dump_cfg:
         cfg.dev.dump(cfg.dev_file, clobber=True)
