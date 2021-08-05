@@ -11,12 +11,9 @@ import matplotlib.pyplot as plt
 import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
-from sodetlib.util import cprint, TermColors, get_psd, make_filename, \
-    get_tracking_kwargs, StreamSeg
-from sodetlib.smurf_funcs import smurf_ops
-
+import sodetlib.util as su
+import sodetlib.smurf_funcs as sf
 from pysmurf.client.util.pub import set_action
-
 
 
 def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
@@ -53,42 +50,44 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
     bands = np.atleast_1d(bands)
     with np.errstate(invalid='ignore'):
         for band in bands:
-            cprint(f"Optimizing tracking setup for band {band}")
+            su.cprint(f"Optimizing tracking setup for band {band}")
             S.log("Loading tune and running initial tracking setup")
-            tk = get_tracking_kwargs(
-                S, cfg, band, kwargs={'lms_freq_hz': None, 'meas_lms_freq': True}
+            tk = su.get_tracking_kwargs(
+                S, cfg, band, kwargs={
+                    'lms_freq_hz': None, 'meas_lms_freq': True}
             )
 
             if init_fracpp is not None:
                 tk['fraction_full_scale'] = init_fracpp
             if reset_rate_khz is not None:
                 tk['reset_rate_khz'] = reset_rate_khz
-            else: # This  sets this var based on the dev cfg
+            else:  # This  sets this var based on the dev cfg
                 reset_rate_khz = tk['reset_rate_khz']
 
-            ## Runs first tracking quality to do initial cut of bad chans
-            rs, f, df, sync = smurf_ops.tracking_quality(
+            # Runs first tracking quality to do initial cut of bad chans
+            rs, f, df, sync = sf.smurf_ops.tracking_quality(
                 S, cfg, band, tracking_kwargs=tk, nphi0=1,
             )
 
             good_chans = np.where(rs > 0.95)[0]
             amp_scale_array = S.get_amplitude_scale_array(band)
             num_good, num_total = len(good_chans), np.sum(amp_scale_array != 0)
-            cprint(f"{num_good}/{num_total} channels have r-squared > 0.95")
+            su.cprint(f"{num_good}/{num_total} channels have r-squared > 0.95")
             if num_good/num_total < 0.5:
-                cprint("This is less than 50%, so something is wrong with the tune.",
-                       False)
-                cprint("Not continuing with optimization...", False)
+                su.cprint("This is less than 50%, so something is wrong with the tune.",
+                          False)
+                su.cprint("Not continuing with optimization...", False)
                 return
             else:
-                cprint("This is more than 50%, shutting off bad channels.", True)
+                su.cprint(
+                    "This is more than 50%, shutting off bad channels.", True)
                 bad_chans = np.where((rs < 0.95) & (amp_scale_array != 0))[0]
                 for c in bad_chans:
                     S.channel_off(band, c)
 
             # Reruns to get re-estimate of tracking freq
-            rs, f, df, sync = smurf_ops.tracking_quality(
-                S, cfg, band, tracking_kwargs=tk, nphi0 = 1,
+            rs, f, df, sync = sf.smurf_ops.tracking_quality(
+                S, cfg, band, tracking_kwargs=tk, nphi0=1,
             )
 
             # Calculates actual tracking params
@@ -107,14 +106,16 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
             S.run_serial_eta_scan(band)
 
             chans = S.which_on(band)
-            rs, f, df, sync = smurf_ops.tracking_quality(
+            rs, f, df, sync = sf.smurf_ops.tracking_quality(
                 S, cfg, band, tracking_kwargs=tk, show_plots=show_plot
             )
 
             nchans = len(S.which_on(band))
             nbad_chans = len(np.where(rs < 0.9)[0])
-            cprint(f"{nbad_chans}/{nchans} Channels not tracking on band {band}")
-            cprint(f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
+            su.cprint(
+                f"{nbad_chans}/{nchans} Channels not tracking on band {band}")
+            su.cprint(
+                f'Optimized frac_pp: {frac_pp} for lms_freq = {lms_freq}')
 
             out[band] = {
                 'chans': chans,
@@ -206,7 +207,7 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
     best_chan = chans_to_consider[
         np.argmin(np.asarray(chan_df)*np.asarray(chan_noise))
     ]
-    cprint(f'best_chan: {best_chan}\tfspan: {f_span[best_chan]}')
+    su.cprint(f'best_chan: {best_chan}\tfspan: {f_span[best_chan]}')
     return best_chan
 
 
@@ -260,7 +261,7 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
     nperseg = 2**16
     detrend = 'constant'
     times, phase, mask = S.read_stream_data(datafile)
-    f, Pxx = get_psd(S, times, phase, detrend=detrend, nperseg=nperseg)
+    f, Pxx = su.get_psd(S, times, phase, detrend=detrend, nperseg=nperseg)
     wl_mask = (f > 5) & (f < 50)
     wls = []
     cut_chans = []
@@ -296,7 +297,7 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
         if fit_curve:
             outdict[chan]['wl_mean'] = wlmean
 
-    cprint(f"Channels {cut_chans} were cut due to high phase span.", False)
+    su.cprint(f"Channels {cut_chans} were cut due to high phase span.", False)
     median_noise = np.median(np.asarray(wls))
     return median_noise, outdict
 
@@ -347,8 +348,8 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
 
         Vg_next = Vg + step
         if not (vg_min < Vg_next < vg_max):
-            cprint(f"Vg adjustment would go out of range ({vg_min}, {vg_max}). "
-                   f"Unable to change {amp_name}_Id to desired value", False)
+            su.cprint(f"Vg adjustment would go out of range ({vg_min}, {vg_max}). "
+                      f"Unable to change {amp_name}_Id to desired value", False)
             return False
 
         if amp_name == 'hemt':
@@ -356,8 +357,8 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         else:
             S.set_50k_amp_gate_voltage(Vg_next)
         time.sleep(0.2)
-    cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
-           f"Unable to get target Id for {amp_name}.", False)
+    su.cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
+              f"Unable to get target Id for {amp_name}.", False)
     return False
 
 
@@ -388,7 +389,7 @@ def plot_optimize_attens(S, summary, wlmax=1000, vmin=None, vmax=None):
     if vmin is None:
         vmin = np.min(wls) * 0.9
     if vmax is None:
-        vmax = min(np.max(wls) * 1.1, 500) # We don't rly care if wl > 800
+        vmax = min(np.max(wls) * 1.1, 500)  # We don't rly care if wl > 800
 
     for i, band in enumerate(summary['bands']):
         ax = axes[band // 4, band % 4]
@@ -479,25 +480,25 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     logs_silenced = False
     logfile = None
     if silence_logs and (S.log.logfile == sys.stdout):
-        logfile = make_filename(S, 'optimize_atten.log')
+        logfile = su.make_filename(S, 'optimize_atten.log')
         print(f"Writing pysmurf logs to {logfile}")
         S.set_logfile(logfile)
         logs_silenced = True
 
-    cprint("-" * 60)
-    cprint("Atten optimization plan")
-    cprint(f"bands: {bands}")
-    cprint(f"uc_attens: {uc_attens}")
-    cprint(f"dc_attens: {dc_attens}")
-    cprint(f"logfile: {logfile}")
-    cprint("-" * 60)
+    su.cprint("-" * 60)
+    su.cprint("Atten optimization plan")
+    su.cprint(f"bands: {bands}")
+    su.cprint(f"uc_attens: {uc_attens}")
+    su.cprint(f"dc_attens: {dc_attens}")
+    su.cprint(f"logfile: {logfile}")
+    su.cprint("-" * 60)
 
     tks = {}
     for b in bands:
-        cprint(f"Setting up band {b}...")
+        su.cprint(f"Setting up band {b}...")
         S.set_att_uc(b, uc_attens[0])
         S.set_att_dc(b, dc_attens[0])
-        tks[b] = get_tracking_kwargs(S, cfg, b, kwargs=tracking_kwargs)
+        tks[b] = su.get_tracking_kwargs(S, cfg, b, kwargs=tracking_kwargs)
         tks[b].update({
             'return_data': False, 'make_plot': False, 'save_plot': False
         })
@@ -506,7 +507,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
                             new_master_assignment=False)
 
     for i, uc_atten in enumerate(uc_attens):
-        cprint(f"Setting uc_atten to {uc_atten}")
+        su.cprint(f"Setting uc_atten to {uc_atten}")
         for b in bands:
             print(f"Serial fns for band {b}")
             S.set_att_uc(b, uc_atten)
@@ -529,8 +530,8 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
             stop_times.append(time.time())
 
             # Analyze data
-            seg = StreamSeg(*S.read_stream_data(datfile))
-            f, Pxx = get_psd(S, seg.times, seg.sig)
+            seg = su.StreamSeg(*S.read_stream_data(datfile))
+            f, Pxx = su.get_psd(S, seg.times, seg.sig)
             fmask = (f > 5) & (f < 50)
             # Array of whitenoise level for each readout chan
             wls = np.nanmedian(Pxx[:, fmask], axis=1)
@@ -551,10 +552,10 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
         opt_ucs[i] = uc_attens[uc_idx]
         opt_dcs[i] = dc_attens[dc_idx]
-        cprint(f"Band {band}:")
-        cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
-        cprint(f"  UC Atten: {uc_attens[uc_idx]}")
-        cprint(f"  DC Atten: {dc_attens[dc_idx]}")
+        su.cprint(f"Band {band}:")
+        su.cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
+        su.cprint(f"  UC Atten: {uc_attens[uc_idx]}")
+        su.cprint(f"  DC Atten: {dc_attens[dc_idx]}")
         if update_cfg:
             cfg.dev.update_band(band, {
                 'uc_att': uc_attens[uc_idx],
@@ -576,17 +577,17 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         'opt_ucs': opt_ucs,
         'opt_dcs': opt_dcs,
     }
-    fname = make_filename(S, 'optimize_atten_summary.npy')
+    fname = su.make_filename(S, 'optimize_atten_summary.npy')
     np.save(fname, summary, allow_pickle=True)
     S.pub.register_file(fname, 'optimize_atten_summary', format='npy')
 
     for i, band in enumerate(bands):
         wls = wl_medians[i]
         uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
-        cprint(f"Band {band}:")
-        cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
-        cprint(f"  UC Atten: {uc_attens[uc_idx]}")
-        cprint(f"  DC Atten: {dc_attens[dc_idx]}")
+        su.cprint(f"Band {band}:")
+        su.cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
+        su.cprint(f"  UC Atten: {uc_attens[uc_idx]}")
+        su.cprint(f"  DC Atten: {dc_attens[dc_idx]}")
         if update_cfg:
             cfg.dev.update_band(band, {
                 'uc_att': uc_attens[uc_idx],
@@ -598,13 +599,13 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     plot_optimize_attens(S, summary)
 
-    cprint(f"Finished atten scan. Summary saved to {fname}", True)
-    cprint(f"Total duration: {stop_time - start_time} sec", True)
+    su.cprint(f"Finished atten scan. Summary saved to {fname}", True)
+    su.cprint(f"Total duration: {stop_time - start_time} sec", True)
 
     if set_to_opt:
         for i, b in enumerate(bands):
-            cprint("Setting attens to opt values and re-running setup notches "
-                   f"for band {b}...")
+            su.cprint("Setting attens to opt values and re-running setup notches "
+                      f"for band {b}...")
             S.set_att_uc(b, opt_ucs[i])
             S.set_att_dc(b, opt_dcs[i])
             S.setup_notches(b, tone_power=tone_power,
