@@ -1243,7 +1243,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
 
 @set_action()
 def bias_points_from_rfrac_range(S, cfg, iv_analyze_fp, bias_group_map_fp, 
-                                 rfrac_min=0.4, rfrac_max=0.6, bias_groups=None, dump_cfg=True):
+                                 rfrac_min=0.3, rfrac_max=0.9, bias_groups=None, dump_cfg=True):
     """
     Finds ideal bias points for each bias group requested.
 
