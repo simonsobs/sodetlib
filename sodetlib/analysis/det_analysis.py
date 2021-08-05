@@ -1240,3 +1240,123 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
         cfg.dev.dump(cfg.dev_file, clobber=True)
 
     return biases_fp
+
+@set_action()
+def bias_points_from_rfrac_range(S, cfg, iv_analyze_fp, bias_group_map_fp, 
+                                 rfrac_min=0.4, rfrac_max=0.6, bias_groups=None, dump_cfg=True):
+    """
+    Finds ideal bias points for each bias group requested.
+
+    Args
+    ----
+    S:
+        SmurfControl object
+    cfg:
+        DetConfig object
+    iv_analyze_fp: str
+        path to a .npy file containing the iv_analyze dict generated
+        in the sodetlib IV analysis functions.
+    bias_group_map_fp: str
+        filepath to the bias group map dictionary, which map the band/channel
+        pair to the connected bias group.
+    rfrac_min: float, default = 0.4
+        Number between 0 and 1. Specifies the %Rn that you would like to set as the
+        lower bound to bias the detectors to.
+    rfrac_max: float, default = 0.6
+        Number between 0 and 1. Specifies the %Rn that you would like to set as the
+        upper bound to bias the detectors to.
+    bias_groups: list or numpy.ndarray, default None
+        Which bias groups you want to find bias points for. If None, will use whatever
+        bias groups are specified in the iv_info file corresponding to the analyzed IV.
+    dump_cfg: bool
+        If True, will dump updated dev cfg (with new tunefile) to disk.
+
+    Returns
+    -------
+    biases_fp: str
+        Filepath to the dictionary with the bias points for the specified bias groups.
+        This will contain the bias voltage for each bias group to place as many channels
+        connected to the bias group as close as possible to the specified bias_point.
+
+    """
+
+    iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
+    iv_info_fp = iv_analyze['metadata']['iv_info']
+    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+
+    if bias_groups is None:
+        bias_groups = iv_info['bias group']
+    else:
+        bias_groups = np.intersect1d(bias_groups, iv_info['bias group'])
+    if len(bias_groups) == 0:
+        print('Error: Specified bias groups not included in '
+              'analyzed IV curves.')
+        return  # should this return something specific?
+
+    bias_group_map = np.load(bias_group_map_fp, allow_pickle=True).item()
+
+    bg_ch_bias_targets = {}
+    print('Ignoring channels with atypical normal resistances '
+          ' and non-physical Psats.')
+
+    for b in iv_analyze['data'].keys():
+        for c in iv_analyze['data'][b].keys():
+            try:
+                bg = bias_group_map[b][c]
+            except KeyError:
+                print(f'Band {b}, channel {c} does not have '
+                      'an assigned bias group in this map. '
+                      'Skipping pair.')
+                continue
+            if bg not in bias_groups:
+                print(f'Band {b}, channel {c} connected to '
+                      f'bias group {bg}, which is not included '
+                      'in this call. Skipping this pair.')
+                continue
+
+            bg_ch_bias_targets.setdefault(bg, [])
+
+            Rn_upper = 0.02
+            Rn_lower = 0.0
+
+            if (iv_analyze['data'][b][c]['R_n'] < Rn_upper
+                    and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
+                if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
+                    R_frac = iv_analyze['data'][b][c]['R']/iv_analyze['data'][b][c]['R_n']
+                    bias_idx = np.argwhere(np.logical_and(R_frac > rfrac_min, R_frac < rfrac_min))[0]
+                    ch_v_bias_target = iv_analyze['data'][b][c]['v_bias'][bias_idx]
+                    bg_ch_bias_targets[bg].append([np.min(ch_v_bias_target), np.max(ch_v_bias_target)])
+
+    bg_biases = {'metadata': {}, 'biases': {}}
+    bg_biases['metadata']['iv_analyze'] = iv_analyze_fp
+    if iv_info['wafer_id'] is not None:
+        bg_biases['metadata']['wafer_id'] = iv_info['wafer_id']
+    else:
+        bg_biases['metadata']['wafer_id'] = None
+
+    for bg in bias_groups:
+        try:
+            bias_space = np.unique(np.array(bg_ch_bias_targets[bg]).flatten())
+            bias_space_count = np.zeros(len(bias_space))
+            for bpoint in bg_ch_bias_targets[bg]:
+                bias_space_count += np.argwhere(np.logical_and(bias_space >= bpoint[0], bias_space <= bpoint[1]))[0]
+            bg_range = np.sort(bias_space[np.argwhere(bias_space_count == max(bias_space_count))[0]])
+            bg_biases['biases'][bg] = (bg_range[0] + bg_range[1])/2.
+        except KeyError:
+            print(f'No channels found on bias group {bg}.')
+
+    # need to save the bg_biases object to some fp and then return the fp
+
+    biases_fp = os.path.join(iv_info['output_dir'],
+                             iv_info['basename'] + '_bias_points.npy')
+
+    np.save(biases_fp, bg_biases)
+    S.log(f'Writing chosen bias points to {biases_fp}.')
+    S.pub.register_file(biases_fp, 'bias_points', format='npy')
+
+    print("Updating config bias file...")
+    cfg.dev.update_experiment({'bias_points_from_rfrac': biases_fp})
+    if dump_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
+
+    return biases_fp
