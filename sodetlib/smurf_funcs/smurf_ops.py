@@ -12,6 +12,8 @@ import sys
 import matplotlib
 from scipy import signal
 
+from tqdm.auto import tqdm
+
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -801,3 +803,138 @@ def plot_band_noise(am, nbins=40):
             ax.set(ylim=(0, max_bins * 1.1))
 
     return fig, axes
+
+
+@set_action()
+def loopback_test(S, cfg, bands=None, attens=None, scans_per_band=1):
+    """
+    Runs loopback tests for smurf. For each of the specified bands loops
+    through uc and dc attens taking the full band response at each atten.
+    Can plot results for one AMC at a time using the plot_loopback_results
+    function.
+
+    Args:
+        S (pysmurf.SmurfControl):
+            Pysmurf instance
+        cfg (DetConfig):
+            config object
+        bands (int, list):
+            List of bands to take loopback over
+        attens (list):
+            List of attenuations to be looped over. This will be used for both
+            UC and DC attens.
+        scans_per_band (int):
+            Number of band-responses to average over
+
+    Returns:
+        out (dict):
+            Summary dictionary. Has structure::
+                ``out['uc_sweep/dc_sweep'][band][atten]``
+    """
+    if bands is None:
+        bands = S._bands
+    else:
+        bands = np.atleast_1d(bands)
+
+    if attens is None:
+        attens = [0, 1, 2, 4, 8, 16, 31]
+    else:
+        attens = np.atleast_1d(attens)
+
+    out = {
+        'uc_sweep': {b: {} for b in bands},
+        'dc_sweep': {b: {} for b in bands},
+        'band_center_mhz': {}
+    }
+
+    tot = 2*len(bands)*len(attens)
+    pb = tqdm(total=tot)
+    for b in bands:
+        out['band_center_mhz'][b] = S.get_band_center_mhz(b)
+        S.set_att_dc(b, 0)
+        for att in attens:
+            S.set_att_uc(b, att)
+            out['uc_sweep'][b][att] = S.full_band_resp(
+                band=b, make_plot=False, save_plot=False, show_plot=False,
+                save_data=True, n_scan=scans_per_band,
+                correct_att=False)
+            pb.update()
+
+        S.set_att_uc(b, 0)
+        for att in attens:
+            S.set_att_dc(b, att)
+            out['dc_sweep'][b][att] = S.full_band_resp(
+                band=b, make_plot=False, save_plot=False, show_plot=False,
+                save_data=True, n_scan=scans_per_band,
+                correct_att=False)
+            pb.update()
+    return out
+
+def plot_loopback_results(summary, amc, band_width=200e6):
+    """
+    Plots loopback results for a single AMC.
+
+    Args:
+        summary (dict):
+            Summary dict returned from loopback_test function
+        amc (int):
+            AMC to plot.
+        band_width (float):
+            Width of each band (Hz) to include in the response plot.
+    """
+    fig, ax = plt.subplots(2, 2, figsize=(18, 10))
+    bands = list(summary['uc_sweep'].keys())
+
+    # Estimate attenuation for each band based on response
+    est_attens = {
+    'uc_sweep': {b: {} for b in bands},
+    'dc_sweep': {b: {} for b in bands},
+    }
+
+    # Bandwidth to use to estimate atten
+    est_bw = 200
+    for sweep in est_attens.keys():
+        x = summary[sweep]
+        for b in bands:
+            for i, (att, v) in enumerate(x[b].items()):
+                fs, resp = v
+                # Estimate attenuation
+                m = np.abs(fs) < est_bw
+                power = 20 * np.log10(np.mean(np.abs(resp[m])))
+                if att==0:
+                    p0 = power
+                else:
+                    est_attens[sweep][b][att] = -2*(power - p0)
+
+    for b in range(amc * 4, 4*amc + 4):
+        if b not in bands:
+            continue
+
+        for i, (att, v) in enumerate(summary['uc_sweep'][b].items()):
+            fs, resp = v
+            m = np.abs(fs) < band_width
+
+            bc = summary['band_center_mhz'][b] * 1e6
+            ax[0][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=f'att={att}')
+            ax[0][0].set(title="UC Sweep Response")
+
+        for i, (att, v) in enumerate(summary['dc_sweep'][b].items()):
+            fs, resp = v
+            m = np.abs(fs) < band_width
+            bc = summary['band_center_mhz'][b] * 1e6
+            ax[1][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8)
+            ax[1][0].set(title="DC Sweep Response")
+
+        xs = est_attens['uc_sweep'][b].keys()
+        ys = est_attens['uc_sweep'][b].values()
+        ax[0][1].plot(xs, ys, 'o-')
+        ax[0][1].set(title="Estimated UC Atten")
+
+        xs = est_attens['dc_sweep'][b].keys()
+        ys = est_attens['dc_sweep'][b].values()
+        ax[1][1].plot(xs, ys, 'o-')
+        ax[1][1].set(title="Estimated DC Atten")
+
+    fig.suptitle(f"AMC {amc}", fontsize=20)
+    return fig, ax
+
