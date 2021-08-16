@@ -870,7 +870,7 @@ def loopback_test(S, cfg, bands=None, attens=None, scans_per_band=1):
             pb.update()
     return out
 
-def plot_loopback_results(summary, amc, band_width=200e6):
+def plot_loopback_results(summary, amc, band_width=200e6, S=None):
     """
     Plots loopback results for a single AMC.
 
@@ -881,6 +881,9 @@ def plot_loopback_results(summary, amc, band_width=200e6):
             AMC to plot.
         band_width (float):
             Width of each band (Hz) to include in the response plot.
+        S (SmurfControl, optional):
+            If specified, will save plot to the plots directory and register
+            with the smurf publisher.
     """
     fig, ax = plt.subplots(2, 2, figsize=(18, 10))
     bands = list(summary['uc_sweep'].keys())
@@ -935,6 +938,15 @@ def plot_loopback_results(summary, amc, band_width=200e6):
         ax[1][1].plot(xs, ys, 'o-')
         ax[1][1].set(title="Estimated DC Atten")
 
-    fig.suptitle(f"AMC {amc}", fontsize=20)
-    return fig, ax
+    ax[0][0].set(xlabel="Frequency (Hz)", ylabel="Response")
+    ax[1][0].set(xlabel="Frequency (Hz)", ylabel="Response")
+    ax[0][1].set(xlabel="Actual atten", ylabel="Estimated atten")
+    ax[1][1].set(xlabel="Actual atten", ylabel="Estimated atten")
 
+    fig.suptitle(f"AMC {amc}", fontsize=20)
+    if S is not None:
+        plot_file = make_filename(S, f"amc_{amc}_loopback.png")
+        fig.savefig(plot_file)
+        S.pub.register_file(plot_file, 'loopback', plot=True)
+
+    return fig, ax
