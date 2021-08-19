@@ -421,7 +421,7 @@ def get_session_files(cfg, session_id, idx=None, stream_id=None):
         return [files[i] for i in idx]
 
 
-def load_session(cfg, session_id, idx=None, stream_id=None):
+def load_session(cfg, session_id, idx=None, stream_id=None, show_pb=False):
     """
     Loads a stream-session into an axis manager.
 
@@ -434,7 +434,7 @@ def load_session(cfg, session_id, idx=None, stream_id=None):
     idx: int, list(int), optional
     """
     files = get_session_files(cfg, session_id, idx, stream_id=stream_id)
-    return load_smurf.load_file(files)
+    return load_smurf.load_file(files, show_pb=show_pb)
 
 
 @set_action()
