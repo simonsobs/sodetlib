@@ -13,7 +13,6 @@ from scipy import interpolate
 import pickle as pkl
 import sodetlib.util as su
 import sodetlib.smurf_funcs as sf
-import sodetlib.smurf_funcs.smurf_ops as so
 from pysmurf.client.util.pub import set_action
 from tqdm.auto import tqdm
 
@@ -413,7 +412,7 @@ def plot_optimize_attens(S, summary, wlmax=1000, vmin=None, vmax=None):
             ax.set(ylim=(vmin, vmax))
 
         else:  # Do full 2d heat map
-            im = ax.pcolor(ucs, dcs, wls[band].T, vmin=vmin, vmax=vmax)
+            im = ax.pcolor(ucs, dcs, wls[i].T, vmin=vmin, vmax=vmax)
             ax.set(xlabel="UC atten", ylabel="DC atten", title=f"Band {band}")
             if i == 0:
                 fig.colorbar(im, label='Median White Noise [pA/rt(Hz)]',
@@ -533,11 +532,11 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
             # Take data
             atten_grid.append([uc_atten, dc_atten])
             start_times.append(time.time())
-            sid = so.take_g3_data(S, meas_time)
+            sid = sf.smurf_ops.take_g3_data(S, meas_time)
             sids.append(sid)
             stop_times.append(time.time())
 
-            am = so.load_session(cfg, sid)
+            am = sf.smurf_ops.load_session(cfg, sid)
             wls, band_meds = su.get_wls_from_am(am)
             for k, b in enumerate(bands):
                 wl_medians[k, i, j] = band_meds[b]
