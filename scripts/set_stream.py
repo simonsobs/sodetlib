@@ -21,7 +21,6 @@ if __name__ == '__main__':
     parser.add_argument('--epics-root', type=str, default=None)
     parser.add_argument('--skip-freq-mask', action='store_true')
     parser.add_argument('--apply-dev-cfg', action='store_true')
-    parser.add_argument('--dump-configs', action='store_true')
     args = cfg.parse_args(parser)
 
     S = cfg.get_smurf_control(

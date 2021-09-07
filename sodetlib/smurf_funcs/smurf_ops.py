@@ -4,7 +4,7 @@ Module for general smurf operations.
 from sodetlib.util import cprint, TermColors, make_filename, \
                           get_tracking_kwargs
 
-from sodetlib.smurf_funcs.optimize_params import optimize_bias
+import sodetlib.smurf_funcs.optimize_params as op
 import numpy as np
 import os
 import time
@@ -65,6 +65,9 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
         This contains the flux bias array, channel array, and frequency
         shift at each bias value for each channel in each band.
     """
+    cur_mode = S.get_cryo_card_ac_dc_mode()
+    if cur_mod == 'AC':
+        S.set_mode_dc()
     ctime = S.get_timestamp()
     fn_raw_data = f'{S.output_dir}/{ctime}_fr_sweep_data.npy'
     print(bands)
@@ -201,6 +204,8 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     S.set_lms_enable2(band, prev_lms_enable2)
     S.set_lms_enable3(band, prev_lms_enable3)
     S.set_lms_gain(band, lms_gain)
+    if cur_mod == 'AC':
+        S.set_mode_ac()
     return raw_data
 
 
@@ -461,7 +466,8 @@ def take_g3_data(S, dur, **stream_kw):
 
 
 @set_action()
-def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=''):
+def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
+                 channel_mask=None, filter_wait_time=2):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -482,7 +488,6 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=''):
         Id used to read back streamed data
     """
     so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
-
     reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
     reg_action = so_root + "pysmurf_action"
     reg_action_ts = so_root + "pysmurf_action_timestamp"
@@ -492,11 +497,12 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=''):
     S._caput(reg_action_ts, S.pub._action_ts)
     S._caput(reg_stream_tag, tag)
 
-    S.stream_data_on(make_freq_mask=make_freq_mask)
+    S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
+                     filter_wait_time=filter_wait_time)
 
     if emulator:
         S._caput(reg_em_enable, 1)
-    S.set_stream_enable(1)
+        S.set_stream_enable(1)
 
     # Sometimes it takes a bit for data to propogate through to the
     # streamer
@@ -604,9 +610,9 @@ def cryo_amp_check(S, cfg):
     # Optimize bias voltages
     if biased_hemt and biased_50K:
         cprint("Scanning hemt bias voltage", TermColors.HEADER)
-        Id_hemt_in_range = optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
+        Id_hemt_in_range = op.optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
         cprint("Scanning 50K bias voltage", TermColors.HEADER)
-        Id_50K_in_range = optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
+        Id_50K_in_range = op.optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
         time.sleep(0.2)
         amp_biases = S.get_amplifier_biases()
         Vg_hemt, Vg_50K = amp_biases['hemt_Vg'], amp_biases['50K_Vg']
@@ -777,6 +783,7 @@ def plot_band_noise(am, nbins=40):
 
     fig, axes = plt.subplots(4, 2, figsize=(16, 8),
                              gridspec_kw={'hspace': 0})
+    fig.patch.set_facecolor('white')
     bins = np.logspace(1, 4, nbins)
     max_bins = 0
 
