@@ -8,6 +8,7 @@ operation, such as:
 import numpy as np
 import time
 import os
+import sys
 from sodetlib.util import make_filename
 import sodetlib.smurf_funcs.smurf_ops as so
 from sodetlib.analysis import det_analysis
@@ -269,9 +270,15 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
     if isinstance(bias_groups, (float, int)):
         bias_groups = [bias_groups]
 
-    if silence_pysmurf:
-        fname = make_filename(S, 'take_tickle.log')
-        S.set_logfile(fname)
+    logs_silenced = False
+    logfile = None
+    if S.log.logfile != sys.stdout:
+        logfile = S.log.logfile.name
+    elif silence_pysmurf:
+        logfile = make_filename(S, 'take_tickle.log')
+        print(f"Writing pysmurf logs to {logfile}")
+        S.set_logfile(logfile)
+        logs_silenced = True
 
     init_biases = S.get_tes_bias_bipolar_array()
     bias_array = S.get_tes_bias_bipolar_array()
@@ -284,7 +291,6 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
         raise ValueError("Can only run with bias groups < 12")
 
     for i, bg in enumerate(bias_groups):
-
         orig_hc_mode = get_current_mode(S, bg)
         orig_bias = S.get_tes_bias_bipolar(bg)
         new_bias = None
@@ -317,7 +323,8 @@ def take_tickle(S, cfg, bias_groups, tickle_freq=5., tickle_voltage=0.005,
 
         time.sleep(2)  # Gives some time for g3 file to finish
 
-    S.set_logfile(None)
+    if logs_silenced:  # Returns logs to stdout
+        S.set_logfile(None)
 
     summary = {
         'tickle_freq': tickle_freq,
