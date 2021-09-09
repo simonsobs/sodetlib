@@ -4,7 +4,12 @@ import time
 import sodetlib.smurf_funcs.smurf_ops as so
 import sodetlib.util as su
 
+from pysmurf.client.util.pub import set_action
 
+
+
+
+@set_action()
 def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
                               nphi0=None, fpp0=None, show_plots=True,
                               num_chan_plots=0, feedback_start_frac=None):
@@ -19,8 +24,7 @@ def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
 
     # Just choose the frac-pp to be the mean of AMC0 fpp's because they are
     # a bit different between amcs
-    if fpp0 is None:
-        fpp0 = fpp0s[0]
+    if fpp0 is None: fpp0 = fpp0s[0]
 
     fpp, lmsfs = fpp0, lmsf0s
     if nphi0 is not None:
@@ -46,7 +50,7 @@ def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
         S.tracking_setup(band, **tk)
 
 
-
+@set_action()
 def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
                            tickle_voltage=0.005, meas_time=2.,
                            flux_ramp_rate_khz=10e3, bgmap_file=None):
@@ -58,7 +62,10 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     freqs = np.atleast_1d(freqs)
     nsteps = len(bias_groups) * len(freqs)
     if bgmap_file is None:
-        bgmap_file = cfg.dev.exp['bg_map']
+        bgmap_file = cfg.dev.exp.get('bg_map')
+        if bgmap_file is None:
+            raise ValueError("bgmap_file not in dev cfg. Must be specified in "
+                             "function argument")
 
     # Loads bias group mapping into an array. We may need to change this
     # if mapping file is updated
@@ -78,15 +85,11 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     init_nphi0 = np.round(
         bcfg['lms_freq_hz'] / init_fr_freq
     )
-    init_ds_factor = S.get_downsample_factor()
-    init_filter_disable = S.get_filter_disable()
 
     # Setup tracking for all bands to accomodate for higher freq data
     S.log(f"Setting fr freqs to {flux_ramp_rate_khz} khz")
     tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=flux_ramp_rate_khz,
                               nphi0=3, show_plots=False)
-    S.set_filter_disable(1)
-    S.set_downsample_factor(1)
 
     # Gets array of all enabled channel to use when channel masking
     enabled_abs_chans = np.zeros(4096, dtype=bool)
@@ -99,36 +102,40 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
 
     pb = tqdm(total=nsteps)
     sids = []
-    for bg in bias_groups:
-        S.set_tes_bias_bipolar(bg, new_biases[bg])
-        S.set_tes_bias_high_current(bg)
 
-        channel_mask = np.where((bgmap == bg) & enabled_abs_chans)[0]
-        sid = so.stream_g3_on(S, tag='tickle', channel_mask=channel_mask)
-        sids.append(sid)
-        S.log(f"Streaming Bias Group {bg} with sid {sid}")
-
-        for freq in freqs:
-            S.log(f"Tickle with bg={bg}, freq={freq}")
-            S.play_sine_tes(bg, tickle_voltage, freq)
-            start_times.append(time.time())
-            time.sleep(meas_time)
-            stop_times.append(time.time())
-            S.set_rtm_arb_waveform_enable(0)
+    init_ds_factor = S.get_downsample_factor()
+    init_filter_disable = S.get_filter_disable()
+    try:
+        S.set_filter_disable(1)
+        S.set_downsample_factor(1)
+        for bg in bias_groups:
+            S.set_tes_bias_high_current(bg)
             S.set_tes_bias_bipolar(bg, new_biases[bg])
-            pb.update(1)
+            S.log("Waiting for 60 sec before taking data")
+            time.sleep(60)
 
-        so.stream_g3_off(S)
-        S.set_tes_bias_bipolar(bg, orig_biases[bg])
+            channel_mask = np.where((bgmap == bg) & enabled_abs_chans)[0]
+            sid = so.stream_g3_on(S, tag='tickle', channel_mask=channel_mask)
+            sids.append(sid)
+            S.log(f"Streaming Bias Group {bg} with sid {sid}")
 
-    # Restores all params
-    S.log("Returning flux ramp to original frequencies")
+            for freq in freqs:
+                S.log(f"Tickle with bg={bg}, freq={freq}")
+                S.play_sine_tes(bg, tickle_voltage, freq)
+                start_times.append(time.time())
+                time.sleep(meas_time)
+                stop_times.append(time.time())
+                S.set_rtm_arb_waveform_enable(0)
+                S.set_tes_bias_bipolar(bg, new_biases[bg])
+                pb.update(1)
 
-    tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=init_fr_freq,
-                              nphi0=init_nphi0, show_plots=False)
-
-    S.set_downsample_factor(init_ds_factor)
-    S.set_filter_disable(init_filter_disable)
+            so.stream_g3_off(S)
+            S.set_tes_bias_bipolar(bg, orig_biases[bg])
+            S.set_tes_bias_low_current(bg)
+    finally:
+        S.log("Returning filter-disable and downsample factor to initial values")
+        S.set_filter_disable(init_filter_disable)
+        S.set_downsample_factor(init_ds_factor)
 
     summary = {
         'start_times': start_times,
@@ -142,5 +149,11 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     summary_file = su.make_filename(S, 'complex_impedance_summary.npy')
     np.save(summary_file, summary, allow_pickle=True)
     S.pub.register_file(summary_file, 'complex_impedance')
+
+    # Restores all params
+    S.log("Returning flux ramp to original frequencies")
+
+    tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=init_fr_freq,
+                              nphi0=init_nphi0, show_plots=False)
     return summary_file, summary
 
