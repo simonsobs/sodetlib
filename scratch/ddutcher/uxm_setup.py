@@ -11,9 +11,8 @@ import os
 
 from sodetlib.det_config import DetConfig
 
-
-bands = [0,1,2,3,4,5,6,7]
-slot_num = 2
+bands = [7]#[0,1,2,3,4,5,6,7]
+slot_num = 3
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -22,11 +21,11 @@ S = cfg.get_smurf_control()
 print('plotting directory is:')
 print(S.plot_dir)
 
-S.all_off()
-S.set_rtm_arb_waveform_enable(0)
-S.set_filter_disable(0)
-S.set_downsample_factor(20)
-S.set_mode_dc()
+#S.all_off()
+#S.set_rtm_arb_waveform_enable(0)
+#S.set_filter_disable(0)
+#S.set_downsample_factor(20)
+#S.set_mode_dc()
 
 for band in bands:
 	print('setting up band {}'.format(band))
@@ -46,7 +45,7 @@ for band in bands:
 	# hard coding it for the current fw
 	S.set_synthesis_scale(band,1)
 	print('running find freq')
-	S.find_freq(band,tone_power=cfg.dev.bands[band]['drive'],make_plot=True)
+	S.find_freq(band,tone_power=cfg.dev.bands[band]['drive'], stop_freq=225, make_plot=True)
 	print('running setup notches')
 	S.setup_notches(band,tone_power=cfg.dev.bands[band]['drive'],new_master_assignment=True)
 	print('running serial gradient descent and eta scan')

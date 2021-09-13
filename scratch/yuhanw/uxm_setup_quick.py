@@ -12,6 +12,7 @@ import os
 from sodetlib.det_config import DetConfig
 
 
+
 bands = [0,1,2,3,4,5,6,7]
 slot_num = 2
 
@@ -22,7 +23,7 @@ S = cfg.get_smurf_control()
 print('plotting directory is:')
 print(S.plot_dir)
 
-S.all_off()
+# S.all_off()
 S.set_rtm_arb_waveform_enable(0)
 S.set_filter_disable(0)
 S.set_downsample_factor(20)
@@ -40,8 +41,8 @@ for band in bands:
 	S.amplitude_scale[band] = cfg.dev.bands[band]['drive']
 	print('band {} tone power {}'.format(band,S.amplitude_scale[band] ))
 
-	print('estimating phase delay')
-	S.estimate_phase_delay(band)
+	# print('estimating phase delay')
+	# S.estimate_phase_delay(band)
 	print('setting synthesis scale')
 	# hard coding it for the current fw
 	S.set_synthesis_scale(band,1)
@@ -59,8 +60,8 @@ for band in bands:
 	# print('checking tracking')
 	# S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 
-print('taking 20s timestream')
-S.take_noise_psd(20, nperseg=2**16, save_data=True, make_channel_plot=False, return_noise_params=True)
+# print('taking 20s timestream')
+# S.take_noise_psd(20, nperseg=2**16, save_data=True, make_channel_plot=False, return_noise_params=True)
 
 S.save_tune()    
 print('plotting directory is:')

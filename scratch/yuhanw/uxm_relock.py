@@ -11,9 +11,9 @@ import os
 
 from sodetlib.det_config import DetConfig
 
-fav_tune_files = '/data/smurf_data/tune/1620164821_tune.npy'
-bands = [3]
-slot_num = 3
+fav_tune_files = '/data/smurf_data/tune/1626808976_tune.npy'
+bands = [0,1,2,3,4,5,6,7]
+slot_num = 2
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -59,7 +59,7 @@ for band in bands:
 	S.set_feedback_enable(band,1) 
 	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 	print('checking tracking')
-	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	# S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 
 print('taking 20s timestream')
 S.take_noise_psd(20, nperseg=2**16, save_data=True, make_channel_plot=False, return_noise_params=True)
