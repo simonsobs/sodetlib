@@ -248,7 +248,13 @@ def hammer_func(args):
                     f"Slot {s} is not valid for this system! Can only use "
                     f"slots in: {sys_config['slot_order']}")
 
-    reboot = args.reboot
+    reboot = not (args.no_reboot)
+
+    reboot_str = "hard" if reboot else "soft"
+    cmd = input(f"You are {reboot_str} resetting slots {slots}. "
+                "Are you sure (y/n)?")
+    if cmd.lower() not in ["y", "yes"]:
+        return
 
     cprint(f"Hammering for slots {slots}", True)
 
@@ -429,9 +435,9 @@ if __name__ == '__main__':
     hammer_parser.add_argument('slots', nargs='*', type=str,
                                required=True,
                                help="Specifies the slots (or 'all') to hammer")
-    hammer_parser.add_argument('--reboot', '--hard',
+    hammer_parser.add_argument('--no-reboot', '--soft', '-n',
                                action='store_true',
-                               help="If True, will reboot slots.")
+                               help="If True, will not reboot slots.")
     hammer_parser.add_argument('--agg', action='store_true')
 
     ########### Jackhammer logs parser ############
