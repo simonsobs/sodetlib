@@ -256,6 +256,9 @@ def hammer_func(args):
     if cmd.lower() not in ["y", "yes"]:
         return
 
+    # dump docker logs for debugging.
+    dump_func(args)
+
     cprint(f"Hammering for slots {slots}", True)
 
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
@@ -368,6 +371,16 @@ def gui_func(args):
 
 # Entrypoint for jackhammer dump
 def dump_func(args):
+    if not args.slots or args.slots == 'all':
+        slots = sys_config['slot_order']
+    else:
+        slots = [int(s) for s in args.slots]
+        for s in slots:
+            if s not in sys_config['slot_order']:
+                raise ValueError(
+                    f"Slot {s} is not valid for this system! Can only use "
+                    f"slots in: {sys_config['slot_order']}")
+
     dump_dir = os.path.join(
         '/data/logs',
         str(time.time())[:5],
@@ -390,7 +403,7 @@ def dump_func(args):
             subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
 
     dump_script = '/sodetlib/scripts/dump_rogue_state.py'
-    for slot in sys_config['slot_order']:
+    for slot in slots:
         if check_epics_connection(f'smurf_server_s{slot}', retry=False):
             out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
             cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
