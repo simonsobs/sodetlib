@@ -231,7 +231,7 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
     fit_curve: bool
         If true, will use the pysmurf ``analyze_psd`` function to calculate the
         white noise, n, and f_knee values.  If false, calculate the white noise
-        value by taking the median of the PSD between 5 Hz and 100 Hz, and will
+        value by taking the median of the PSD between 5 Hz and 50 Hz, and will
         set n=f_knee=None, which is much faster.
     max_phase_span : float
         If set, will cut channels based on the phase span when calculating the
