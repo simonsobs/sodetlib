@@ -12,7 +12,8 @@ from pysmurf.client.util.pub import set_action
 @set_action()
 def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
                               nphi0=None, fpp0=None, show_plots=True,
-                              num_chan_plots=0, feedback_start_frac=None):
+                              num_chan_plots=0, feedback_start_frac=None,
+                              feedback_gain=None):
     tks = [
         su.get_tracking_kwargs(S, cfg, b)
         for b in range(8)
@@ -46,6 +47,8 @@ def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
         tk['channel'] = S.which_on(band)[:num_chan_plots]
         if feedback_start_frac is not None:
             tk['feedback_start_frac'] = feedback_start_frac
+        if feedback_gain is not None:
+            tk['feedback_gain'] = feedback_gain
 
         S.tracking_setup(band, **tk)
 
@@ -53,7 +56,8 @@ def tracking_setup_mult_bands(S, cfg, bands, fr_rate=None,
 @set_action()
 def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
                            tickle_voltage=0.005, meas_time=2.,
-                           flux_ramp_rate_khz=10e3, bgmap_file=None):
+                           flux_ramp_rate_khz=10e3, bgmap_file=None,
+                           skip_tracking_setup=False, feedback_gain=None):
     if bias_groups is None:
         bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
@@ -87,9 +91,10 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     )
 
     # Setup tracking for all bands to accomodate for higher freq data
-    S.log(f"Setting fr freqs to {flux_ramp_rate_khz} khz")
-    tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=flux_ramp_rate_khz,
-                              nphi0=3, show_plots=False)
+    if not skip_tracking_setup:
+        S.log(f"Setting fr freqs to {flux_ramp_rate_khz} khz")
+        tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=flux_ramp_rate_khz,
+                                  nphi0=3, show_plots=False, feedback_gain=feedback_gain)
 
     # Gets array of all enabled channel to use when channel masking
     enabled_abs_chans = np.zeros(4096, dtype=bool)
@@ -108,12 +113,14 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     try:
         S.set_filter_disable(1)
         S.set_downsample_factor(1)
+
+        # Sets all bias groups to high-current mode + lower voltage
         for bg in bias_groups:
             S.set_tes_bias_high_current(bg)
-            S.set_tes_bias_bipolar(bg, new_biases[bg])
-            S.log("Waiting for 60 sec before taking data")
-            time.sleep(60)
+        S.set_tes_bias_bipolar_array(new_biases)
+        time.sleep(30)
 
+        for bg in bias_groups:
             channel_mask = np.where((bgmap == bg) & enabled_abs_chans)[0]
             sid = so.stream_g3_on(S, tag='tickle', channel_mask=channel_mask)
             sids.append(sid)
@@ -130,18 +137,22 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
                 pb.update(1)
 
             so.stream_g3_off(S)
-            S.set_tes_bias_bipolar(bg, orig_biases[bg])
-            S.set_tes_bias_low_current(bg)
     finally:
         S.log("Returning filter-disable and downsample factor to initial values")
         S.set_filter_disable(init_filter_disable)
         S.set_downsample_factor(init_ds_factor)
+
+        # Return to low current mode 
+        S.set_tes_bias_bipolar_array(orig_biases)
+        for bg in bias_groups:
+            S.set_tes_bias_low_current(bg)
 
     summary = {
         'start_times': start_times,
         'stop_times': stop_times,
         'sids': sids,
         'freqs': freqs,
+        'tickle_voltage': tickle_voltage,
         'bias_groups': bias_groups,
         'dc_biases': orig_biases,
     }
@@ -153,7 +164,9 @@ def take_complex_impedance(S, cfg, bias_groups=None, freqs=None,
     # Restores all params
     S.log("Returning flux ramp to original frequencies")
 
-    tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=init_fr_freq,
-                              nphi0=init_nphi0, show_plots=False)
+    if not skip_tracking_setup:
+        tracking_setup_mult_bands(S, cfg, S._bands, fr_rate=init_fr_freq,
+                                  nphi0=init_nphi0, show_plots=False)
+
     return summary_file, summary
 
