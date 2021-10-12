@@ -1,8 +1,8 @@
 '''
 Code written in Oct 2021 by Yuhan Wang
-only suitable for SPB when TESes are in normal, notice SPB only have a small number of TES coupled channel
+only suitable for SMB
 instead of fitting to noise model, this takes median noise from 5Hz to 50Hz
-different noise levels here are based on phase 2 noise target and noise model after considering johnson noise at 100mK
+different noise levels here are based on phase 2 noise target and noise model
 '''
 import matplotlib
 matplotlib.use('Agg')
@@ -92,9 +92,6 @@ S.check_lock(
     feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
     lms_gain=cfg.dev.bands[band]["lms_gain"],
 )
-S.overbias_tes_all(bias_groups = [0,1,2,3,4,5,6,7,8,9,10,11], overbias_wait=1, tes_bias= 12, cool_wait= 3, high_current_mode=False, overbias_voltage= 12)
-print("waiting for thermal environment get stablized")
-time.sleep(120)
 
 print("taking 20s timestream")
 stream_time = 20
