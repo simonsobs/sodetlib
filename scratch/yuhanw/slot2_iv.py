@@ -47,7 +47,7 @@ for bias_gp in [0,1,2,3,4,5,6,7,8,9,10,11]:
         print(f'Taking IV on bias line {bias_gp}, all band')
           
  
-        row['data_path'] = S.run_iv(bias_groups = [bias_gp], wait_time=0.001, bias_high=16, bias_low=0, bias_step = 0.025, overbias_voltage=18, cool_wait=150, high_current_mode=False, make_plot=False, save_plot=True, cool_voltage = 8)
+        row['data_path'] = S.run_iv(bias_groups = [bias_gp], wait_time=0.001, bias_high=16, bias_low=0, bias_step = 0.025, overbias_voltage=18, cool_wait=10, high_current_mode=False, make_plot=False, save_plot=True, cool_voltage = 8)
      
           
         with open(out_fn, 'a', newline = '') as csvfile:
@@ -55,13 +55,13 @@ for bias_gp in [0,1,2,3,4,5,6,7,8,9,10,11]:
             writer.writerow(row)
  
  
-row = {}
-row['bath_temp'] = bath_temp
-row['bias_line'] = 'all'
-row['band'] = 'all'
+# row = {}
+# row['bath_temp'] = bath_temp
+# row['bias_line'] = 'all'
+# row['band'] = 'all'
  
-row['data_path'] = S.run_iv(bias_groups = [0,1,2,3,4,5,6,7,8,9,10,11], wait_time=0.001, bias_high=16, bias_low=0, bias_step = 0.025, overbias_voltage=18, cool_wait=300, high_current_mode=False, make_plot=False, save_plot=True, cool_voltage = 8)
+# row['data_path'] = S.run_iv(bias_groups = [0,1,2,3,4,5,6,7,8,9,10,11], wait_time=0.001, bias_high=16, bias_low=0, bias_step = 0.025, overbias_voltage=18, cool_wait=300, high_current_mode=False, make_plot=False, save_plot=True, cool_voltage = 8)
  
-with open(out_fn, 'a', newline = '') as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-    writer.writerow(row)
+# with open(out_fn, 'a', newline = '') as csvfile:
+#     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+#     writer.writerow(row)

@@ -12,9 +12,9 @@ import time
 
 from sodetlib.det_config import DetConfig
 
-
+fav_tune_files = '/data/smurf_data/tune/1633644300_tune.npy'
 bands = [0,1,2,3,4,5,6,7]
-slot_num = 4
+slot_num = 3
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -29,6 +29,11 @@ S.set_filter_disable(0)
 S.set_downsample_factor(20)
 S.set_mode_dc()
 
+S.load_tune(fav_tune_files)
+
+
+
+
 for band in bands:
 	print('setting up band {}'.format(band))
 
@@ -41,26 +46,24 @@ for band in bands:
 	S.amplitude_scale[band] = cfg.dev.bands[band]['drive']
 	print('band {} tone power {}'.format(band,S.amplitude_scale[band] ))
 
-	print('estimating phase delay')
-	S.estimate_phase_delay(band)
 	print('setting synthesis scale')
 	# hard coding it for the current fw
 	S.set_synthesis_scale(band,1)
-	print('running find freq')
-	S.find_freq(band,tone_power=cfg.dev.bands[band]['drive'],make_plot=True)
-	print('running setup notches')
-	S.setup_notches(band,tone_power=cfg.dev.bands[band]['drive'],new_master_assignment=True)
-	print('running serial gradient descent and eta scan')
+
+	print('running relock')
+	S.relock(band,tone_power=cfg.dev.bands[band]['drive'])
+	
 	S.run_serial_gradient_descent(band);
 	S.run_serial_eta_scan(band);
+	
 	print('running tracking setup')
 	S.set_feedback_enable(band,1) 
 	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
-	
-	# print('checking tracking')
-	# S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	print('checking tracking')
+	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 
 print('taking 20s timestream')
+
 start_time=S.get_timestamp()
 fs = S.get_sample_frequency()
 # hard coded (for now) variables
@@ -112,5 +115,7 @@ plt.savefig(os.path.join(S.plot_dir, save_name))
 
 
 S.save_tune()    
+
+
 print('plotting directory is:')
 print(S.plot_dir)

@@ -1,3 +1,10 @@
+'''
+Code written in Oct 2021 by Yuhan Wang
+only suitable for UFMs when TESes are in SC stage
+different noise levels here are based on phase 2 noise target and noise model after considering johnson noise at 100mK
+'''
+
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -13,8 +20,8 @@ import time
 from sodetlib.det_config import DetConfig
 
 
-band = 0
-slot_num = 5
+band = 3
+slot_num = 3
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -150,7 +157,7 @@ def rough_tune(current_uc_att, current_tune_power, band):
         )
     )
 
-    return estimate_att, current_tune_power, lowest_wl_index
+    return estimate_att, current_tune_power, lowest_wl_index, wl_median
 
 
 def fine_tune(current_uc_att, current_tune_power, band):
@@ -205,10 +212,10 @@ def fine_tune(current_uc_att, current_tune_power, band):
         )
     )
 
-    return estimate_att, current_tune_power, lowest_wl_index
+    return estimate_att, current_tune_power, lowest_wl_index, wl_median
 
 
-if wl_median > 200:
+if wl_median > 250:
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
     )
@@ -217,7 +224,7 @@ if wl_median > 200:
     )
 
 
-if wl_median < 45:
+if wl_median < 120:
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
     )
@@ -226,14 +233,14 @@ if wl_median < 45:
     current_uc_att = S.get_att_uc(band)
     current_tune_power = S.amplitude_scale[band]
 
-    estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+    estimate_att, current_tune_power, lowest_wl_index, wl_median = fine_tune(
         current_uc_att, current_tune_power, band
     )
 
-    print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
+    print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
 
-if wl_median > 45 and wl_median < 65:
+if wl_median > 120 and wl_median < 150:
 
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
@@ -243,7 +250,7 @@ if wl_median > 45 and wl_median < 65:
     current_uc_att = S.get_att_uc(band)
     current_tune_power = S.amplitude_scale[band]
 
-    estimate_att, current_tune_power, lowest_wl_index = rough_tune(
+    estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
         current_uc_att, current_tune_power, band
     )
 
@@ -271,22 +278,22 @@ if wl_median > 45 and wl_median < 65:
         current_uc_att = adjusted_uc_att
         current_tune_power = new_tune_power
 
-    estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+    estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
         current_uc_att, current_tune_power, band
     )
-    print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
+    print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
     step2_index = lowest_wl_index
 
     if step2_index == 0:
         print("can be fine tuned")
-        estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+        estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
             current_uc_att - 4, current_tune_power, band
         )
 
-    print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
+    print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
 
-if wl_median > 65 and wl_median < 200:
+if wl_median > 150 and wl_median < 250:
 
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
@@ -296,11 +303,11 @@ if wl_median > 65 and wl_median < 200:
     current_uc_att = S.get_att_uc(band)
     current_tune_power = S.amplitude_scale[band]
 
-    estimate_att, current_tune_power, lowest_wl_index = rough_tune(
+    estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
         current_uc_att, current_tune_power, band
     )
 
-    if wl_median < 45:
+    if wl_median < 120:
         print(
             "WL: {} with {} channels out of {}".format(
                 wl_median, wl_length, channel_length
@@ -311,13 +318,13 @@ if wl_median > 65 and wl_median < 200:
         current_uc_att = S.get_att_uc(band)
         current_tune_power = S.amplitude_scale[band]
 
-        estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+        estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
             current_uc_att, current_tune_power, band
         )
 
-        print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
+        print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
-    if wl_median > 45:
+    if wl_median > 120:
 
         print(
             "WL: {} with {} channels out of {}".format(
@@ -329,7 +336,7 @@ if wl_median > 65 and wl_median < 200:
         current_uc_att = S.get_att_uc(band)
         current_tune_power = S.amplitude_scale[band]
 
-        estimate_att, current_tune_power, lowest_wl_index = rough_tune(
+        estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
             current_uc_att, current_tune_power, band
         )
         step1_index = lowest_wl_index
@@ -358,7 +365,7 @@ if wl_median > 65 and wl_median < 200:
             current_uc_att = adjusted_uc_att
             current_tune_power = new_tune_power
 
-        estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+        estimate_att, current_tune_power, lowest_wl_index, wl_median= fine_tune(
             current_uc_att, current_tune_power, band
         )
         print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
@@ -366,13 +373,13 @@ if wl_median > 65 and wl_median < 200:
 
         if step2_index == 0 and step1_index == 0:
             print("can be fine tuned")
-            estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+            estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
                 current_uc_att - 4, current_tune_power, band
             )
 
         if step2_index == 4 and step1_index == 4:
             print("can be fine tuned")
-            estimate_att, current_tune_power, lowest_wl_index = fine_tune(
+            estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
                 current_uc_att + 4, current_tune_power, band
             )
 
