@@ -868,6 +868,10 @@ def loopback_test(S, cfg, bands=None, attens=None, scans_per_band=1):
                 save_data=True, n_scan=scans_per_band,
                 correct_att=False)
             pb.update()
+    fname = make_filename(S, 'loopback_test.npy')
+    np.save(fname, out, allow_pickle=True)
+    S.pub.register_file(fname, 'loopback_test', format='npy')
+
     return out
 
 def plot_loopback_results(summary, amc, band_width=200e6, S=None):
@@ -875,7 +879,7 @@ def plot_loopback_results(summary, amc, band_width=200e6, S=None):
     Plots loopback results for a single AMC.
 
     Args:
-        summary (dict):
+        summary (dict or str):
             Summary dict returned from loopback_test function
         amc (int):
             AMC to plot.
@@ -885,6 +889,9 @@ def plot_loopback_results(summary, amc, band_width=200e6, S=None):
             If specified, will save plot to the plots directory and register
             with the smurf publisher.
     """
+    if isinstance(summary, str):
+        summary = np.load(summary, allow_pickle=True).item()
+
     fig, ax = plt.subplots(2, 2, figsize=(18, 10))
     bands = list(summary['uc_sweep'].keys())
 
@@ -909,6 +916,7 @@ def plot_loopback_results(summary, amc, band_width=200e6, S=None):
                 else:
                     est_attens[sweep][b][att] = -2*(power - p0)
 
+    labeled = False
     for b in range(amc * 4, 4*amc + 4):
         if b not in bands:
             continue
@@ -916,32 +924,47 @@ def plot_loopback_results(summary, amc, band_width=200e6, S=None):
         for i, (att, v) in enumerate(summary['uc_sweep'][b].items()):
             fs, resp = v
             m = np.abs(fs) < band_width
+            if not labeled:
+                label = f'att={att}'
+            else:
+                label = None
 
             bc = summary['band_center_mhz'][b] * 1e6
-            ax[0][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=f'att={att}')
+            ax[0][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=label)
             ax[0][0].set(title="UC Sweep Response")
 
         for i, (att, v) in enumerate(summary['dc_sweep'][b].items()):
             fs, resp = v
             m = np.abs(fs) < band_width
+            if not labeled:
+                label = f'att={att}'
+            else:
+                label = None
+
             bc = summary['band_center_mhz'][b] * 1e6
-            ax[1][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8)
+            ax[1][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=label)
             ax[1][0].set(title="DC Sweep Response")
+
+        labeled = True
 
         xs = est_attens['uc_sweep'][b].keys()
         ys = est_attens['uc_sweep'][b].values()
-        ax[0][1].plot(xs, ys, 'o-')
-        ax[0][1].set(title="Estimated UC Atten")
+        ax[0][1].plot(xs, ys, 'o-', label=f'Band {b}')
 
         xs = est_attens['dc_sweep'][b].keys()
         ys = est_attens['dc_sweep'][b].values()
-        ax[1][1].plot(xs, ys, 'o-')
-        ax[1][1].set(title="Estimated DC Atten")
+        ax[1][1].plot(xs, ys, 'o-', label=f'Band {b}')
+
+    ax[0][1].set(title="Estimated UC Atten")
+    ax[1][1].set(title="Estimated DC Atten")
 
     ax[0][0].set(xlabel="Frequency (Hz)", ylabel="Response")
     ax[1][0].set(xlabel="Frequency (Hz)", ylabel="Response")
     ax[0][1].set(xlabel="Actual atten", ylabel="Estimated atten")
     ax[1][1].set(xlabel="Actual atten", ylabel="Estimated atten")
+
+    for axis in ax.flatten():
+        axis.legend(fontsize='small', loc='upper left')
 
     fig.suptitle(f"AMC {amc}", fontsize=20)
     if S is not None:
