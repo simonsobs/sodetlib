@@ -203,6 +203,7 @@ for bl in bias_groups:
 # print(target_v_bias)
     med_target_v_bias = np.median(np.array(target_v_bias))
     target_vbias_list.append(round(med_target_v_bias,1))
+    
 target_vbias_list = np.append(target_vbias_list,[0,0,0])
 target_50_list = target_vbias_list
 row = {}

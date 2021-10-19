@@ -23,8 +23,8 @@ import scipy.signal as signal
 
 
 
-band = 0
-slot_num = 2
+band = 4
+slot_num = 3
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
