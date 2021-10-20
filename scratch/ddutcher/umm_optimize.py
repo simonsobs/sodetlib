@@ -1,29 +1,25 @@
 '''
-Code written in Oct 2021 by Yuhan Wang
-only suitable for UFMs when TESes are in normal stage
-instead of fitting to noise model, this takes median noise from 5Hz to 50Hz
-different noise levels here are based on phase 2 noise target and noise model after considering johnson noise at 100mK
+Code written in early 2021 by Yuhan Wang
+only suitable for optimizing one band of none TES coupled resonator channels
+different noise levels here are based on phase 2 noise target
 '''
+
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 import pysmurf.client
 import argparse
 import numpy as np
+import pickle as pkl
+from scipy import signal
 import os
 import time
-import glob
-from sodetlib.det_config  import DetConfig
-import numpy as np
-from scipy.interpolate import interp1d
-import argparse
-import time
-import csv
-import scipy.signal as signal
+from sodetlib.det_config import DetConfig
 
 
-
-band = 4
+band = 3
 slot_num = 3
 
 cfg = DetConfig()
@@ -76,8 +72,8 @@ S.tracking_setup(
     show_plot=False,
     channel=S.which_on(band),
     nsamp=2 ** 18,
-    lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
-    meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
+    lms_freq_hz=None,
+    meas_lms_freq=True,
     feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
     feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
     lms_gain=cfg.dev.bands[band]["lms_gain"],
@@ -87,68 +83,28 @@ S.check_lock(
     band,
     reset_rate_khz=cfg.dev.bands[band]["flux_ramp_rate_khz"],
     fraction_full_scale=cfg.dev.bands[band]["frac_pp"],
-    lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
+    lms_freq_hz=None,
     feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
     feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
     lms_gain=cfg.dev.bands[band]["lms_gain"],
 )
-S.overbias_tes_all(bias_groups = [0,1,2,3,4,5,6,7,8,9,10,11], overbias_wait=1, tes_bias= 12, cool_wait= 3, high_current_mode=False, overbias_voltage= 12)
-print("waiting for thermal environment get stablized")
-time.sleep(120)
 
 print("taking 20s timestream")
-stream_time = 20
+datafile, noise_param = S.take_noise_psd(
+    20,
+    nperseg=2 ** 16,
+    save_data=True,
+    make_channel_plot=False,
+    return_noise_params=True,
+)
+
+wl_median = np.median(noise_param[3])
+wl_length = len(noise_param[3])
+channel_length = len(noise_param[0])
+noise_floors = np.median(noise_param[1])
 
 
-# non blocking statement to start time stream and return the dat filename
-dat_path = S.stream_data_on()
-# collect stream data
-time.sleep(stream_time)
-# end the time stream
-S.stream_data_off()
-
-fmin=5
-fmax=50
-wl_list_temp = []
-timestamp, phase, mask, tes_bias = S.read_stream_data(dat_path,
-        return_tes_bias=True)
-
-bands, channels = np.where(mask != -1)
-phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-sample_nums = np.arange(len(phase[0]))
-fs = 200
-nperseg=2**12
-detrend='constant'
-t_array = sample_nums / fs
-for c, (b, ch) in enumerate(zip(bands, channels)):
-    if ch < 0:
-        continue
-    ch_idx = mask[b, ch]
-    sampleNums = np.arange(len(phase[ch_idx]))
-    t_array = sampleNums / fs
-    f, Pxx = signal.welch(phase[ch_idx], nperseg=nperseg,
-        fs=fs, detrend=detrend)
-    Pxx = np.sqrt(Pxx)
-    fmask = (fmin < f) & (f < fmax)
-
-    wl = np.median(Pxx[fmask])
-    wl_list_temp.append(wl)
-
-
-
-noise_param = wl_list_temp
-
-wl_median = np.median(noise_param)
-wl_length = len(noise_param)
-channel_length = len(noise_param)
-noise_floors = np.median(noise_param)
-print('wl_median')
-
-def rough_tune(current_uc_att, current_tune_power, band,slot_num):
-
-    cfg = DetConfig()
-    cfg.load_config_files(slot=slot_num)
-    S = cfg.get_smurf_control()
+def rough_tune(current_uc_att, current_tune_power, band):
 
     attens = [
         current_uc_att - 10,
@@ -172,76 +128,38 @@ def rough_tune(current_uc_att, current_tune_power, band,slot_num):
             show_plot=False,
             channel=S.which_on(band),
             nsamp=2 ** 18,
-            lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
-            meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
+            lms_freq_hz=None,
+            meas_lms_freq=True,
             feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
             feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
             lms_gain=cfg.dev.bands[band]["lms_gain"],
         )
 
-        dat_path = S.stream_data_on()
-        # collect stream data
-        import time
-        stream_time = 20
-        time.sleep(stream_time)
-        # end the time stream
-        S.stream_data_off()
-
-
-        fmin=5
-        fmax=50
-        nperseg=2**12
-        detrend='constant'
-        wl_list_temp = []
-        timestamp, phase, mask, tes_bias = S.read_stream_data(dat_path,
-                return_tes_bias=True)
-
-        bands, channels = np.where(mask != -1)
-        phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-        sample_nums = np.arange(len(phase[0]))
-        fs = 200
-        t_array = sample_nums / fs
-        import scipy.signal as signal
-        for c, (b, ch) in enumerate(zip(bands, channels)):
-            if ch < 0:
-                continue
-            ch_idx = mask[b, ch]
-            sampleNums = np.arange(len(phase[ch_idx]))
-            t_array = sampleNums / fs
-            
-            f, Pxx = signal.welch(phase[ch_idx], nperseg=nperseg,
-                fs=fs, detrend=detrend)
-            Pxx = np.sqrt(Pxx)
-            fmask = (fmin < f) & (f < fmax)
-
-            wl = np.median(Pxx[fmask])
-            wl_list_temp.append(wl)
-
-        noise_param = wl_list_temp
-
-        wl_list.append(np.nanmedian(noise_param))
-        wl_len_list.append(len(noise_param))
-        noise_floors_list.append(np.median(noise_param))
-        channel_length = len(noise_param)
+        datafile, noise_param = S.take_noise_psd(
+            20,
+            nperseg=2 ** 16,
+            save_data=True,
+            make_channel_plot=False,
+            return_noise_params=True,
+        )
+        wl_list.append(np.median(noise_param[3]))
+        wl_len_list.append(len(noise_param[3]))
+        noise_floors_list.append(np.median(noise_param[1]))
+        channel_length = len(noise_param[0])
 
     lowest_wl_index = wl_list.index(min(wl_list))
     estimate_att = attens[lowest_wl_index]
     wl_median = wl_list[lowest_wl_index]
     print(
-        "lowest WL: {} with {} channels".format(
-            wl_median, channel_length
+        "lowest WL: {} with {} channels out of {}".format(
+            wl_median, wl_len_list[lowest_wl_index], channel_length
         )
     )
 
     return estimate_att, current_tune_power, lowest_wl_index, wl_median
 
 
-def fine_tune(current_uc_att, current_tune_power, band,slot_num):
-
-    cfg = DetConfig()
-    cfg.load_config_files(slot=slot_num)
-    S = cfg.get_smurf_control()
-
+def fine_tune(current_uc_att, current_tune_power, band):
     band = band
     attens = [
         current_uc_att - 4,
@@ -265,71 +183,38 @@ def fine_tune(current_uc_att, current_tune_power, band,slot_num):
             show_plot=False,
             channel=S.which_on(band),
             nsamp=2 ** 18,
-            lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
-            meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
+            lms_freq_hz=None,
+            meas_lms_freq=True,
             feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
             feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
             lms_gain=cfg.dev.bands[band]["lms_gain"],
         )
 
-        dat_path = S.stream_data_on()
-        # collect stream data
-        import time
-        stream_time = 20
-        time.sleep(stream_time)
-        # end the time stream
-        S.stream_data_off()
-        
-        fmin=5
-        fmax=50
-        nperseg=2**12
-        detrend='constant'
-        wl_list_temp = []
-        timestamp, phase, mask, tes_bias = S.read_stream_data(dat_path,
-                return_tes_bias=True)
+        datafile, noise_param = S.take_noise_psd(
+            20,
+            nperseg=2 ** 16,
+            save_data=True,
+            make_channel_plot=False,
+            return_noise_params=True,
+        )
+        wl_list.append(np.median(noise_param[3]))
+        wl_len_list.append(len(noise_param[3]))
+        noise_floors_list.append(np.median(noise_param[1]))
+        channel_length = len(noise_param[0])
 
-        bands, channels = np.where(mask != -1)
-        phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-        sample_nums = np.arange(len(phase[0]))
-        fs = 200
-        t_array = sample_nums / fs
-        import scipy.signal as signal
-        for c, (b, ch) in enumerate(zip(bands, channels)):
-            if ch < 0:
-                continue
-            ch_idx = mask[b, ch]
-            sampleNums = np.arange(len(phase[ch_idx]))
-            t_array = sampleNums / fs
-
-            f, Pxx = signal.welch(phase[ch_idx], nperseg=nperseg,
-                fs=fs, detrend=detrend)
-            Pxx = np.sqrt(Pxx)
-            fmask = (fmin < f) & (f < fmax)
-
-            wl = np.median(Pxx[fmask])
-            wl_list_temp.append(wl)
-        noise_param = wl_list_temp
-
-        wl_list.append(np.nanmedian(noise_param))
-        wl_length = len(noise_param)
-        channel_length = len(noise_param)
-        noise_floors = np.median(noise_param)
-
-    print(wl_list)
     lowest_wl_index = wl_list.index(min(wl_list))
-    print(lowest_wl_index)
     estimate_att = attens[lowest_wl_index]
     wl_median = wl_list[lowest_wl_index]
     print(
-        "lowest WL: {} with {} channels".format(
-            wl_median, channel_length
+        "lowest WL: {} with {} channels out of {}".format(
+            wl_median, wl_len_list[lowest_wl_index], channel_length
         )
     )
 
     return estimate_att, current_tune_power, lowest_wl_index, wl_median
 
 
-if wl_median > 150:
+if wl_median > 200:
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
     )
@@ -338,7 +223,7 @@ if wl_median > 150:
     )
 
 
-if wl_median < 60:
+if wl_median < 45:
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
     )
@@ -348,13 +233,13 @@ if wl_median < 60:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index, wl_median = fine_tune(
-        current_uc_att, current_tune_power, band, slot_num
+        current_uc_att, current_tune_power, band
     )
 
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
 
-if wl_median > 60 and wl_median < 120:
+if wl_median > 45 and wl_median < 65:
 
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
@@ -365,7 +250,7 @@ if wl_median > 60 and wl_median < 120:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-        current_uc_att, current_tune_power, band,slot_num
+        current_uc_att, current_tune_power, band
     )
 
     if estimate_att < 16:
@@ -393,7 +278,7 @@ if wl_median > 60 and wl_median < 120:
         current_tune_power = new_tune_power
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-        current_uc_att, current_tune_power, band,slot_num
+        current_uc_att, current_tune_power, band
     )
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
     step2_index = lowest_wl_index
@@ -401,13 +286,13 @@ if wl_median > 60 and wl_median < 120:
     if step2_index == 0:
         print("can be fine tuned")
         estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-            current_uc_att - 4, current_tune_power, band,slot_num
+            current_uc_att - 4, current_tune_power, band
         )
 
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
 
-if wl_median > 120 and wl_median < 150:
+if wl_median > 65 and wl_median < 200:
 
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
@@ -418,10 +303,10 @@ if wl_median > 120 and wl_median < 150:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-        current_uc_att, current_tune_power, band,slot_num
+        current_uc_att, current_tune_power, band
     )
 
-    if wl_median < 60:
+    if wl_median < 45:
         print(
             "WL: {} with {} channels out of {}".format(
                 wl_median, wl_length, channel_length
@@ -433,17 +318,12 @@ if wl_median > 120 and wl_median < 150:
         current_tune_power = S.amplitude_scale[band]
 
         estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-            current_uc_att, current_tune_power, band,slot_num
+            current_uc_att, current_tune_power, band
         )
-
-
-
-
-
 
         print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
-    if wl_median > 60:
+    if wl_median > 45:
 
         print(
             "WL: {} with {} channels out of {}".format(
@@ -455,6 +335,10 @@ if wl_median > 120 and wl_median < 150:
         current_uc_att = S.get_att_uc(band)
         current_tune_power = S.amplitude_scale[band]
 
+        estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
+            current_uc_att, current_tune_power, band
+        )
+        step1_index = lowest_wl_index
 
         if estimate_att < 16:
             print("adjusting tune power and uc att")
@@ -480,37 +364,8 @@ if wl_median > 120 and wl_median < 150:
             current_uc_att = adjusted_uc_att
             current_tune_power = new_tune_power
 
-        estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-            current_uc_att, current_tune_power, band,slot_num
-        )
-        step1_index = lowest_wl_index
-
-        # if estimate_att < 16:
-        #     print("adjusting tune power and uc att")
-        #     new_tune_power = current_tune_power + 2
-        #     adjusted_uc_att = current_uc_att + 12
-        #     S.set_att_uc(band, adjusted_uc_att)
-        #     S.find_freq(band, tone_power=new_tune_power, make_plot=True)
-        #     S.setup_notches(band, tone_power=new_tune_power, new_master_assignment=True)
-        #     S.run_serial_gradient_descent(band)
-        #     S.run_serial_eta_scan(band)
-        #     current_uc_att = adjusted_uc_att
-        #     current_tune_power = new_tune_power
-
-        # if estimate_att > 26:
-        #     print("adjusting tune power and uc att")
-        #     new_tune_power = current_tune_power + 2
-        #     adjusted_uc_att = current_uc_att - 11
-        #     S.set_att_uc(band, adjusted_uc_att)
-        #     S.find_freq(band, tone_power=new_tune_power, make_plot=True)
-        #     S.setup_notches(band, tone_power=new_tune_power, new_master_assignment=True)
-        #     S.run_serial_gradient_descent(band)
-        #     S.run_serial_eta_scan(band)
-        #     current_uc_att = adjusted_uc_att
-        #     current_tune_power = new_tune_power
-
         estimate_att, current_tune_power, lowest_wl_index, wl_median= fine_tune(
-            current_uc_att, current_tune_power, band,slot_num
+            current_uc_att, current_tune_power, band
         )
         print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
         step2_index = lowest_wl_index
@@ -518,13 +373,13 @@ if wl_median > 120 and wl_median < 150:
         if step2_index == 0 and step1_index == 0:
             print("can be fine tuned")
             estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-                current_uc_att - 4, current_tune_power, band,slot_num
+                current_uc_att - 4, current_tune_power, band
             )
 
         if step2_index == 4 and step1_index == 4:
             print("can be fine tuned")
             estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-                current_uc_att + 4, current_tune_power, band,slot_num
+                current_uc_att + 4, current_tune_power, band
             )
 
         print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
@@ -536,5 +391,4 @@ except:
     print('WL is off, please investigate')
 print("plotting directory is:")
 print(S.plot_dir)
-
 
