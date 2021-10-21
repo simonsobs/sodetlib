@@ -13,7 +13,7 @@ import time
 from sodetlib.det_config import DetConfig
 
 
-bands = [0,1,2,3]
+bands = [0,1,2,3,4,5,6,7]
 slot_num = 4
 
 cfg = DetConfig()

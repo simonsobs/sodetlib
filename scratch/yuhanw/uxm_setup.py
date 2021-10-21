@@ -108,7 +108,7 @@ for band in sorted(stream_by_band_by_channel.keys()):
         stream_single_channel = stream_single_band[channel]
 
 
-        f, Pxx = signal.welch(stream_single_channel, fs=fs, detrend=detrend)
+        f, Pxx = signal.welch(stream_single_channel, fs=fs, detrend=detrend,nperseg=2**12)
         Pxx = np.sqrt(Pxx)
         fmask = (fmin < f) & (f < fmax)
         wl = np.median(Pxx[fmask])
@@ -135,7 +135,7 @@ for band in sorted(stream_by_band_by_channel.keys()):
     for channel in sorted(stream_single_band.keys()):
         stream_single_channel = stream_single_band[channel]
         f, Pxx = signal.welch(stream_single_channel,
-                fs=fs, detrend=detrend)
+                fs=fs, detrend=detrend,nperseg=2**12)
         Pxx = np.sqrt(Pxx)
         fmask = (fmin < f) & (f < fmax)
         wl = np.median(Pxx[fmask])

@@ -23,7 +23,7 @@ import scipy.signal as signal
 
 
 
-band = 0
+band = 4
 slot_num = 4
 
 cfg = DetConfig()
