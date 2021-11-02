@@ -1,3 +1,7 @@
+"""
+Tools and classes for loading SMuRF controllers.
+"""
+
 from sodetlib.det_config import DetConfig
 
 
@@ -87,3 +91,7 @@ class LoadS:
         self.S_dict[slot_num].set_filter_disable(0)
         self.S_dict[slot_num].set_downsample_factor(set_downsample_factor)
         self.S_dict[slot_num].set_mode_dc()
+
+
+if  __name__ == "__main__":
+    pass
