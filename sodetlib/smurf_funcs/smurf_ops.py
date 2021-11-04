@@ -2,9 +2,10 @@
 Module for general smurf operations.
 """
 from sodetlib.util import cprint, TermColors, make_filename, \
-                          get_tracking_kwargs
+                          get_tracking_kwargs, Registers
 
 import sodetlib.smurf_funcs.optimize_params as op
+
 import numpy as np
 import os
 import time
@@ -402,14 +403,6 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     return r, f, df, sync
 
 
-def get_stream_session_id(S):
-    """
-    Gets the current G3 stream session-id
-    """
-    reg = S.smurf_processor + "SOStream:SOFileWriter:session_id"
-    return S._caget(reg)
-
-
 def get_session_files(cfg, session_id, idx=None, stream_id=None):
     base_dir = cfg.sys['g3_dir']
     if stream_id is None:
@@ -489,27 +482,25 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     session_id : int
         Id used to read back streamed data
     """
-    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
-    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
-    reg_action = so_root + "pysmurf_action"
-    reg_action_ts = so_root + "pysmurf_action_timestamp"
-    reg_stream_tag = so_root + "stream_tag"
+    reg = Registers(S)
 
-    S._caput(reg_action, S.pub._action)
-    S._caput(reg_action_ts, S.pub._action_ts)
-    S._caput(reg_stream_tag, tag)
+    reg.pysmurf_action.set(S.pub._action)
+    reg.pysmurf_action_timestamp.set(S.pub._action_ts)
+    reg.stream_tag.set(tag)
 
     S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
                      filter_wait_time=filter_wait_time)
 
     if emulator:
-        S._caput(reg_em_enable, 1)
+        reg.source_enable.set(1)
         S.set_stream_enable(1)
+
+    reg.open_g3stream.set(1)
 
     # Sometimes it takes a bit for data to propogate through to the
     # streamer
     for _ in range(5):
-        sess_id = get_stream_session_id(S)
+        sess_id = reg.g3_session_id.get()
         if sess_id != 0:
             break
         time.sleep(0.3)
@@ -535,27 +526,23 @@ def stream_g3_off(S, emulator=False):
     session_id : int
         Id used to read back streamed data
     """
-    sess_id = get_stream_session_id(S)
-
-    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
-    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
-    reg_action = so_root + "pysmurf_action"
-    reg_action_ts = so_root + "pysmurf_action_timestamp"
-    reg_stream_tag = so_root + "stream_tag"
+    reg = Registers(S)
+    sess_id = reg.g3_session_id.get()
 
     if emulator:
-        S._caput(reg_em_enable, 0)
+        reg.source_enable.set(0)
 
     S.set_stream_enable(0)
     S.stream_data_off()
 
-    S._caput(reg_action, '')
-    S._caput(reg_action_ts, 0)
-    S._caput(reg_stream_tag, '')
+    reg.open_g3stream.set(0)
+    reg.pysmurf_action.set('')
+    reg.pysmurf_action_timestamp.set(0)
+    reg.stream_tag.set('')
 
     # Waits until file is closed out before returning
     S.log("Waiting for g3 file to close out")
-    while get_stream_session_id(S) != 0:
+    while reg.g3_session_id.get() != 0:
         time.sleep(0.5)
 
     return sess_id
