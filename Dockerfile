@@ -1,5 +1,5 @@
 # sodetlib dockerfile.
-FROM tidair/pysmurf-client:v5.0.0
+FROM tidair/pysmurf-client:v5.0.3
 
 #################################################################
 # SPT3G Install
@@ -23,6 +23,12 @@ RUN apt-get install -y \
     rsync \
     cmake \
     libblas-dev \
+    # so3g reqs
+    automake \
+    gfortran \
+    build-essential \
+    libbz2-dev \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/CMB-S4/spt3g_software.git
@@ -40,15 +46,10 @@ ENV PYTHONPATH /usr/local/src/spt3g_software/build:${PYTHONPATH}
 # SO3G Install
 #################################################################
 WORKDIR /usr/local/src
+ENV LANG C.UTF-8
+
 RUN git clone https://github.com/simonsobs/so3g.git
 WORKDIR /usr/local/src/so3g
-ENV LANG C.UTF-8
-RUN apt-get update
-RUN apt-get install -y build-essential \
-    automake \
-    gfortran \
-    libopenblas-dev
-
 RUN pip3 install -r requirements.txt
 
 ENV Spt3g_DIR /usr/local/src/spt3g_software
@@ -82,7 +83,6 @@ RUN pip3 install ./ocs
 # Sets ocs configuration environment
 ENV OCS_CONFIG_DIR=/config
 
-
 #################################################################
 # sodetlib Install
 #################################################################
@@ -92,3 +92,5 @@ WORKDIR /sodetlib
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
 
+# This is to get the leap-second download out of the way
+RUN python3 -c "import so3g"
