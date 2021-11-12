@@ -14,16 +14,33 @@ import os
 import matplotlib.pylab as plt
 
 
-def full_band_response(S, bands=None, n_scan_per_band=5, wait_btw_bands_sec=5, verbose=True):
-    plt.ion()
-    prefix_str = f' From {full_band_response.__name__} '
+def full_band_response(S, bands=None, n_scan_per_band=1, wait_btw_bands_sec=5, verbose=True):
+    """
+    Parameters
+    ----------
+    S: SMuRF controller object.
+    bands: set or None, optional- default is None, which get the bands from S, SMuRF controller object.
+           Needs to be some iterable that can be turned into a set of bands (bias lines).
+           All the bands in this set will be operated on.
+    n_scan_per_band: int, optional, default is 1. See n_scan argument in PySmuRF Docs for full_band_resp()
+                     ==> "(int, optional, default 1) – The number of scans to take and average.a
+    wait_btw_bands_sec: float, optional. default is 5. While looping over bands, wait this amount of time in
+                        seconds between bands.
+    verbose: bool - default is True: When True, toggles print() statements for the
+                    various actions taken by the methods in this class. False,runs silently.
 
+    Returns
+    -------
+
+    """
+
+    plt.ion()
     timestamp = S.get_timestamp()
     if bands is None:
         bands = S.config.get('init').get('bands')
 
     resp_dict = {}
-    for band in sorted(bands):
+    for band in bands:
         if verbose:
             print(f'{prefix_str}\n\nBand {band}\n\n')
         resp_dict[band] = {}
@@ -95,14 +112,13 @@ def full_band_response(S, bands=None, n_scan_per_band=5, wait_btw_bands_sec=5, v
 if __name__ == '__main__':
     import argparse
     from sodetlib.det_config import DetConfig
-    from scratch.chw3k5.ufm_optimize.operators.controler import LoadS
     """
     The code below will only run if the file is run directly, but not if elements from this file are imported.
     For example:
         python3 time_steams.py -args_for_argparse
     will have __name__ == '__main__' as True, and the code below will run locally.
     """
-
+    prefix_str = f'\n From {full_band_response.__name__} '
     # Seed a new parse for this file with the parser from the SMuRF controller class
     cfg = DetConfig()
 
@@ -131,7 +147,7 @@ if __name__ == '__main__':
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    full_band_response(S=S, bands=args.bands, n_scan_per_band=args.n_scan_per_band,
+    full_band_response(S=S, bands=args.bands[0], n_scan_per_band=args.n_scan_per_band,
                        wait_btw_bands_sec=args.wait_btw_bands_sec, verbose=True)
 
 

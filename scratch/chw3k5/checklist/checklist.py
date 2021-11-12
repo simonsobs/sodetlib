@@ -1,10 +1,10 @@
 import os
 
 verbose = True
-pton_mode = True
+pton_mode = False
 
 
-true_set = {'y', 'yes', 't', 'true'}
+true_set = {'y', 'yes', 't', 'true', 'g', 'good'}
 
 # The Cold Amplifier check
 input("The cold amplifier check is not currently written, press enter to continue")
@@ -12,7 +12,7 @@ base_scratch_dir = '/sodetlib/scratch'
 # base_scratch_dir = '/Users/cwheeler/PycharmProjects/sodetlib/scratch'
 yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
 daniel_dir = os.path.join(base_scratch_dir, 'daniel')
-caleb_dir = os.path.join(base_scratch_dir, 'caleb')
+caleb_dir = os.path.join(base_scratch_dir, 'chw3k5')
 argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
 
 yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-yuhan')
@@ -42,7 +42,9 @@ all_files.update(out_of_date_files_daniel)
 all_files.update(unversioned_files_daniel)
 
 
-# Full band response
+"""
+Full band response
+"""
 if verbose:
     print('Full Band Response - Starting')
 finished_full_band_response = False
@@ -50,7 +52,9 @@ while not finished_full_band_response:
     if pton_mode:
         exec(open(all_files['full_band_response']).read())
     else:
-        pass
+        full_file_path = os.path.join(argparse_files_dir, 'full_band_response.py')
+        os.system(f"python3 {full_file_path} 0 1 2 3 4 5 6 7 --slot {3} --verbose --n-scan-per-band {5} " +
+                  f"--wait-bwt-bands-sec {5}")
     full_band_response_good = input("Is the full band response good? yes/no\n"
                                     "('good' should to be described to a first time user here, or a yet a hyperlink")
     if full_band_response_good.lower() in true_set:
@@ -64,4 +68,8 @@ else:
     if verbose:
         print('  Full Band Response - Finished\n')
 
+
+"""
+Full band response
+"""
 
