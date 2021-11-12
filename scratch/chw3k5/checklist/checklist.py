@@ -1,5 +1,4 @@
 import os
-import sys
 
 verbose = True
 pton_mode = True
@@ -10,12 +9,14 @@ true_set = {'y', 'yes', 't', 'true'}
 # The Cold Amplifier check
 input("The cold amplifier check is not currently written, press enter to continue")
 base_scratch_dir = '/sodetlib/scratch'
-yuhan_dir = os.path.join(base_scratch_dir, 'yuhan')
+# base_scratch_dir = '/Users/cwheeler/PycharmProjects/sodetlib/scratch'
+yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
 daniel_dir = os.path.join(base_scratch_dir, 'daniel')
 caleb_dir = os.path.join(base_scratch_dir, 'caleb')
+argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
 
-yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'from-checklist/unversioned-yuhan')
-daniel_dir_caleb_branch = os.path.join(caleb_dir, 'from-checklist/unversioned-daniel')
+yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-yuhan')
+daniel_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-daniel')
 
 versioned_files = {'full_band_response': os.path.join(yuhan_dir, 'full_band_response.py'),
                    'ufm_biasstep_loop': os.path.join(yuhan_dir, 'ufm_biasstep_loop.py')}

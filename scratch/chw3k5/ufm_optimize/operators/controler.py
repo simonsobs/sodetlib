@@ -93,5 +93,5 @@ class LoadS:
         self.S_dict[slot_num].set_mode_dc()
 
 
-if  __name__ == "__main__":
+if __name__ == "__main__":
     pass
