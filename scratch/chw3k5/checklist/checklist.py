@@ -1,5 +1,6 @@
 import os
 
+
 verbose = True
 bands_full_band_response = [f'{n}' for n in range(8)]
 band_num_normal_opt = 0
@@ -12,13 +13,15 @@ fs = 200.0
 nperseg = 2 ** 16
 detrend = 'constant'
 
-
+# When True it runs scripts with by Yuhan and Daniel that were copied on Nov 11, 2021
 pton_mode = False
-print_help = True
-print_os_strings = True
+# Prints the Argparse help option, disables the sending of os commands
+print_help = False
+# disables the sending of os commands
+print_os_strings = False
 
 do_amplifier_check = False
-do_full_band_response = True
+do_full_band_response = False
 do_ufm_optimize = True
 
 
@@ -59,7 +62,8 @@ all_files.update(out_of_date_files_daniel)
 all_files.update(unversioned_files_daniel)
 
 
-def commanding_mode_selector(file_basename, ocs_arg):
+def commanding_mode_selector(file_basename, ocs_arg, pton_mode=pton_mode, argparse_files_dir=argparse_files_dir,
+                             verbose=verbose, print_help=print_help, print_os_strings=print_os_strings):
     if pton_mode:
         exec(open(all_files[python_file_basename]).read())
     else:
@@ -123,28 +127,28 @@ if do_full_band_response:
 UFM optimize
 """
 if do_ufm_optimize:
-    if verbose:
-        print('UFM optimize - Starting')
-    python_file_basename = 'ufm_optimize_quick_normal'
-    ocs_arg_list = [f'{band_num_normal_opt}',
-                    f'--slot', f'{slot_num}',
-                    f'--stream-time', f'{stream_time}',
-                    f'--fmin', f'{fmin}',
-                    f'--fmax', f'{fmax}',
-                    f'--fs', f'{fs}',
-                    f'--nperseg', f'{nperseg}',
-                    f'--detrend', f'{detrend}']
-    if verbose and not pton_mode:
-        print('UFM optimize - Starting')
-        print('Optimizing TES biases in the normal stage\n' +
-              f'takes median noise from {fmin}Hz to {fmax}Hz\n' +
-              'different noise levels here are based on phase 2 \n' +
-              'noise target and noise model after considering\n' +
-              'johnson noise at 100mK')
-    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+    # if verbose:
+    #     print('UFM optimize - Starting')
+    # python_file_basename = 'ufm_optimize_quick_normal'
+    # ocs_arg_list = [f'{band_num_normal_opt}',
+    #                 f'--slot', f'{slot_num}',
+    #                 f'--stream-time', f'{stream_time}',
+    #                 f'--fmin', f'{fmin}',
+    #                 f'--fmax', f'{fmax}',
+    #                 f'--fs', f'{fs}',
+    #                 f'--nperseg', f'{nperseg}',
+    #                 f'--detrend', f'{detrend}']
+    # if verbose and not pton_mode:
+    #     print('UFM optimize - Starting')
+    #     print('Optimizing TES biases in the normal stage\n' +
+    #           f'takes median noise from {fmin}Hz to {fmax}Hz\n' +
+    #           'different noise levels here are based on phase 2 \n' +
+    #           'noise target and noise model after considering\n' +
+    #           'johnson noise at 100mK')
+    # commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
 
     # biased superconducting
-    python_file_basename = 'ufm_optimize_quick_normal'
+    python_file_basename = 'ufm_optimize_quick'
     ocs_arg_list = [f'{band_num_opt}',
                     f'--slot', f'{slot_num}',
                     f'--stream-time', f'{stream_time}',
@@ -158,7 +162,7 @@ if do_ufm_optimize:
               f'takes median noise from {fmin}Hz to {fmax}Hz\n' +
               'different noise levels here are based on phase 2 \n' +
               'noise target and noise model after considering\n' +
-              'johnson noise at 100mK')
+              'johnson noise at 100mK.')
     commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
 
     if verbose:

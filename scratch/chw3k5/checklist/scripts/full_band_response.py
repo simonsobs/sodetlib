@@ -113,7 +113,7 @@ def full_band_response(S, bands=None, n_scan_per_band=1, wait_btw_bands_sec=5, v
     return
 
 
-prefix_str = f'\n From {full_band_response.__name__} '
+prefix_str = f'\n From {full_band_response.__name__}'
 
 
 if __name__ == '__main__':

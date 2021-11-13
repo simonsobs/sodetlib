@@ -54,7 +54,7 @@ def ufm_optimize_normal(S, cfg, opt_band=0, stream_time=20.0, fmin=5, fmax=50, f
     S.estimate_phase_delay(opt_band)
     verbose_print("setting synthesis scale")
     # hard coding it for the current fw
-    S.verbose_print(opt_band, 1)
+    S.set_synthesis_scale(opt_band, 1)
     verbose_print("running find freq")
     S.find_freq(opt_band, tone_power=cfg.dev.bands[opt_band]["drive"], make_plot=True)
     verbose_print("running setup notches")
