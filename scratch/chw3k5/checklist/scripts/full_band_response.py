@@ -129,9 +129,9 @@ if __name__ == '__main__':
     cfg = DetConfig()
 
     # set up the parser for this Script
-    parser = argparse.ArgumentParser(description='Parser for time_stream.py script.')
+    parser = argparse.ArgumentParser(description='Parser for full_band_response.py script.')
     parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
-                        help='The SMuRF bands (ints) to optimize. This is expected to be a sequence of N integers.')
+                        help='The SMuRF bands to target.')
 
     # optional arguments
     parser.add_argument('--n-scan-per-band', dest='n_scan_per_band', type=int, default=1,

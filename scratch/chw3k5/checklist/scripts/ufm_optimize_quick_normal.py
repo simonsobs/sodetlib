@@ -350,18 +350,27 @@ if __name__ == '__main__':
     cfg = DetConfig()
 
     # set up the parser for this Script
-    parser = argparse.ArgumentParser(description='Parser for time_stream.py script.')
-    parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
-                        help='The SMuRF bands (ints) to optimize. This is expected to be a sequence of N integers.')
+    parser = argparse.ArgumentParser(description='Parser for ufm_optimize_quick_normal.py script.')
+    parser.add_argument('band', type=int, metavar='band',
+                        help='The SMuRF band number to optimize on.')
 
     # optional arguments
-    parser.add_argument('--n-scan-per-band', dest='n_scan_per_band', type=int, default=1,
-                        help="int, optional, default is 1.  See n_scan argument in PySmuRF Docs for "
-                             "full_band_resp() -> (int, optional, default 1) – The number of scans to take " +
-                             "and average.")
-    parser.add_argument('--wait-bwt-bands-sec', dest='wait_btw_bands_sec', type=float, default=5,
-                        help="float, optional, default is 5. While looping over bands, wait this amount of time in " +
-                             "seconds between bands.")
+    parser.add_argument('--stream-time', dest='stream_time', type=float, default=20.0,
+                        help="float, optional, default is 20.0. The amount of time to sleep in seconds while " +
+                             "streaming SMuRF data for analysis.")
+    parser.add_argument('--fmin', dest='fmin', type=float, default=float('-inf'),
+                        help="float, optional, default is float('-inf'). The lower frequency (Hz) bound used " +
+                             "when creating a mask of white noise levels Suggested value of 5.0")
+    parser.add_argument('--fmax', dest='fmax', type=float, default=float('inf'),
+                        help="float, optional, default is float('inf'). The upper frequency (Hz) bound used " +
+                             "when creating a mask of white noise levels Suggested value of 50.0")
+    parser.add_argument('--fs', dest='fs', type=float, default=None,
+                        help="float, optional, default is None. Passed to scipy.signal.welch. The sample rate.")
+    parser.add_argument('--nperseg', dest='nperseg', type=int, default=2**18,
+                        help="int, optional, default is 2**18. The number of samples used in the PSD estimator. " +
+                             "See scipy.signal.welch.")
+    parser.add_argument('--detrend', dest='detrend', default='constant',
+                        help="str, optional, default is 'constant'. Passed to scipy.signal.welch.")
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         help="Turns on printed output from the script. The default is --verbose." +
                              "--no-verbose has minimal (or no) print statements.")
@@ -374,5 +383,6 @@ if __name__ == '__main__':
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    ufm_optimize_normal(S=S, cfg=cfg, opt_band=args.band, stream_time=20.0, fmin=5, fmax=50, fs=200, nperseg=2 ** 16,
-                        detrend='constant', verbose=args.verbose)
+    ufm_optimize_normal(S=S, cfg=cfg, opt_band=args.band, stream_time=args.stream_time,
+                        fmin=args.fmin, fmax=args.fmax, fs=args.fs, nperseg=args.nperseg,
+                        detrend=args.detrend, verbose=args.verbose)
