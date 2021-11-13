@@ -194,7 +194,7 @@ if __name__ == "__main__":
 
     # set up the parser for this Script
     parser = argparse.ArgumentParser(description='Parser for ufm_optimize_quick.py script.')
-    parser.add_argument('tune-file-path', metavar='path',
+    parser.add_argument('tune-file-path', metavar='path', dest='tune_file_path',
                         help='Required, first positional augment, str The full path to the tune file for relock.')
     parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
                         help='Required, N additional positional arguments, int, separated by a space.' +
@@ -228,6 +228,6 @@ if __name__ == "__main__":
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    uxm_relock(S=S, cfg=cfg, bands=args.band, stream_time=args.stream_time,
+    uxm_relock(S=S, cfg=cfg, fav_tune_files=args.tune_file_path, bands=args.band, stream_time=args.stream_time,
                fmin=args.fmin, fmax=args.fmax, fs=args.fs, nperseg=args.nperseg,
                detrend=args.detrend, verbose=args.verbose)
