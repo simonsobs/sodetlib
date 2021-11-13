@@ -2,7 +2,7 @@ import os
 
 
 verbose = True
-bands_full_band_response = [f'{n}' for n in range(8)]
+bands_all = [f'{n}' for n in range(8)]
 band_num_normal_opt = 0
 band_num_opt = 4
 slot_num = 3
@@ -13,18 +13,22 @@ fs = 200.0
 nperseg = 2 ** 16
 detrend = 'constant'
 
+relock_tune_file = '/data/smurf_data/tune/1636164705_tune.npy'
+
 # When True it runs scripts with by Yuhan and Daniel that were copied on Nov 11, 2021
 pton_mode = False
 # Prints the Argparse help option, disables the sending of os commands
-print_help = False
+print_help = True
 # disables the sending of os commands
 print_os_strings = False
 
-do_amplifier_check = False
-do_full_band_response = False
+do_amplifier_check = True
+do_full_band_response = True
 do_ufm_optimize = True
+do_setup_and_relock = True
 
 
+# these are all the responses that are considered to be affirmative, all other responses are negative
 true_set = {'y', 'yes', 't', 'true', 'g', 'good'}
 
 base_scratch_dir = '/sodetlib/scratch'
@@ -33,7 +37,7 @@ yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
 daniel_dir = os.path.join(base_scratch_dir, 'daniel')
 caleb_dir = os.path.join(base_scratch_dir, 'chw3k5')
 argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
-# argparse_files_dir = 'scripts'
+argparse_files_dir = 'scripts'
 
 yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-yuhan')
 daniel_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-daniel')
@@ -42,11 +46,15 @@ versioned_files = {'full_band_response': os.path.join(yuhan_dir, 'full_band_resp
                    'ufm_biasstep_loop': os.path.join(yuhan_dir, 'ufm_biasstep_loop.py')}
 
 
-out_of_date_files_yuhan = {'ufm_optimize_quick_normal': os.path.join(yuhan_dir_caleb_branch, 'ufm_optimize_quick_normal.py'),
+out_of_date_files_yuhan = {'ufm_optimize_quick_normal': os.path.join(yuhan_dir_caleb_branch,
+                                                                     'ufm_optimize_quick_normal.py'),
                            'ufm_optimize_quick': os.path.join(yuhan_dir_caleb_branch, 'ufm_optimize_quick.py'),
-                           'noise_stack_by_band_new': os.path.join(yuhan_dir_caleb_branch, 'noise_stack_by_band_new.py'),
-                           'ufm_noise_in_transition': os.path.join(yuhan_dir_caleb_branch, 'ufm_noise_in_transition.py'),
-                           'uxm_bath_iv_noise_biasstep': os.path.join(yuhan_dir_caleb_branch, 'uxm_bath_iv_noise_biasstep.py'),
+                           'noise_stack_by_band_new': os.path.join(yuhan_dir_caleb_branch,
+                                                                   'noise_stack_by_band_new.py'),
+                           'ufm_noise_in_transition': os.path.join(yuhan_dir_caleb_branch,
+                                                                   'ufm_noise_in_transition.py'),
+                           'uxm_bath_iv_noise_biasstep': os.path.join(yuhan_dir_caleb_branch,
+                                                                      'uxm_bath_iv_noise_biasstep.py'),
                            }
 
 out_of_date_files_daniel = {'uxm_setup': os.path.join(daniel_dir_caleb_branch, 'uxm_setup.py'),
@@ -105,7 +113,7 @@ if do_full_band_response:
     finished_full_band_response = False
     while not finished_full_band_response:
         python_file_basename = 'full_band_response'
-        ocs_arg_list = bands_full_band_response
+        ocs_arg_list = bands_all
         ocs_arg_list.extend([f'--slot', f'{slot_num}',
                              f'--n-scan-per-band', f'{5}',
                              f'--wait-bwt-bands-sec', f'{5}'])
@@ -127,25 +135,25 @@ if do_full_band_response:
 UFM optimize
 """
 if do_ufm_optimize:
-    # if verbose:
-    #     print('UFM optimize - Starting')
-    # python_file_basename = 'ufm_optimize_quick_normal'
-    # ocs_arg_list = [f'{band_num_normal_opt}',
-    #                 f'--slot', f'{slot_num}',
-    #                 f'--stream-time', f'{stream_time}',
-    #                 f'--fmin', f'{fmin}',
-    #                 f'--fmax', f'{fmax}',
-    #                 f'--fs', f'{fs}',
-    #                 f'--nperseg', f'{nperseg}',
-    #                 f'--detrend', f'{detrend}']
-    # if verbose and not pton_mode:
-    #     print('UFM optimize - Starting')
-    #     print('Optimizing TES biases in the normal stage\n' +
-    #           f'takes median noise from {fmin}Hz to {fmax}Hz\n' +
-    #           'different noise levels here are based on phase 2 \n' +
-    #           'noise target and noise model after considering\n' +
-    #           'johnson noise at 100mK')
-    # commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+    if verbose:
+        print('UFM optimize - Starting')
+    python_file_basename = 'ufm_optimize_quick_normal'
+    ocs_arg_list = [f'{band_num_normal_opt}',
+                    f'--slot', f'{slot_num}',
+                    f'--stream-time', f'{stream_time}',
+                    f'--fmin', f'{fmin}',
+                    f'--fmax', f'{fmax}',
+                    f'--fs', f'{fs}',
+                    f'--nperseg', f'{nperseg}',
+                    f'--detrend', f'{detrend}']
+    if verbose and not pton_mode:
+        print('UFM optimize - Starting')
+        print('Optimizing TES biases in the normal stage\n' +
+              f'takes median noise from {fmin}Hz to {fmax}Hz\n' +
+              'different noise levels here are based on phase 2 \n' +
+              'noise target and noise model after considering\n' +
+              'johnson noise at 100mK')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
 
     # biased superconducting
     python_file_basename = 'ufm_optimize_quick'
@@ -167,3 +175,45 @@ if do_ufm_optimize:
 
     if verbose:
         print('  UFM optimize - Finished\n')
+
+
+"""
+UXM Setup and Relock
+"""
+if do_ufm_optimize:
+    if verbose:
+        print('\nUXM Setup and Relock - Starting\n')
+
+    # UXM Setup
+    python_file_basename = 'uxm_setup'
+    ocs_arg_list = bands_all
+    ocs_arg_list.extend([f'--slot', f'{slot_num}',
+                         f'--stream-time', f'{stream_time}',
+                         f'--fmin', f'{fmin}',
+                         f'--fmax', f'{fmax}',
+                         f'--fs', f'{fs}',
+                         f'--nperseg', f'{nperseg}',
+                         f'--detrend', f'{detrend}'])
+    if verbose and not pton_mode:
+        print('  UXM Setup  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    # UXM Relock
+    python_file_basename = 'uxm_relock'
+    ocs_arg_list = [f'{relock_tune_file}']
+    ocs_arg_list.extend(bands_all)
+    ocs_arg_list.extend([f'{band_num_opt}',
+                         f'--slot', f'{slot_num}',
+                         f'--stream-time', f'{stream_time}',
+                         f'--fmin', f'{fmin}',
+                         f'--fmax', f'{fmax}',
+                         f'--fs', f'{fs}',
+                         f'--nperseg', f'{nperseg}',
+                         f'--detrend', f'{detrend}'])
+    fav_tune_files = '/data/smurf_data/tune/1636164705_tune.npy'
+    if verbose and not pton_mode:
+        print('  UXM Relock  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    if verbose:
+        print('  UXM Setup and Relock - Finished\n')
