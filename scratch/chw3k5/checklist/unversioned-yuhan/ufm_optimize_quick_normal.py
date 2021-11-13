@@ -198,9 +198,7 @@ def rough_tune(current_uc_att, current_tune_power, band,slot_num):
 
         bands, channels = np.where(mask != -1)
         phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-        sample_nums = np.arange(len(phase[0]))
         fs = 200
-        t_array = sample_nums / fs
         import scipy.signal as signal
         for c, (b, ch) in enumerate(zip(bands, channels)):
             if ch < 0:

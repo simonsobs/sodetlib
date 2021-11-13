@@ -1,11 +1,15 @@
 """
-The core code is from Princeton, created by Yunan Wang and Daniel Dutcher Oct/Nov 2021.
+The core code is from Princeton, created by Yuhan Wang and Daniel Dutcher Oct/Nov 2021.
 
-The code was refactored by Caleb Wheeler Nov 2021 to support augparse
-The Argparse (found at the bottom of the file) and provides a minimal
+The code was refactored by Caleb Wheeler Nov 2021 to support argparse.
+The argparse implementation (found at the bottom of the file) and provides a minimal
 documentation framework.
 
-Use full_band_response.py -h to see the available options.
+Use:
+
+python3 full_band_response.py -h
+
+to see the available options and required formatting.
 """
 
 import time
@@ -109,16 +113,18 @@ def full_band_response(S, bands=None, n_scan_per_band=1, wait_btw_bands_sec=5, v
     return
 
 
+prefix_str = f'\n From {full_band_response.__name__} '
+
+
 if __name__ == '__main__':
     import argparse
     from sodetlib.det_config import DetConfig
     """
     The code below will only run if the file is run directly, but not if elements from this file are imported.
     For example:
-        python3 time_steams.py -args_for_argparse
+        python3 full_band_response.py -args_for_argparse
     will have __name__ == '__main__' as True, and the code below will run locally.
     """
-    prefix_str = f'\n From {full_band_response.__name__} '
     # Seed a new parse for this file with the parser from the SMuRF controller class
     cfg = DetConfig()
 
@@ -148,6 +154,6 @@ if __name__ == '__main__':
 
     # run the def in this file
     full_band_response(S=S, bands=args.bands[0], n_scan_per_band=args.n_scan_per_band,
-                       wait_btw_bands_sec=args.wait_btw_bands_sec, verbose=True)
+                       wait_btw_bands_sec=args.wait_btw_bands_sec, verbose=args.verbose)
 
 

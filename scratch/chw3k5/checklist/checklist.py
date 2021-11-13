@@ -1,13 +1,15 @@
 import os
 
 verbose = True
-pton_mode = False
+pton_mode = True
+
+do_amplifier_check = False
+do_full_band_response = False
+do_ufm_optimize = True
 
 
 true_set = {'y', 'yes', 't', 'true', 'g', 'good'}
 
-# The Cold Amplifier check
-input("The cold amplifier check is not currently written, press enter to continue")
 base_scratch_dir = '/sodetlib/scratch'
 # base_scratch_dir = '/Users/cwheeler/PycharmProjects/sodetlib/scratch'
 yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
@@ -43,33 +45,49 @@ all_files.update(unversioned_files_daniel)
 
 
 """
+Amplifier check
+"""
+if do_amplifier_check:
+    input("The cold amplifier check is not currently written, press enter to continue")
+
+
+"""
 Full band response
 """
-if verbose:
-    print('Full Band Response - Starting')
-finished_full_band_response = False
-while not finished_full_band_response:
-    if pton_mode:
-        exec(open(all_files['full_band_response']).read())
-    else:
-        full_file_path = os.path.join(argparse_files_dir, 'full_band_response.py')
-        os.system(f"python3 {full_file_path} 0 1 2 3 4 5 6 7 --slot {3} --verbose --n-scan-per-band {5} " +
-                  f"--wait-bwt-bands-sec {5}")
-    full_band_response_good = input("Is the full band response good? yes/no\n"
-                                    "('good' should to be described to a first time user here, or a yet a hyperlink")
-    if full_band_response_good.lower() in true_set:
-        finished_full_band_response = True
-    else:
-        print("A 'bad' full band response triggers a rough sweep")
-
-        input("A rough sweep is not currently written, press enter and end this script")
-        raise FileNotFoundError("A rough sweep is not currently written, replace this exception with code.")
-else:
+if do_full_band_response:
     if verbose:
-        print('  Full Band Response - Finished\n')
+        print('Full Band Response - Starting')
+    finished_full_band_response = False
+    while not finished_full_band_response:
+        if pton_mode:
+            exec(open(all_files['full_band_response']).read())
+        else:
+            full_file_path = os.path.join(argparse_files_dir, 'full_band_response.py')
+            os.system(f"python3 {full_file_path} 0 1 2 3 4 5 6 7 --slot {3} --verbose --n-scan-per-band {5} " +
+                      f"--wait-bwt-bands-sec {5}")
+        full_band_response_good = input("Is the full band response good? [yes/no]: ")
+        if full_band_response_good.lower() in true_set:
+            finished_full_band_response = True
+        else:
+            raise RuntimeError("A rough sweep using a VNA is recommended as diagnostic tool.")
+    else:
+        if verbose:
+            print('  Full Band Response - Finished\n')
 
 
 """
-Full band response
+UFM optimize
 """
-
+if do_ufm_optimize:
+    if verbose:
+        print('UFM optimize - Starting')
+    finished_full_band_response = False
+    while not finished_full_band_response:
+        if pton_mode:
+            exec(open(all_files['ufm_optimize_quick_normal']).read())
+        else:
+            full_file_path = os.path.join(argparse_files_dir, 'ufm_optimize_quick_normal.py')
+            os.system(f"python3 {full_file_path} ")
+    else:
+        if verbose:
+            print('  UFM optimize - Finished\n')
