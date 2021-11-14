@@ -7,17 +7,22 @@ documentation framework.
 
 Use:
 
-python3 uxm_setup.py -h
+python3 noise_stack_by_band_new.py -h
 
 to see the available options and required formatting.
 """
 import os
 import time
-import matplotlib
+import warnings
+
 import numpy as np
-from scipy import signal
+import scipy.signal as signal
+import matplotlib
+
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+from matplotlib import pyplot as plt
+
+warnings.filterwarnings("ignore")
 
 
 def verbose_print(msg, verbose=True):
@@ -26,56 +31,9 @@ def verbose_print(msg, verbose=True):
     return
 
 
-def uxm_setup(S, cfg, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, nperseg=2 ** 16,
-              detrend='constant', verbose=True):
-    verbose_print('plotting directory is:\n{S.plot_dir}', verbose)
-    if bands is None:
-        bands = S.config.get('init').get('bands')
-
-    S.all_off()
-    S.set_rtm_arb_waveform_enable(0)
-    S.set_filter_disable(0)
-    S.set_downsample_factor(20)
-    S.set_mode_dc()
-
-    for band in bands:
-        verbose_print(f'setting up band {band}', verbose)
-
-        S.set_att_dc(band, cfg.dev.bands[band]['dc_att'])
-        verbose_print('band {} dc_att {}'.format(band, S.get_att_dc(band)), verbose)
-
-        S.set_att_uc(band, cfg.dev.bands[band]['uc_att'])
-        verbose_print('band {} uc_att {}'.format(band, S.get_att_uc(band)), verbose)
-
-        S.amplitude_scale[band] = cfg.dev.bands[band]['drive']
-        verbose_print('band {} tone power {}'.format(band, S.amplitude_scale[band]), verbose)
-
-        verbose_print('estimating phase delay', verbose)
-        S.estimate_phase_delay(band)
-        verbose_print('setting synthesis scale', verbose)
-        # hard coding it for the current fw
-        S.set_synthesis_scale(band, 1)
-        verbose_print('running find freq', verbose)
-        S.find_freq(band, tone_power=cfg.dev.bands[band]['drive'], make_plot=True)
-        verbose_print('running setup notches', verbose)
-        S.setup_notches(band, tone_power=cfg.dev.bands[band]['drive'], new_master_assignment=True)
-        verbose_print('running serial gradient descent and eta scan', verbose)
-        S.run_serial_gradient_descent(band)
-        S.run_serial_eta_scan(band)
-        verbose_print('running tracking setup', verbose)
-        S.set_feedback_enable(band, 1)
-        S.tracking_setup(band, reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],
-                         fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False,
-                         show_plot=False, channel=S.which_on(band), nsamp=2 ** 18,
-                         lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
-                         feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],
-                         feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],
-                         lms_gain=cfg.dev.bands[band]['lms_gain'])
-
-    # verbose_print('checking tracking', verbose)
-    # S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
-
-    verbose_print(f'taking {stream_time}s timestream', verbose)
+def noise_stack_by_band(S, stream_time=20.0, fmin=5, fmax=50, fs=200, nperseg=2 ** 18,
+                        detrend='constant', verbose=False):
+    verbose_print(f"{prefix_str} plotting directory is:\n{S.plot_dir}", verbose)
 
     # non blocking statement to start time stream and return the dat filename
     dat_path = S.stream_data_on()
@@ -91,7 +49,7 @@ def uxm_setup(S, cfg, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, npe
 
     # hard coded variables
     bands, channels = np.where(mask != -1)
-    phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
+    phase *= S.pA_per_phi0 / (2.0 * np.pi)  # pA
     sample_nums = np.arange(len(phase[0]))
     t_array = sample_nums / fs
 
@@ -154,8 +112,13 @@ def uxm_setup(S, cfg, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, npe
         ax_this_band.grid()
         ax_this_band.axvline(1.4, linestyle='--', alpha=0.6, label='1.4 Hz', color='C1')
         ax_this_band.axvline(60, linestyle='--', alpha=0.6, label='60 Hz', color='C2')
+        # ax_this_band.axvline(3.,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C3')
+        # ax_this_band.axvline(4.,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C3')
+        # ax_this_band.axvline(5.,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C3')
+        # ax_this_band.axvline(6.,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C3')
+        # ax_this_band.axvline(7.,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C3')
         ax_this_band.set_title(f'band {band} yield {band_yield}')
-        ax_this_band.set_ylim([1, 5e3])
+        ax_this_band.set_ylim([1, 1e4])
 
         ax_this_band_2 = axs[band // 2, band % 2 * 2 + 1]
         ax_this_band_2.set_xlabel('Amp [pA/rtHz]')
@@ -171,30 +134,27 @@ def uxm_setup(S, cfg, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, npe
     plt.savefig(os.path.join(S.plot_dir, save_name))
 
     S.save_tune()
-    verbose_print(f'plotting directory is:\n{S.plot_dir}', verbose)
+    verbose_print(f"plotting directory is:\n{S.plot_dir}", verbose)
     return
 
 
-prefix_str = f'\n From {uxm_setup.__name__}'
+prefix_str = f'\n From {noise_stack_by_band.__name__} '
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import argparse
     from sodetlib.det_config import DetConfig
 
     """
     The code below will only run if the file is run directly, but not if elements from this file are imported.
     For example:
-        python3 uxm_relock.py -args_for_argparse
+        python3 noise_stack_by_band_new.py -args_for_argparse
     will have __name__ == '__main__' as True, and the code below will run locally.
     """
     # Seed a new parse for this file with the parser from the SMuRF controller class
     cfg = DetConfig()
 
     # set up the parser for this Script
-    parser = argparse.ArgumentParser(description='Parser for ufm_optimize_quick.py script.')
-    parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
-                        help='The SMuRF bands to target.')
-
+    parser = argparse.ArgumentParser(description='Parser for noise_stack_by_band_new.py script.')
     # optional arguments
     parser.add_argument('--stream-time', dest='stream_time', type=float, default=20.0,
                         help="float, optional, default is 20.0. The amount of time to sleep in seconds while " +
@@ -224,6 +184,5 @@ if __name__ == "__main__":
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    uxm_setup(S=S, cfg=cfg, bands=args.bands[0], stream_time=args.stream_time,
-              fmin=args.fmin, fmax=args.fmax, fs=args.fs, nperseg=args.nperseg,
-              detrend=args.detrend, verbose=args.verbose)
+    noise_stack_by_band(S=S, stream_time=args.stream_time, fmin=args.fmin, fmax=args.fmax, fs=args.fs,
+                        nperseg=args.nperseg, detrend=args.detrend, verbose=args.verbose)

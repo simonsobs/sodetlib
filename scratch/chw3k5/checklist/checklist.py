@@ -7,25 +7,29 @@ band_num_normal_opt = 0
 band_num_opt = 4
 slot_num = 3
 stream_time = 20.0
+stream_time_quality_check = 60.0
 fmin = 5.0
 fmax = 50.0
 fs = 200.0
 nperseg = 2 ** 16
 detrend = 'constant'
 
-relock_tune_file = '/data/smurf_data/tune/1636164705_tune.npy'
+# relock_tune_file = '/data/smurf_data/tune/1636164705_tune.npy'
+relock_tune_file = 'latest'
 
 # When True it runs scripts with by Yuhan and Daniel that were copied on Nov 11, 2021
 pton_mode = False
 # Prints the Argparse help option, disables the sending of os commands
-print_help = True
+print_help = False
 # disables the sending of os commands
 print_os_strings = False
 
-do_amplifier_check = True
-do_full_band_response = True
-do_ufm_optimize = True
+do_amplifier_check = False
+do_full_band_response = False
+do_ufm_optimize = False
 do_setup_and_relock = True
+do_quality_check = False
+do_uxm_bath_ramp = False
 
 
 # these are all the responses that are considered to be affirmative, all other responses are negative
@@ -37,7 +41,7 @@ yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
 daniel_dir = os.path.join(base_scratch_dir, 'daniel')
 caleb_dir = os.path.join(base_scratch_dir, 'chw3k5')
 argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
-argparse_files_dir = 'scripts'
+# argparse_files_dir = 'scripts'
 
 yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-yuhan')
 daniel_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-daniel')
@@ -180,7 +184,7 @@ if do_ufm_optimize:
 """
 UXM Setup and Relock
 """
-if do_ufm_optimize:
+if do_setup_and_relock:
     if verbose:
         print('\nUXM Setup and Relock - Starting\n')
 
@@ -200,9 +204,9 @@ if do_ufm_optimize:
 
     # UXM Relock
     python_file_basename = 'uxm_relock'
-    ocs_arg_list = [f'{relock_tune_file}']
-    ocs_arg_list.extend(bands_all)
-    ocs_arg_list.extend([f'{band_num_opt}',
+
+    ocs_arg_list = bands_all
+    ocs_arg_list.extend([f'--tune-file-path', f'{relock_tune_file}',
                          f'--slot', f'{slot_num}',
                          f'--stream-time', f'{stream_time}',
                          f'--fmin', f'{fmin}',
@@ -217,3 +221,52 @@ if do_ufm_optimize:
 
     if verbose:
         print('  UXM Setup and Relock - Finished\n')
+
+
+"""
+Quality Check
+"""
+if do_quality_check:
+    if verbose:
+        print('\nQuality Check - Starting\n')
+
+    # noise_stack_by_band
+    python_file_basename = 'noise_stack_by_band_new'
+    ocs_arg_list = [f'--slot', f'{slot_num}',
+                    f'--stream-time', f'{stream_time_quality_check}',
+                    f'--fmin', f'{fmin}',
+                    f'--fmax', f'{fmax}',
+                    f'--fs', f'{fs}',
+                    f'--nperseg', f'{nperseg}',
+                    f'--detrend', f'{detrend}']
+    if verbose and not pton_mode:
+        print('  Noise Stack by Band  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    if verbose:
+        print('  Quality Check - Finished\n')
+
+
+"""
+Bath Ramp
+"""
+if do_uxm_bath_ramp:
+    if verbose:
+        print('\nBath Ramp - Starting\n')
+
+    # noise_stack_by_band
+    python_file_basename = 'uxm_bath_iv_noise'
+    ocs_arg_list = bands_all
+    ocs_arg_list.extend([f'--slot', f'{slot_num}',
+                         f'--stream-time', f'{stream_time_quality_check}',
+                         f'--fmin', f'{fmin}',
+                         f'--fmax', f'{fmax}',
+                         f'--fs', f'{fs}',
+                         f'--nperseg', f'{nperseg}',
+                         f'--detrend', f'{detrend}'])
+    if verbose and not pton_mode:
+        print('  uxm_bath_iv_noise  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    if verbose:
+        print('  Quality Check - Finished\n')

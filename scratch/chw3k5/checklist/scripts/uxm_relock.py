@@ -17,6 +17,7 @@ import time
 import numpy as np
 from scipy import signal
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -27,12 +28,23 @@ def verbose_print(msg, verbose=True):
     return
 
 
-def uxm_relock(S, cfg, fav_tune_files, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, nperseg=2 ** 16,
+def uxm_relock(S, cfg, fav_tune_files=None, bands=None, stream_time=20.0, fmin=5, fmax=50, fs=200, nperseg=2 ** 16,
                detrend='constant', verbose=True):
     if verbose:
         verbose_print('plotting directory is:\n{S.plot_dir}', verbose)
     if bands is None:
         bands = S.config.get('init').get('bands')
+    if fav_tune_files is None:
+        tune_dir = '/data/smurf_data/tune/'
+        # this orders the files in the tune directory, most recent time stamps first.
+        all_tune_files = sorted(os.listdir(tune_dir), reverse=True)
+        for file_in_tune_dir in all_tune_files:
+            if '_tune.npy' in file_in_tune_dir:
+                fav_tune_files = os.path.join(tune_dir, file_in_tune_dir)
+                break
+        else:
+            # only happened when the break statement is never triggered.
+            raise FileNotFoundError(f"No tune files were found in {tune_dir}")
 
     S.all_off()
     S.set_rtm_arb_waveform_enable(0)
@@ -69,7 +81,8 @@ def uxm_relock(S, cfg, fav_tune_files, bands=None, stream_time=20.0, fmin=5, fma
         S.tracking_setup(band, reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],
                          fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False,
                          show_plot=False, channel=S.which_on(band), nsamp=2 ** 18,
-                         lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
+                         lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
+                         meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
                          feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],
                          feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],
                          lms_gain=cfg.dev.bands[band]['lms_gain'])
@@ -129,7 +142,7 @@ def uxm_relock(S, cfg, fav_tune_files, bands=None, stream_time=20.0, fmin=5, fma
         ax_this_band.set_ylim([-10000, 10000])
 
     save_name = f'{start_time}_band_noise_stack.png'
-    verbose_print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}, verbose')
+    verbose_print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}', verbose)
     plt.savefig(os.path.join(S.plot_dir, save_name))
 
     fig, axs = plt.subplots(4, 4, figsize=(24, 24), gridspec_kw={'width_ratios': [2, 2, 2, 2]}, dpi=50)
@@ -168,7 +181,7 @@ def uxm_relock(S, cfg, fav_tune_files, bands=None, stream_time=20.0, fmin=5, fma
         ax_this_band_2.set_xlim([0, 300])
 
     save_name = f'{start_time}_band_psd_stack.png'
-    verbose_print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}, verbose')
+    verbose_print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}', verbose)
     plt.savefig(os.path.join(S.plot_dir, save_name))
 
     # S.save_tune()
@@ -193,13 +206,17 @@ if __name__ == "__main__":
     cfg = DetConfig()
 
     # set up the parser for this Script
+    # python3 /sodetlib/scratch/chw3k5/checklist/scripts/uxm_relock.py 0 1 2 3 4 5 6 7 --tune-file-path latest --slot 3
+    # --stream-time 20.0 --fmin 5.0 --fmax 50.0 --fs 200.0 --nperseg 65536 --detrend constant
     parser = argparse.ArgumentParser(description='Parser for ufm_optimize_quick.py script.')
-    parser.add_argument('tune-file-path', metavar='path', dest='tune_file_path',
-                        help='Required, first positional augment, str The full path to the tune file for relock.')
     parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
                         help='Required, N additional positional arguments, int, separated by a space.' +
                              'SMuRF bands to target.')
+
     # optional arguments
+    parser.add_argument('--tune-file-path', metavar='path', dest='tune_file_path', default='latest',
+                        help='Optional, str, default is latest. The full path to the tune file for relock.' +
+                             "Use the keyword 'latest' get the most recent tune file.")
     parser.add_argument('--stream-time', dest='stream_time', type=float, default=20.0,
                         help="float, optional, default is 20.0. The amount of time to sleep in seconds while " +
                              "streaming SMuRF data for analysis.")
@@ -228,6 +245,10 @@ if __name__ == "__main__":
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    uxm_relock(S=S, cfg=cfg, fav_tune_files=args.tune_file_path, bands=args.band, stream_time=args.stream_time,
+    if args.tune_file_path == 'latest':
+        fav_tune_files = None
+    else:
+        fav_tune_files = args.tune_file_path
+    uxm_relock(S=S, cfg=cfg, fav_tune_files=fav_tune_files, bands=args.bands[0], stream_time=args.stream_time,
                fmin=args.fmin, fmax=args.fmax, fs=args.fs, nperseg=args.nperseg,
                detrend=args.detrend, verbose=args.verbose)
