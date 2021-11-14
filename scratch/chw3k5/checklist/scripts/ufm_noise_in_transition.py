@@ -7,7 +7,7 @@ documentation framework.
 
 Use:
 
-python3 uxm_bath_iv_noise.py -h
+python3 ufm_noise_in_transition.py -h
 
 to see the available options and required formatting.
 """
@@ -16,6 +16,7 @@ import time
 
 import numpy as np
 import matplotlib
+
 matplotlib.use('Agg')
 
 
@@ -25,79 +26,47 @@ def verbose_print(msg, verbose=True):
     return
 
 
-def uxm_bath_iv_noise(S, cfg, bands, bath_temp, out_fn, stream_time=120.0, verbose=False):
-    for band in bands:
-        S.run_serial_gradient_descent(band)
-        S.run_serial_eta_scan(band)
-        S.set_feedback_enable(band, 1)
-        S.tracking_setup(band, reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],
-                         fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False,
-                         save_plot=False, show_plot=False, channel=S.which_on(band),
-                         nsamp=2 ** 18, lms_freq_hz=None, meas_lms_freq=True,
-                         feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],
-                         feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],
-                         lms_gain=cfg.dev.bands[band]['lms_gain'])
-
-    bias_groups = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    S.set_filter_disable(0)
-    S.set_rtm_arb_waveform_enable(0)
-    S.set_downsample_factor(20)
-    for bias_index, bias_g in enumerate(bias_groups):
-        S.set_tes_bias_low_current(bias_g)
-
-    bias_v = 0
-    bias_array = np.zeros(S._n_bias_groups)
-    for bg in bias_groups:
-        bias_array[bg] = bias_v
-    S.set_tes_bias_bipolar_array(bias_array)
-    time.sleep(stream_time)
-    datafile_self = S.stream_data_on()
-    time.sleep(stream_time)
-    S.stream_data_off()
-
-    fieldnames = ['bath_temp', 'bias_voltage', 'bias_line', 'band', 'data_path', 'type']
-    row = {}
-    row['data_path'] = datafile_self
-    row['bias_voltage'] = bias_v
-    row['type'] = 'noise'
-    row['bias_line'] = 'all'
-    row['band'] = 'all'
-    row['bath_temp'] = bath_temp
-    with open(out_fn, 'a', newline='') as csvfile:
+def ufm_noise_in_transition(S, bias_high, bath_temp, out_fn, stream_time=120, verbose=True):
+    verbose_print('', verbose)
+    fieldnames = ['bath_temp', 'bias_v', 'band', 'data_path', 'step_size']
+    with open(out_fn, 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writerow(row)
+        writer.writeheader()
 
-    for bias_gp in bias_groups:
+    over_bias_sleep_time = 300
+    verbose_print(f'overbias_tes_all and sleeping for {over_bias_sleep_time} seconds', verbose)
+    S.overbias_tes_all(bias_groups=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], overbias_wait=1, tes_bias=12, cool_wait=3,
+                       high_current_mode=False, overbias_voltage=8)
+    time.sleep(over_bias_sleep_time)
+
+    step_array = np.arange(bias_high, 0, -1)
+    for bias_voltage_step in step_array:
+
+        bias_voltage = bias_voltage_step
+        S.set_tes_bias_bipolar_array(
+            [bias_voltage, bias_voltage, bias_voltage, bias_voltage, bias_voltage, bias_voltage, bias_voltage,
+             bias_voltage, bias_voltage, bias_voltage, bias_voltage, bias_voltage, 0., 0., 0.])
+        verbose_print(f'Streaming data for {stream_time} seconds, for bias_voltage_step {bias_voltage_step}', verbose)
+        time.sleep(stream_time)
+
+        dat_path = S.stream_data_on()
+        for k in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
+            time.sleep(10)
+        S.stream_data_off()
         row = {}
         row['bath_temp'] = bath_temp
-        row['bias_line'] = bias_gp
+        row['bias_v'] = bias_voltage_step
         row['band'] = 'all'
-        row['bias_voltage'] = 'IV 20 to 0'
-        row['type'] = 'IV'
-        verbose_print(f'Taking IV on bias line {bias_gp}, all band', verbose)
-
-        row['data_path'] = S.run_iv(
-            bias_groups=[bias_gp],
-            wait_time=0.001,
-            bias_high=20,
-            bias_low=0,
-            bias_step=0.025,
-            overbias_voltage=18,
-            cool_wait=30,
-            high_current_mode=False,
-            make_plot=False,
-            save_plot=True,
-            #        cool_voltage=18.
-        )
+        row['data_path'] = dat_path
+        row['step_size'] = 0
 
         with open(out_fn, 'a', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writerow(row)
+    return
 
-        time.sleep(6)
 
-
-prefix_str = f'\n From {uxm_bath_iv_noise.__name__} '
+prefix_str = f'\n From {ufm_noise_in_transition.__name__} '
 
 if __name__ == '__main__':
     import argparse
@@ -106,7 +75,7 @@ if __name__ == '__main__':
     """
     The code below will only run if the file is run directly, but not if elements from this file are imported.
     For example:
-        python3 uxm_bath_iv_noise.py -args_for_argparse
+        python3 ufm_noise_in_transition.py -args_for_argparse
     will have __name__ == '__main__' as True, and the code below will run locally.
     """
     # Seed a new parse for this file with the parser from the SMuRF controller class
@@ -114,17 +83,18 @@ if __name__ == '__main__':
 
     # set up the parser for this Script
     parser = argparse.ArgumentParser(description='Parser for noise_stack_by_band_new.py script.')
-    parser.add_argument('bands', type=int, metavar='bands', nargs='+', action='append',
-                        help='The SMuRF bands to target.')
-
-    # optional arguments
     """
     Cannot find confirmation about how these variables are going being set. 
     """
+    parser.add_argument('bias-high', type=float, default=0.0,
+                        help='The High Bias Voltage.')
+
+    # optional arguments
     parser.add_argument('--bath-temp', dest='bath_temp', type=float, default=100.0,
                         help='The Bath Temperature in mK')
     parser.add_argument('--output-file', dest='output_file', type=str, default='None',
                         help='The full path for the output file name.')
+
     """
     ^^^^^^^^^^^^^^
     Cannot find confirmation about how these variables are going being set. 
@@ -145,5 +115,5 @@ if __name__ == '__main__':
     S = cfg.get_smurf_control(dump_configs=True)
 
     # run the def in this file
-    uxm_bath_iv_noise(S=S, cfg=cfg, bands=args.bands[0], bath_temp=args.bath_temp, out_fn=args.output_file,
-                      stream_time=args.steam_time, verbose=args.verbose)
+    ufm_noise_in_transition(S=S, bias_high=args.bias_high, bath_temp=args.bath_temp, out_fn=args.output_file,
+                            stream_time=args.stream_time, verbose=args.verbose)

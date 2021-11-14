@@ -1,4 +1,8 @@
 import os
+from getpass import getuser
+
+
+current_user_name = getuser()
 
 
 verbose = True
@@ -17,19 +21,28 @@ detrend = 'constant'
 # relock_tune_file = '/data/smurf_data/tune/1636164705_tune.npy'
 relock_tune_file = 'latest'
 
+# uxm_bath_iv_noise
+bath_temp = 100.0  # no idea if this is reasonable
+output_file_bath_iv = 'None'  # needs and example to work from
+stream_time_bath_iv = 120.0
+
+# Noise in Transition
+bias_voltage_for_noise_in_transition = 0.0  # delete this comment well a sensible value is set
+
 # When True it runs scripts with by Yuhan and Daniel that were copied on Nov 11, 2021
 pton_mode = False
 # Prints the Argparse help option, disables the sending of os commands
-print_help = False
+print_help = True
 # disables the sending of os commands
 print_os_strings = False
 
-do_amplifier_check = False
-do_full_band_response = False
-do_ufm_optimize = False
+do_amplifier_check = True
+do_full_band_response = True
+do_ufm_optimize = True
 do_setup_and_relock = True
-do_quality_check = False
-do_uxm_bath_ramp = False
+do_quality_check = True
+do_uxm_bath_ramp = True  # not tested, it is unclear how to set the bath temperature and output files
+do_noise_in_transition = True  # not tested, it is unclear how to set the bath temperature and output files
 
 
 # these are all the responses that are considered to be affirmative, all other responses are negative
@@ -40,8 +53,10 @@ base_scratch_dir = '/sodetlib/scratch'
 yuhan_dir = os.path.join(base_scratch_dir, 'yuhanw')
 daniel_dir = os.path.join(base_scratch_dir, 'daniel')
 caleb_dir = os.path.join(base_scratch_dir, 'chw3k5')
-argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
-# argparse_files_dir = 'scripts'
+if current_user_name == 'cryo':
+    argparse_files_dir = os.path.join(caleb_dir, 'checklist', 'scripts')
+else:
+    argparse_files_dir = 'scripts'
 
 yuhan_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-yuhan')
 daniel_dir_caleb_branch = os.path.join(caleb_dir, 'checklist/unversioned-daniel')
@@ -85,14 +100,14 @@ def commanding_mode_selector(file_basename, ocs_arg, pton_mode=pton_mode, argpar
         if print_help:
             print(f"\nPrinting the help page for {file_basename}.py\n")
             os.system(f"{python_cmd_str} -h")
-        # assemble the arguments
-        for arg_part in ocs_arg:
-            python_cmd_str += f' {arg_part}'
         # add the verbosity argument
         if verbose:
             ocs_arg.append('--verbose')
         else:
             ocs_arg.append('--no-verbose')
+        # assemble the arguments
+        for arg_part in ocs_arg:
+            python_cmd_str += f' {arg_part}'
         # optionally print the the command or send the assembled python command
         if print_help or print_os_strings:
             print(f'\nCMD string: {python_cmd_str}\n')
@@ -254,19 +269,61 @@ if do_uxm_bath_ramp:
     if verbose:
         print('\nBath Ramp - Starting\n')
 
-    # noise_stack_by_band
+    # uxm_bath_iv_noise
     python_file_basename = 'uxm_bath_iv_noise'
     ocs_arg_list = bands_all
     ocs_arg_list.extend([f'--slot', f'{slot_num}',
                          f'--stream-time', f'{stream_time_quality_check}',
-                         f'--fmin', f'{fmin}',
-                         f'--fmax', f'{fmax}',
-                         f'--fs', f'{fs}',
-                         f'--nperseg', f'{nperseg}',
-                         f'--detrend', f'{detrend}'])
+                         f'--bath-temp', f'{bath_temp}',
+                         f'--output-file', f'{output_file_bath_iv}'])
     if verbose and not pton_mode:
         print('  uxm_bath_iv_noise  \n')
     commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
 
+    # uxm_bath_iv_noise_biasstep
+    python_file_basename = 'uxm_bath_iv_noise_biasstep'
+    ocs_arg_list = bands_all
+
+    ocs_arg_list.extend([f'--slot', f'{slot_num}',
+                         f'--stream-time', f'{stream_time_quality_check}',
+                         f'--bath-temp', f'{bath_temp}',
+                         f'--output-file', f'{output_file_bath_iv}'])
+
+    if verbose and not pton_mode:
+        print('  uxm_bath_iv_noise_biasstep  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
     if verbose:
-        print('  Quality Check - Finished\n')
+        print('  Bath Ramp - Finished\n')
+
+
+"""
+Noise in Transition
+"""
+if do_noise_in_transition:
+    if verbose:
+        print('\nNoise in Transition - Starting\n')
+
+    # uxm_bath_iv_noise
+    python_file_basename = 'ufm_noise_in_transition'
+    ocs_arg_list = [f'{bias_voltage_for_noise_in_transition}',
+                    f'--slot', f'{slot_num}',
+                    f'--stream-time', f'{stream_time_quality_check}',
+                    f'--bath-temp', f'{bath_temp}',
+                    f'--output-file', f'{output_file_bath_iv}']
+    if verbose and not pton_mode:
+        print('  ufm_noise_in_transition  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    # uxm_bath_iv_noise
+    python_file_basename = 'ufm_biasstep_loop'
+    ocs_arg_list = [f'{bias_voltage_for_noise_in_transition}',
+                    f'--slot', f'{slot_num}',
+                    f'--stream-time', f'{stream_time_quality_check}',
+                    f'--bath-temp', f'{bath_temp}',
+                    f'--output-file', f'{output_file_bath_iv}']
+    if verbose and not pton_mode:
+        print('  ufm_biasstep_loop  \n')
+    commanding_mode_selector(file_basename=python_file_basename, ocs_arg=ocs_arg_list)
+
+    if verbose:
+        print('  Noise in Transition - Finished\n')
