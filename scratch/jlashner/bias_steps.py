@@ -80,9 +80,9 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
     start = time.time()
     for _ in range(num_steps):
         S.set_rtm_slow_dac_volt_array(dac_volt_array_high)
-        time.sleep(duration)
+        time.sleep(step_duration)
         S.set_rtm_slow_dac_volt_array(dac_volt_array_low)
-        time.sleep(duration)
+        time.sleep(step_duration)
     stop = time.time()
 
     return start, stop
@@ -235,6 +235,195 @@ def bias_steps_vs_bias(S, cfg, bias_groups=None, biases=None,
     np.savez(output_path, **outputs)
     S.pub.register_file(output_path, 'bias_steps')
     return output_path, outputs
+
+
+class BiasStepAnalysis:
+    def __init__(self, S=None, cfg=None, bgs=None):
+        if S is not None:
+            self._S = S
+            self.tunefile = S.tune_file
+            self.high_low_current_ratio = S.high_low_current_ratio
+            self.R_sh = S.R_sh
+            self.pA_per_phi0 = S.pA_per_phi0
+            self.rtm_bit_to_volt = S._rtm_slow_dac_bit_to_volt
+
+        if cfg is not None:
+            self._cfg = cfg
+            self.stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
+
+        self.bgs = bgs
+        self.sid = None
+        self.bg_sweep_start = None
+        self.bg_sweep_stop = None
+        self.start = None
+        self.stop = None
+
+        self.am = None
+
+        self.edge_idxs = None
+        self.edge_signs = None
+        self.bg_corr = None
+        self.bgmap = None
+
+    def load_am(self):
+        self.am = so.load_session(self._cfg, self.sid)
+        return self.am
+
+    def _find_bias_edges(self, am=None):
+        """
+        Finds sample indices and signs of bias steps in timestream.
+
+        Returns
+        --------
+            edge_idxs: list
+                List containing the edge sample indices for each bias group.
+                There are n_biaslines elements, each one a np.ndarray
+                contianing a sample idx for each edge found
+
+            edge_signs: list
+                List with the same shape as edge_idxs, containing +/-1
+                depending on whether the edge is rising or falling
+        """
+        if am is None:
+            am = self.am
+
+        edge_idxs = [[] for _ in am.biases]
+        edge_signs = [[] for _ in am.biases]
+
+        for bg, bias in enumerate(am.biases):
+            edge_idxs[bg] = np.where(np.diff(bias) != 0)[0]
+            edge_signs[bg] = np.sign(np.diff(bias)[edge_idxs[bg]])
+
+        self.edge_idxs = edge_idxs
+        self.edge_signs = edge_signs
+
+        return edge_idxs, edge_signs
+
+    def create_bg_map(self, am=None, step_window=0.01, assignment_thresh=0.95):
+        """
+        Creates a bias group mapping from the bg step sweep. The step sweep goes
+        down and steps each bias group one-by-one up and down twice. A bias group
+        correlation factor is computed by integrating the diff of the TES signal
+        times the sign of the step for each bg step. The correlation factors
+        are normalized such that the sum across bias groups for each channel is 1,
+        and an assignment is made if the normalized bias-group correlation is
+        greater than some threshold
+        """
+        if self.bg_sweep_start is None:
+            raise ValueError("sweep start and stop times are not set")
+
+        if am is None:
+            am = self.am
+
+        if self.edge_idxs is None:
+            self._find_bias_edges()
+
+        fsamp = np.mean(1./np.diff(am.timestamps))
+        npts = int(fsamp * step_window)
+
+        nchans = len(am.signal)
+        nbgs = len(am.biases)
+        bgs = np.arange(nbgs)
+        bg_corr = np.zeros((nchans, nbgs))
+
+        for bg in bgs:
+            for i, ei in enumerate(self.edge_idxs[bg]):
+                s = slice(ei, ei+npts)
+                ts = am.timestamps[s]
+                if not (self.bg_sweep_start < ts[0] < self.bg_sweep_stop):
+                    continue
+                sig = self.edge_signs[bg][i] * am.signal[:, s]
+                bg_corr[:, bg] += np.sum(np.diff(sig), axis=1)
+        bg_corr = np.abs(bg_corr)
+        normalized_bg_corr = (bg_corr.T / np.sum(bg_corr, axis=1)).T
+        assignments = np.where(normalized_bg_corr > assignment_thresh)
+        self.bg_corr = normalized_bg_corr
+        self.bgmap = np.full(nchans, -1, dtype=int)
+        self.bgmap[assignments[0]] = assignments[1]
+        return self.bgmap
+
+def get_step_response(self, step_window=0.01, pts_before_step=20,
+                      restrict_to_bg_sweep=False, am=None):
+    if am is None:
+        am = self.am
+
+    fsamp = np.mean(1./np.diff(am.timestamps))
+    pts_after_step = int(fsamp * step_window)
+    nchans = len(am.signal)
+    nbgs = len(am.biases)
+    npts = pts_before_step + pts_after_step
+    n_edges = np.max([len(ei) for ei in self.edge_idxs])
+
+    sigs = np.full((nchans, n_edges, npts), np.nan)
+    ts = np.full((nbgs, npts), np.nan)
+
+    for bg in np.unique(self.bgmap):
+        if bg == -1:
+            continue
+        rcs = np.where(self.bgmap == bg)[0]
+        for i, ei in enumerate(self.edge_idxs[bg]):
+            s = slice(ei - pts_before_step, ei + pts_after_step)
+            if np.isnan(ts[bg]).all():
+                ts[bg, :] = am.timestamps[s] - am.timestamps[s][0]
+            sig = self.edge_signs[bg][i] * am.signal[rcs, s]
+            # Subtracts mean of last 10 pts such that step ends at 0
+            sigs[rcs, i, :] = (sig.T - np.mean(sig[:, -10:], axis=1)).T
+
+    return ts, sigs
+
+
+
+
+
+
+
+
+
+
+def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
+                    nsteps=20, run_bg_sweep=True):
+    if bgs is None:
+        bgs = np.arange(12)
+    bgs = np.atleast_1d(bgs)
+
+    bsa = BiasStepAnalysis(S, cfg, bgs)
+
+    initial_ds_factor = S.get_downsample_factor()
+    initial_filter_disable = S.get_filter_disable()
+    initial_dc_biases = S.get_tes_bias_bipolar_array()
+
+    S.set_downsample_factor(1)
+    S.set_filter_disable(1)
+
+    dc_biases = initial_dc_biases / S.high_low_current_ratio
+    step_voltage /= S.high_low_current_ratio
+
+    for bg in bgs:
+        S.set_tes_bias_high_current(bg)
+        S.set_tes_bias_bipolar(bg, dc_biases[bg])
+
+    bsa.sid = so.stream_g3_on(S)
+    try:
+        if run_bg_sweep:
+            bsa.bg_sweep_start = time.time()
+            for bg in range(12):
+                play_bias_steps_dc(S, cfg, bg, step_duration, step_voltage, 2)
+            bsa.bg_sweep_stop = time.time()
+        bsa.start = time.time()
+        play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
+        bsa.stop = time.time()
+    finally:
+        so.stream_g3_off(S)
+        for bg in bgs:
+            S.set_tes_bias_bipolar(bg, initial_dc_biases[bg])
+            S.set_tes_bias_low_current(bg)
+
+        S.set_downsample_factor(initial_ds_factor)
+        S.set_filter_disable(initial_filter_disable)
+
+    return bsa
+
+
 
 
 
