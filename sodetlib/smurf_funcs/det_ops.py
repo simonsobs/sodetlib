@@ -226,7 +226,6 @@ def take_iv(
 
         if make_channel_plots:
             det_analysis.iv_channel_plots(
-                iv_info,
                 iv_analyze,
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
@@ -236,7 +235,6 @@ def take_iv(
 
         if make_summary_plots:
             det_analysis.iv_summary_plots(
-                iv_info,
                 iv_analyze,
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
