@@ -827,7 +827,7 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
     return outfile
 
 
-def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
+def iv_channel_plots(iv_analyze, bands=None, chans=None,
                      plot_dir=None, show_plot=False, save_plot=True,
                      S=None):
     """
@@ -836,9 +836,6 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
 
     Args
     ----
-    iv_info: dict
-        Dictionary loaded from iv_info.npy that contains information from
-        when IV curve was taken.
     iv_analyze: dict
         Dictionary generated that contains all fitted and calculated
         parameters from IV analysis.
@@ -863,6 +860,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
     plot_dir: str
         Filepath where plots are saved, if save_plot is True.
     """
+    iv_info = iv_analyze['metadata']['iv_info']
+    
     if plot_dir is None:
         plot_dir = iv_info['plot_dir']
 
@@ -978,7 +977,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         return plot_dir
 
 
-def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
+def iv_summary_plots(iv_analyze, Rn_bins=None, Psat_bins=None,
                      plot_dir=None, show_plot=False, save_plot=True,
                      S=None):
     """
@@ -989,9 +988,6 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
 
     Args
     ----
-    iv_info: dict
-        Dictionary loaded from iv_info.npy that contains information from
-        when IV curve was taken.
     iv_analyze: dict
         Dictionary generated that contains all fitted and calculated
         parameters from IV analysis.
@@ -1010,6 +1006,8 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     plot_dir: str
         Filepath where plots are saved, if save_plot is True.
     """
+    iv_info = iv_analyze['metadata']['iv_info']
+    
     if plot_dir is None:
         plot_dir = iv_info['plot_dir']
 
