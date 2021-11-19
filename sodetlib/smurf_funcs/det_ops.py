@@ -109,8 +109,7 @@ def take_iv(
     make_summary_plots: bool
         Make histograms of R_n and Psat.
     dump_cfg: bool, default True
-        If True, will dump updated dev cfg with new iv_info to disk.
-        If do_analysis is True, will also include iv_analyze filepath.
+        If do_analysis is True, will update dev_cfg with iv_analyze filepath.
 
     Returns
     -------
@@ -208,11 +207,6 @@ def take_iv(
     S.log(f'Writing IV information to {iv_info_fp}.')
     S.pub.register_file(iv_info_fp, 'iv_info', format='npy')
 
-    print("Updating config file with iv_info...")
-    if dump_cfg:
-        cfg.dev.update_experiment({'iv_info': iv_info_fp})
-        cfg.dev.dump(cfg.dev_file, clobber=True)
-
     if do_analysis:
         timestamp, phase, mask, v_bias = det_analysis.load_from_sid(cfg, iv_info_fp)
         iv_analyze_fp = det_analysis.analyze_iv_and_save(
@@ -225,7 +219,7 @@ def take_iv(
                 phase_excursion_min=phase_excursion_min,
                 psat_level=psat_level,
                 outfile=None,
-                dump_cfg=True
+                dump_cfg=dump_cfg
         )
 
         iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()

@@ -573,7 +573,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
     iv_full_dict = {'metadata': {}, 'data': {}}
 
-    iv_full_dict['metadata']['iv_info'] = iv_info_fp
+    iv_full_dict['metadata']['iv_info'] = iv_info
     if iv_info['wafer_id'] is not None:
         iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
     else:
