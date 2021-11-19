@@ -239,16 +239,18 @@ def bias_steps_vs_bias(S, cfg, bias_groups=None, biases=None,
 
 class BiasStepAnalysis:
     def __init__(self, S=None, cfg=None, bgs=None):
+
+        self._S = S
         if S is not None:
-            self._S = S
             self.tunefile = S.tune_file
             self.high_low_current_ratio = S.high_low_current_ratio
             self.R_sh = S.R_sh
             self.pA_per_phi0 = S.pA_per_phi0
             self.rtm_bit_to_volt = S._rtm_slow_dac_bit_to_volt
+            self.bias_line_resistance = S.bias_line_resistance
 
+        self._cfg = cfg
         if cfg is not None:
-            self._cfg = cfg
             self.stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
 
         self.bgs = bgs
@@ -265,8 +267,15 @@ class BiasStepAnalysis:
         self.bg_corr = None
         self.bgmap = None
 
+        self.resp_times =  None
+        self.step_resp = None
+        self.mean_resp = None
+
     def load_am(self):
-        self.am = so.load_session(self._cfg, self.sid)
+        if self.am is None:
+            self.am = so.load_session(self._cfg, self.sid)
+            self.nbgs = len(self.am.biases)
+            self.nchans = len(self.am.signal)
         return self.am
 
     def _find_bias_edges(self, am=None):
@@ -299,7 +308,7 @@ class BiasStepAnalysis:
 
         return edge_idxs, edge_signs
 
-    def create_bg_map(self, am=None, step_window=0.01, assignment_thresh=0.95):
+    def create_bg_map(self, step_window=0.01, assignment_thresh=0.95):
         """
         Creates a bias group mapping from the bg step sweep. The step sweep goes
         down and steps each bias group one-by-one up and down twice. A bias group
@@ -312,8 +321,7 @@ class BiasStepAnalysis:
         if self.bg_sweep_start is None:
             raise ValueError("sweep start and stop times are not set")
 
-        if am is None:
-            am = self.am
+        am = self.load_am()
 
         if self.edge_idxs is None:
             self._find_bias_edges()
@@ -364,18 +372,70 @@ def get_step_response(self, step_window=0.01, pts_before_step=20,
         for i, ei in enumerate(self.edge_idxs[bg]):
             s = slice(ei - pts_before_step, ei + pts_after_step)
             if np.isnan(ts[bg]).all():
-                ts[bg, :] = am.timestamps[s] - am.timestamps[s][0]
-            sig = self.edge_signs[bg][i] * am.signal[rcs, s]
+                ts[bg, :] = am.timestamps[s] - am.timestamps[ei]
+            sig = self.edge_signs[bg][i] * am.signal[rcs, s] * self.pA_per_phi0 / (2*np.pi) * 1e-12
             # Subtracts mean of last 10 pts such that step ends at 0
             sigs[rcs, i, :] = (sig.T - np.mean(sig[:, -10:], axis=1)).T
 
+    self.resp_times = ts
+    self.step_resp = sigs
+    self.mean_resp = np.nanmean(sigs, axis=1)
+
     return ts, sigs
 
+def _compute_R0_I0_Pb(self, Ib, dIb, dItes, transition=False):
+    dIrat = dItes / dIb
+    if not transition:
+        # Assume R is constant with dI and  Ites is in the same dir as Ib
+        dIrat = np.abs(dIrat)  #
+        R0 = - self.R_sh / dIrat
+
+        R0 = self.R_sh * (dIrat**(-1) - 1)
 
 
+def compute_det_params(self):
+    nbgs = len(self.am.biases)
+    nchans = len(self.am.signal)
 
+    Ibias = np.full(nbgs, np.nan)
+    dIbias = np.full(nbgs, np.nan)
 
+    # Compute Ibias and dIbias
+    amp_per_bit = self.high_low_current_ratio * 2 * self.rtm_bit_to_volt \
+        / self.bias_line_resistance
+    for bg in range(nbgs):
+        if len(self.edge_idxs[bg]) == 0:
+            continue
+        b0 = self.am.biases[bg, self.edge_idxs[bg][0]]
+        b1 = self.am.biases[bg, self.edge_idxs[bg][0] + 3]
+        Ibias[bg] = b0 * amp_per_bit
+        dIbias[bg] = (b1 - b0) * amp_per_bit
 
+    # Compute dItes
+    i0 = np.mean(self.mean_resp[:, :5], axis=1)
+    i1 = np.mean(self.mean_resp[:, -10:], axis=1)
+    dItes = i1 - i0
+
+    # Creates bias arrays that have size nchans
+    Ib = Ibias[self.bgmap]
+    dIb = dIbias[self.bgmap]
+    Ib[self.bgmap == -1] = np.nan
+    dIb[self.bgmap == -1] = np.nan
+
+    # Param computation
+    dIrat = -dItes / dIb
+    Pbias = self.R_sh * (1./dIrat - 1)
+    temp = Ib**2 - 4 * Pbias / self.R_sh
+    R0 = self.R_sh * (Ib + np.sqrt(temp)) / (Ib - np.sqrt(temp))
+    I0 = 0.5 * (Ib - np.sqrt(temp))
+
+    self.Ibias = Ibias
+    self.dIbias = dIbias
+    self.dItes = dItes
+    self.R0 = R0
+    self.I0 = I0
+    self.Pbias = Pbias
+    return R0
 
 
 
