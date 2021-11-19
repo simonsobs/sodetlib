@@ -41,22 +41,23 @@ def take_iv(
     S,
     cfg,
     bias_groups=None,
-    overbias_voltage=8.0,
+    overbias_voltage=18.0,
     overbias_wait=2.0,
-    high_current_mode=True,
+    high_current_mode=False,
     cool_wait=30,
     cool_voltage=None,
     bias=None,
-    bias_high=1.5,
+    bias_high=16,
     bias_low=0,
-    bias_step=0.005,
-    wait_time=0.1,
+    bias_step=0.025,
+    wait_time=0.001,
     do_analysis=True,
     phase_excursion_min=3.0,
     psat_level=0.9,
     make_channel_plots=False,
     make_summary_plots=True,
     save_plots=True,
+    dump_cfg=True
 ):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
@@ -67,18 +68,18 @@ def take_iv(
 
     Args
     ----
-    S : 
+    S :
         SmurfControl object
     cfg :
         DetConfig object
     bias_groups : numpy.ndarray or None, optional, default None
         Which bias groups to take the IV on. If None, defaults to
         the groups in the config file.
-    overbias_voltage : float, optional, default 8.0
+    overbias_voltage : float, optional, default 18.0
         The voltage to set the TES bias in the overbias stage.
     overbias_wait : float, optional, default 2.0
         The time to stay in the overbiased state in seconds.
-    high_current_mode : bool, optional, default True
+    high_current_mode : bool, optional, default False
         The current mode to take the IV in.
     cool_wait : float, optional, default 30.0
         The time to stay in the low current state after
@@ -88,13 +89,13 @@ def take_iv(
         while the system cools.
     bias : float array or None, optional, default None
         A float array of bias values. Must go high to low.
-    bias_high : float, optional, default 1.5
+    bias_high : float, optional, default 16
         The maximum TES bias in volts.
     bias_low : float, optional, default 0
         The minimum TES bias in volts.
-    bias_step : float, optional, default 0.005
+    bias_step : float, optional, default 0.025
         The step size in volts.
-    wait_time : float, optional, default 0.1
+    wait_time : float, optional, default 0.001
         The amount of time between changing TES biases in seconds.
     do_analysis: bool, optional, default True
         Whether to do the pysmurf IV analysis
@@ -107,12 +108,19 @@ def take_iv(
         Generates individual channel plots of IV, Rfrac, S_I vs. Rfrac, and RP.
     make_summary_plots: bool
         Make histograms of R_n and Psat.
+    dump_cfg: bool, default True
+        If True, will dump updated dev cfg with new iv_info to disk.
+        If do_analysis is True, will also include iv_analyze filepath.
 
     Returns
     -------
     output_path : str
         Full path to iv_info npy file.
     """
+
+    if not hasattr(S,'tune_file'):
+        raise AttributeError('No tunefile loaded in current '
+                             'pysmurf session. Load active tunefile.')
 
     # This is the number of bias groups that the cryocard has
     n_bias_groups = S._n_bias_groups
@@ -126,6 +134,7 @@ def take_iv(
     if bias is None:
         # Set actual bias levels
         bias = np.arange(bias_high, bias_low-bias_step, -bias_step)
+
     # Overbias the TESs to drive them normal
     if overbias:
         if cool_voltage is None:
@@ -149,7 +158,7 @@ def take_iv(
     time.sleep(wait_time)
     start_time = S.get_timestamp()  # get time the IV starts
     S.log(f'Starting IV at {start_time}')
-    sid = so.stream_g3_on(S, make_freq_mask=False)  
+    sid = so.stream_g3_on(S, make_freq_mask=False)
     S.log(f'g3 stream id: {sid}')
     for b in bias:
         S.log(f'Bias at {b:4.3f}')
@@ -181,6 +190,12 @@ def take_iv(
     iv_info['datafile'] = datfile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
+    iv_info['overbias_voltage'] = overbias_voltage
+    iv_info['overbias_wait'] = overbias_wait
+    iv_info['cool_wait'] = cool_wait
+    iv_info['cool_voltage'] = cool_voltage
+    iv_info['wait_time'] = wait_time
+
     if cfg.uxm is not None:
         iv_info['wafer_id'] = cfg.uxm.get('wafer_id')
     else:
@@ -192,6 +207,11 @@ def take_iv(
     np.save(iv_info_fp, iv_info)
     S.log(f'Writing IV information to {iv_info_fp}.')
     S.pub.register_file(iv_info_fp, 'iv_info', format='npy')
+
+    print("Updating config file with iv_info...")
+    if dump_cfg:
+        cfg.dev.update_experiment({'iv_info': iv_info_fp})
+        cfg.dev.dump(cfg.dev_file, clobber=True)
 
     if do_analysis:
         timestamp, phase, mask, v_bias = det_analysis.load_from_sid(cfg, iv_info_fp)
@@ -205,6 +225,7 @@ def take_iv(
                 phase_excursion_min=phase_excursion_min,
                 psat_level=psat_level,
                 outfile=None,
+                dump_cfg=True
         )
 
         iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
