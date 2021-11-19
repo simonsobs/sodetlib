@@ -383,17 +383,30 @@ def get_step_response(self, step_window=0.01, pts_before_step=20,
 
     return ts, sigs
 
-def _compute_R0_I0_Pb(self, Ib, dIb, dItes, transition=False):
-    dIrat = dItes / dIb
+def _compute_R0_I0_Pj(self, transition=False):
+    Ib = self.Ibias[self.bgmap]
+    dIb = self.dIbias[self.bgmap]
+    Ib[self.bgmap == -1] = np.nan
+    dIb[self.bgmap == -1] = np.nan
+    dItes = self.dItes
+
     if not transition:
         # Assume R is constant with dI and  Ites is in the same dir as Ib
-        dIrat = np.abs(dIrat)  #
-        R0 = - self.R_sh / dIrat
+        dIrat = np.abs(dItes/dIb)  #
+        R0 = self.R_sh * (dIb/dItes - 1)
+        I0 = Ib * (1 + R0 / self.R_sh)**(-1)
+        Pj = I0**2 * R0
+    else:
+        # Param computation
+        dIrat = -np.abs(dItes / dIb)
+        Pj = self.R_sh * (1./dIrat - 1)
+        temp = Ib**2 - 4 * Pj / self.R_sh
+        R0 = self.R_sh * (Ib + np.sqrt(temp)) / (Ib - np.sqrt(temp))
+        I0 = 0.5 * (Ib - np.sqrt(temp))
 
-        R0 = self.R_sh * (dIrat**(-1) - 1)
+    return R0, I0, Pj
 
-
-def compute_det_params(self):
+def compute_det_params(self, transition=False, transition_range=(1, 6)):
     nbgs = len(self.am.biases)
     nchans = len(self.am.signal)
 
@@ -422,19 +435,14 @@ def compute_det_params(self):
     Ib[self.bgmap == -1] = np.nan
     dIb[self.bgmap == -1] = np.nan
 
-    # Param computation
-    dIrat = -dItes / dIb
-    Pbias = self.R_sh * (1./dIrat - 1)
-    temp = Ib**2 - 4 * Pbias / self.R_sh
-    R0 = self.R_sh * (Ib + np.sqrt(temp)) / (Ib - np.sqrt(temp))
-    I0 = 0.5 * (Ib - np.sqrt(temp))
-
     self.Ibias = Ibias
     self.dIbias = dIbias
     self.dItes = dItes
+    R0, I0, Pj = _compute_R0_I0_Pj(self, transition=transition)
+
     self.R0 = R0
     self.I0 = I0
-    self.Pbias = Pbias
+    self.Pj = Pj
     return R0
 
 
