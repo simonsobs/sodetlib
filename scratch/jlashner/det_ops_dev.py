@@ -10,11 +10,12 @@ import time
 import os
 import sys
 from sodetlib.util import make_filename
+from tqdm import tqdm
 import sodetlib.smurf_funcs.smurf_ops as so
 from sodetlib.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
-
+from sodetlib.smurf_funcs import smurf_ops as so
 
 def get_current_mode(S, bias_group):
     """
@@ -41,23 +42,22 @@ def take_iv(
     S,
     cfg,
     bias_groups=None,
-    overbias_voltage=18.0,
+    overbias_voltage=8.0,
     overbias_wait=2.0,
-    high_current_mode=False,
+    high_current_mode=True,
     cool_wait=30,
     cool_voltage=None,
     bias=None,
-    bias_high=16,
+    bias_high=1.5,
     bias_low=0,
-    bias_step=0.025,
-    wait_time=0.001,
+    bias_step=0.005,
+    wait_time=0.1,
     do_analysis=True,
     phase_excursion_min=3.0,
     psat_level=0.9,
     make_channel_plots=False,
     make_summary_plots=True,
     save_plots=True,
-    dump_cfg=True
 ):
     """
     Replaces the pysmurf run_iv function to be more appropriate for SO-specific
@@ -68,18 +68,18 @@ def take_iv(
 
     Args
     ----
-    S :
+    S : 
         SmurfControl object
     cfg :
         DetConfig object
     bias_groups : numpy.ndarray or None, optional, default None
         Which bias groups to take the IV on. If None, defaults to
         the groups in the config file.
-    overbias_voltage : float, optional, default 18.0
+    overbias_voltage : float, optional, default 8.0
         The voltage to set the TES bias in the overbias stage.
     overbias_wait : float, optional, default 2.0
         The time to stay in the overbiased state in seconds.
-    high_current_mode : bool, optional, default False
+    high_current_mode : bool, optional, default True
         The current mode to take the IV in.
     cool_wait : float, optional, default 30.0
         The time to stay in the low current state after
@@ -89,13 +89,13 @@ def take_iv(
         while the system cools.
     bias : float array or None, optional, default None
         A float array of bias values. Must go high to low.
-    bias_high : float, optional, default 16
+    bias_high : float, optional, default 1.5
         The maximum TES bias in volts.
     bias_low : float, optional, default 0
         The minimum TES bias in volts.
-    bias_step : float, optional, default 0.025
+    bias_step : float, optional, default 0.005
         The step size in volts.
-    wait_time : float, optional, default 0.001
+    wait_time : float, optional, default 0.1
         The amount of time between changing TES biases in seconds.
     do_analysis: bool, optional, default True
         Whether to do the pysmurf IV analysis
@@ -108,18 +108,12 @@ def take_iv(
         Generates individual channel plots of IV, Rfrac, S_I vs. Rfrac, and RP.
     make_summary_plots: bool
         Make histograms of R_n and Psat.
-    dump_cfg: bool, default True
-        If do_analysis is True, will update dev_cfg with iv_analyze filepath.
 
     Returns
     -------
     output_path : str
         Full path to iv_info npy file.
     """
-
-    if not hasattr(S,'tune_file'):
-        raise AttributeError('No tunefile loaded in current '
-                             'pysmurf session. Load active tunefile.')
 
     # This is the number of bias groups that the cryocard has
     n_bias_groups = S._n_bias_groups
@@ -133,7 +127,6 @@ def take_iv(
     if bias is None:
         # Set actual bias levels
         bias = np.arange(bias_high, bias_low-bias_step, -bias_step)
-
     # Overbias the TESs to drive them normal
     if overbias:
         if cool_voltage is None:
@@ -157,7 +150,7 @@ def take_iv(
     time.sleep(wait_time)
     start_time = S.get_timestamp()  # get time the IV starts
     S.log(f'Starting IV at {start_time}')
-    sid = so.stream_g3_on(S, make_freq_mask=False)
+    sid = so.stream_g3_on(S, make_freq_mask=False)  
     S.log(f'g3 stream id: {sid}')
     for b in bias:
         S.log(f'Bias at {b:4.3f}')
@@ -189,12 +182,6 @@ def take_iv(
     iv_info['datafile'] = datfile
     iv_info['bias'] = bias
     iv_info['bias group'] = bias_groups
-    iv_info['overbias_voltage'] = overbias_voltage
-    iv_info['overbias_wait'] = overbias_wait
-    iv_info['cool_wait'] = cool_wait
-    iv_info['cool_voltage'] = cool_voltage
-    iv_info['wait_time'] = wait_time
-
     if cfg.uxm is not None:
         iv_info['wafer_id'] = cfg.uxm.get('wafer_id')
     else:
@@ -219,13 +206,13 @@ def take_iv(
                 phase_excursion_min=phase_excursion_min,
                 psat_level=psat_level,
                 outfile=None,
-                dump_cfg=dump_cfg
         )
 
         iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
 
         if make_channel_plots:
             det_analysis.iv_channel_plots(
+                iv_info,
                 iv_analyze,
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
@@ -235,6 +222,7 @@ def take_iv(
 
         if make_summary_plots:
             det_analysis.iv_summary_plots(
+                iv_info,
                 iv_analyze,
                 plot_dir=iv_info["plot_dir"],
                 show_plot=False,
@@ -396,3 +384,245 @@ def bias_detectors_from_sc(S, bias_points_fp, high_current_mode=False):
                        high_current_mode=high_current_mode)
 
     S.set_tes_bias_bipolar_array(bias_array)
+
+def so_play_tes_bipolar_waveform(S, bias_group, waveform, do_enable=True,
+                                 continuous=True, **kwargs):
+    """
+    Play a bipolar waveform on the bias group.
+    Args
+    ----
+    bias_group : int
+                The bias group
+    waveform : float array
+                The waveform the play on the bias group.
+    do_enable : bool, optional, default True
+                Whether to enable the DACs (similar to what is required
+                for TES bias).
+    continuous : bool, optional, default True
+                Whether to play the TES waveform continuously.
+    """
+    bias_order = S.bias_group_to_pair[:,0]
+
+    dac_positives = S.bias_group_to_pair[:,1]
+    dac_negatives = S.bias_group_to_pair[:,2]
+
+    dac_idx = np.ravel(np.where(bias_order == bias_group))
+
+    dac_positive = dac_positives[dac_idx][0]
+    dac_negative = dac_negatives[dac_idx][0]
+
+    # https://confluence.slac.stanford.edu/display/SMuRF/SMuRF+firmware#SMuRFfirmware-RTMDACarbitrarywaveforms
+    # Target the two bipolar DACs assigned to this bias group:
+    S.set_dac_axil_addr(0, dac_positive)
+    S.set_dac_axil_addr(1, dac_negative)
+
+    # Must enable the DACs (if not enabled already)
+    if do_enable:
+        S.set_rtm_slow_dac_enable(dac_positive, 2, **kwargs)
+        S.set_rtm_slow_dac_enable(dac_negative, 2, **kwargs)
+
+    # Load waveform into each DAC's LUT table.  Opposite sign so
+    # they combine coherenty
+    S.set_rtm_arb_waveform_lut_table(0, waveform)
+    S.set_rtm_arb_waveform_lut_table(1, -waveform)
+
+    # Enable waveform generation (3=on both DACs)
+    S.set_rtm_arb_waveform_enable(3)
+
+    # Continous mode to play the waveform continuously
+    if continuous:
+        S.set_rtm_arb_waveform_continuous(1)
+    else:
+        S.set_rtm_arb_waveform_continuous(0)
+
+
+def setup_square_wave(S, bg, step_dur, step_size):
+    # Setup waveform
+    sig = np.ones(2048)
+    cur_bias = S.get_tes_bias_bipolar(bg)
+    sig *= cur_bias / (2*S._rtm_slow_dac_bit_to_volt)
+    sig[1024:] += step_size / (2*S._rtm_slow_dac_bit_to_volt)
+    ts = int(step_dur/(6.4e-9 * 2048))
+    S.set_rtm_arb_waveform_timer_size(ts, wait_done=True)
+    return sig
+
+
+def play_squarewave(S, bg, sig, step_dur=0.75, toggle_streaming=False,
+                    n_steps=4):
+    '''
+    Function to play a square wave of amplitude
+    step_size on a single bias group (bg). The step will be
+    played about whatever DC level the bias group is currently
+    at. You can set this before this function with S.set_tes_bias_bipolar
+    S.overbias or equivalent functions.
+    Args
+    --------
+    S : class, Pysmurf control object.
+    bg : int, bias group to play step function on.
+    step_size : float, amplitude of the step in volts at the TES
+                bias DAC.
+    play_time : float, length of time to play square wave.
+                Defaults is to play indefinitely.
+    step_dur : float, time in sec for one step cycle to complete.
+    Returns
+    --------
+    datfile : str, filepath to .dat file generated.
+    start : int, starting ctime of the step data.
+    stop : int, ending ctime of the step data.
+    '''
+    # Play waveform
+    cur_bias = S.get_tes_bias_bipolar(bg)
+    start = S.get_timestamp()
+    if toggle_streaming:
+        sid = so.stream_g3_on(S)
+    time.sleep(step_dur/2)
+    so_play_tes_bipolar_waveform(S,bg, sig)
+    time.sleep(step_dur*(n_steps+1))
+    # Instead of using the pysmurf stop function, set to the original dc value
+    S.set_rtm_arb_waveform_enable(0)
+    S.set_tes_bias_bipolar(bg, cur_bias)
+    time.sleep(step_dur/2)
+    if toggle_streaming:
+        so.stream_g3_off(S)
+    stop = S.get_timestamp()
+    if toggle_streaming:
+        return sid, start, stop
+    else:
+        return start, stop
+
+def calc_step_size_pW2V(S, pW=0.1, Rfrac=0.5, Rn=8):
+    '''
+    Function to calculate bias step size in volts given a target
+    Rfrac, normal resistance, and step amplitude in picowatts.
+    Args
+    --------
+    pW : float, Desired bias step size in picowatts. Defaults
+                    to 0.1.
+    Rfrac : float, Fraction of normal resistance at desired bias
+                    point must be a number > 0 and <= 1. Defaults
+                    to 0.5.
+    Rn : float, Normal resistance in mOhms. Defaults to 8.
+    Returns
+    -------
+    V : float, Bias step amplitude in volts at TES bias DAC.
+    '''
+    R = Rfrac*Rn
+    V_tes = np.sqrt(pW*1e-12*R*1e-3)
+    V = S.bias_line_resistance*(V_tes*(R*1e-3+S.R_sh)/(R*1e-3*R_sh))
+    return V
+
+
+def calc_step_size_V2pW(S, V=0.1, Rfrac=0.5, Rn=8):
+    '''
+    Function to calculate bias step size in volts given a target
+    Rfrac, normal resistance, and step amplitude in picowatts.
+    Args
+    --------
+    V : float, Desired bias step size in volts commanded.
+        Default to 0.1.
+    Rfrac : float, Fraction of normal resistance at desired bias
+        point must be a number > 0 and <= 1. Defaults
+        to 0.5.
+    Rn : float, Normal resistance in mOhms. Defaults to 8.
+    Returns
+    -------
+    pW : float, bias step amplitude in pW on TES.
+    '''
+    R = Rfrac*Rn
+    V_tes = (V/S.bias_line_resistance)*(R*1e-3*S.R_sh/(R*1e-3+S.R_sh))
+    pW = V_tes**2/(R*1e-3)
+    return pW
+
+
+@set_action()
+def take_step_vs_bias(S, cfg, bgs, step_size, bias_high, ob_volt,
+                      bias_low, bias_step, wait_time=1.0, n_steps=3,
+                      step_dur=0.5, cool_wait=180,bmap = None):
+    '''
+    Args
+    -------
+    S : class, pysmurf control instance.
+    cfg : class, device config instance.
+    bgs : int list, bias groups to take step data on.
+    step_size : float, amplitude of bias step.
+    bias_high : float, maximum voltage value in the transition.
+    ob_volt : float, overbias amplitude in volts.
+    bias_low : float, minimum voltage value in the transition.
+    bias_step : float, step size between bias_high and bias_low through the
+                transition.
+    wait_time : float, time to wait after changing the bias point in sec.
+                Default is 1 second.
+    cool_wait : float, time to wait after overbiasing.
+    play_time : float, time in sec to play the step function at each bias point
+                Default is 5 seconds.
+    step_dur : float, period of step function in seconds. Default is 0.75s.
+    Returns
+    -------
+    out_file : str, filepath to file containing all info needed to analyze the
+                bias step vs bias point data.
+    '''
+    ctime = S.get_timestamp()
+    outfpath = f'{S.output_dir}/{ctime}_bias_step_info'
+    out_dict = {}
+    out_dict['info'] = {}
+    out_dict['info']['step_size'] = step_size
+    out_dict['info']['n_steps'] = n_steps
+    out_dict['info']['step_dur'] = step_dur
+    out_dict['info']['output_dir'] = S.output_dir
+    start_downsample = S.get_downsample_factor()
+    S.log('Turning off downsampling')
+    S.set_downsample_factor(1)
+    fs = S.get_flux_ramp_freq()*1e3/S.get_downsample_factor()
+    out_dict['info']['fs'] = fs
+    S.log('Turning off downsample filter')
+    S.set_filter_disable(1)
+    for bg in bgs:
+        print(f'biasgroup {bg}')
+        out_dict[bg] = {}
+        out_dict[bg]['bias'] = []
+        out_dict[bg]['start'] = []
+        out_dict[bg]['stop'] = []
+        S.log('Setting to high current mode to bypass low current'
+              f'mode analog filter on biasgroup {bg}')
+        S.set_tes_bias_high_current(bg)
+        S.set_tes_bias_bipolar(bg, 0.0)
+        # Convert step size to high current mode
+        hlr = S.high_low_current_ratio
+        step_size /= hlr
+        S.log(f'Overbiasing on biasgroup {bg}')
+        S.overbias_tes(bias_group=bg, tes_bias=bias_high/hlr, overbias_wait=5,
+                       overbias_voltage=ob_volt, high_current_mode=True,
+                       cool_wait=cool_wait)
+        bias_vals = np.arange(bias_high/hlr, bias_low/hlr, -bias_step/hlr)
+        S.log(f'Stepping through bias values from {bias_high/hlr}, to'
+              f'{bias_low/hlr} in steps of {-bias_step/hlr} for a total'
+              f'of {len(bias_vals)} steps')
+        #sig = setup_square_wave(S, bg, step_dur, step_size)
+        if bmap is None:
+            sid = so.stream_g3_on(S)
+        else:
+            bgmap = np.where(bmap == bg)[0]
+            sid = so.stream_g3_on(S,channel_mask=bgmap)
+        out_dict[bg]['sid'] = sid
+        time.sleep(2)
+        for b_bias in tqdm(bias_vals):
+            S.set_tes_bias_bipolar(bg, b_bias)
+            time.sleep(wait_time)
+            sig = setup_square_wave(S, bg, step_dur, step_size)
+            start, stop = play_squarewave(S, bg, sig, step_dur=0.75,
+                                          toggle_streaming=False,
+                                          n_steps=4)
+            out_dict[bg]['bias'].append(b_bias)
+            out_dict[bg]['start'].append(start)
+            out_dict[bg]['stop'].append(stop)
+        so.stream_g3_off(S,)
+        S.log('Setting back to low current mode')
+        S.set_tes_bias_low_current(bg)
+        np.save(outfpath, out_dict)
+    S.log('Turning back on downsampling, and filtering')
+    S.set_filter_disable(0)
+    S.set_downsample_factor(start_downsample)
+    np.save(outfpath, out_dict)
+    S.pub.register_file(f'{outfpath}.npy', 'bias_step_info', format='npy')
+    S.log(f'Saved bias step info to {outfpath}.npy')
+    'm 'return out_dict

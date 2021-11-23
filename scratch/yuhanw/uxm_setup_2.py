@@ -1,9 +1,3 @@
-'''
-Code written in Oct 2021 by Yuhan Wang
-relock UFM with a given tune file
-'''
-
-
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -18,9 +12,9 @@ import time
 
 from sodetlib.det_config import DetConfig
 
-fav_tune_files = '/data/smurf_data/tune/1634501972_tune.npy'
+
 bands = [0,1,2,3,4,5,6,7]
-slot_num = 2
+slot_num = 4
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -35,11 +29,6 @@ S.set_filter_disable(0)
 S.set_downsample_factor(20)
 S.set_mode_dc()
 
-S.load_tune(fav_tune_files)
-
-
-
-
 for band in bands:
 	print('setting up band {}'.format(band))
 
@@ -52,25 +41,27 @@ for band in bands:
 	S.amplitude_scale[band] = cfg.dev.bands[band]['drive']
 	print('band {} tone power {}'.format(band,S.amplitude_scale[band] ))
 
+	print('estimating phase delay')
+	S.estimate_phase_delay(band)
 	print('setting synthesis scale')
 	# hard coding it for the current fw
 	S.set_synthesis_scale(band,1)
-
-	print('running relock')
-	S.relock(band,tone_power=cfg.dev.bands[band]['drive'])
-	
+	print('running find freq')
+	S.find_freq(band,tone_power=cfg.dev.bands[band]['drive'],make_plot=True)
+	print('running setup notches')
+	S.setup_notches(band,tone_power=cfg.dev.bands[band]['drive'],new_master_assignment=True)
+	print('running serial gradient descent and eta scan')
 	S.run_serial_gradient_descent(band);
 	S.run_serial_eta_scan(band);
-	
 	print('running tracking setup')
 	S.set_feedback_enable(band,1) 
-	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
-	print('checking tracking')
-	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	
+	# print('checking tracking')
+	# S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 
 print('taking 20s timestream')
-
-
+start_time=S.get_timestamp()
 fs = S.get_sample_frequency()
 # hard coded (for now) variables
 stream_time = 20
@@ -81,6 +72,7 @@ dat_path = S.stream_data_on()
 time.sleep(stream_time)
 # end the time stream
 S.stream_data_off()
+
 
 start_time = dat_path[-14:-4]  
 
@@ -105,7 +97,7 @@ for band, channel in zip(bands, channels):
 
 fmin=5
 fmax=50
-detrend='constant'
+
 # plot the band channel data
 fig, axs = plt.subplots(4, 2, figsize=(12, 24), gridspec_kw={'width_ratios': [2, 2]},dpi=50)
 for band in sorted(stream_by_band_by_channel.keys()):
@@ -116,7 +108,7 @@ for band in sorted(stream_by_band_by_channel.keys()):
         stream_single_channel = stream_single_band[channel]
 
 
-        f, Pxx = signal.welch(stream_single_channel, fs=fs, detrend=detrend,nperseg=2**12)
+        f, Pxx = signal.welch(stream_single_channel, fs=fs, detrend=detrend)
         Pxx = np.sqrt(Pxx)
         fmask = (fmin < f) & (f < fmax)
         wl = np.median(Pxx[fmask])
@@ -143,7 +135,7 @@ for band in sorted(stream_by_band_by_channel.keys()):
     for channel in sorted(stream_single_band.keys()):
         stream_single_channel = stream_single_band[channel]
         f, Pxx = signal.welch(stream_single_channel,
-                fs=fs, detrend=detrend,nperseg=2**12)
+                fs=fs, detrend=detrend)
         Pxx = np.sqrt(Pxx)
         fmask = (fmin < f) & (f < fmax)
         wl = np.median(Pxx[fmask])
@@ -178,12 +170,6 @@ print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}')
 plt.savefig(os.path.join(S.plot_dir, save_name))
 
 
-
-
-
-
 S.save_tune()    
-
-
 print('plotting directory is:')
 print(S.plot_dir)

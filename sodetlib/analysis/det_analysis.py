@@ -573,12 +573,12 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
     iv_full_dict = {'metadata': {}, 'data': {}}
 
-    iv_full_dict['metadata']['iv_info'] = iv_info_fp
+    iv_full_dict['metadata']['iv_info'] = iv_info
     if iv_info['wafer_id'] is not None:
         iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
     else:
         iv_full_dict['metadata']['wafer_id'] = None
-    iv_full_dict['metadata']['version'] = 'v1'
+    iv_full_dict['metadata']['version'] = 'v2'
 
     bands = mask[0]
     chans = mask[1]
@@ -693,13 +693,14 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         p_tes = (v_tes**2)/R  # electrical power on TES
 
         # calculates P_sat as P_TES at 90% R_n
-        # if the TES is at 90% R_n more than once, set to nan
+        # if the TES is at 90% R_n more than once, just take the first crossing
         level = psat_level
         cross_idx = np.where(np.logical_and(R/R_n - level >= 0,
                              np.roll(R/R_n - level, 1) < 0))[0]
 
-        if len(cross_idx) == 1:
-            cross_idx = cross_idx[0]
+        # Taking the first crossing
+        if len(cross_idx) >= 1:
+            cross_idx = cross_idx[-1]
             if cross_idx == 0:
                 print(f'Error when finding 90% Rfrac for channel '
                       f'{(bands[c], chans[c])}. Check channel manually.')
@@ -740,10 +741,10 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
         rL = 0
 
-        # Responsivity estimate
-        # add where eq comes from (irwin hilton)
-        si = -(1./i0)*(dv_tes/di_tes - (r0+rL+beta*r0)) / \
-            ((2.*r0-rL+beta*r0)*dv_tes/di_tes - 3.*rL*r0 - rL**2)
+        # Responsivity estimate, derivation done here by MSF
+        # https://www.overleaf.com/project/613978cb38d9d22e8550d45c
+
+        si = -(1./(i0*r0*(2+beta)))*(1-((r0*(1+beta)+rL)/(dv_tes/di_tes)))
 
         iv_dict = {}
         iv_dict['R'] = R
@@ -764,7 +765,8 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
 @set_action()
 def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
-                        phase_excursion_min=3.0, psat_level=0.9, outfile=None):
+                        phase_excursion_min=3.0, psat_level=0.9, outfile=None,
+                        dump_cfg=True):
     """
     Runs analyze_iv_info and saves the output properly, archiving the
     resulting iv_analyze dictionary. Requires pysmurf.
@@ -794,6 +796,8 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
         Filepath to save the output dictionary. Default is the
         output directory in the iv_info dictionary plus the
         basename ctime associated with the IV curve.
+    dump_cfg: bool, default True
+        if True, will dump updated dev cfg with new iv_analyze fp to disk
 
     Returns
     -------
@@ -815,10 +819,15 @@ def analyze_iv_and_save(S, cfg, iv_info_fp, phase, v_bias, mask,
     np.save(outfile, iv_analyze)
     S.pub.register_file(outfile, 'iv_analyze', format='npy')
 
+    print("Updating config file with iv_analyze filepath...")
+    if dump_cfg:
+        cfg.dev.update_experiment({'iv_analyze': outfile})
+        cfg.dev.dump(cfg.dev_file, clobber=True)
+
     return outfile
 
 
-def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
+def iv_channel_plots(iv_analyze, bands=None, chans=None,
                      plot_dir=None, show_plot=False, save_plot=True,
                      S=None):
     """
@@ -827,9 +836,6 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
 
     Args
     ----
-    iv_info: dict
-        Dictionary loaded from iv_info.npy that contains information from
-        when IV curve was taken.
     iv_analyze: dict
         Dictionary generated that contains all fitted and calculated
         parameters from IV analysis.
@@ -854,6 +860,8 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
     plot_dir: str
         Filepath where plots are saved, if save_plot is True.
     """
+    iv_info = iv_analyze['metadata']['iv_info']
+    
     if plot_dir is None:
         plot_dir = iv_info['plot_dir']
 
@@ -969,7 +977,7 @@ def iv_channel_plots(iv_info, iv_analyze, bands=None, chans=None,
         return plot_dir
 
 
-def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
+def iv_summary_plots(iv_analyze, Rn_bins=None, Psat_bins=None,
                      plot_dir=None, show_plot=False, save_plot=True,
                      S=None):
     """
@@ -980,9 +988,6 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
 
     Args
     ----
-    iv_info: dict
-        Dictionary loaded from iv_info.npy that contains information from
-        when IV curve was taken.
     iv_analyze: dict
         Dictionary generated that contains all fitted and calculated
         parameters from IV analysis.
@@ -1001,6 +1006,8 @@ def iv_summary_plots(iv_info, iv_analyze, Rn_bins=None, Psat_bins=None,
     plot_dir: str
         Filepath where plots are saved, if save_plot is True.
     """
+    iv_info = iv_analyze['metadata']['iv_info']
+    
     if plot_dir is None:
         plot_dir = iv_info['plot_dir']
 

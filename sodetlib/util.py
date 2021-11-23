@@ -283,3 +283,46 @@ def get_r2(sig, sig_hat):
     if r2 < 0:
         return 0
     return r2
+
+
+class _Register:
+    def __init__(self, S, addr):
+        self.S = S
+        self.addr = S.epics_root + ":" + addr
+
+    def get(self):
+        return self.S._caget(self.addr)
+
+    def set(self, val):
+        self.S._caput(self.addr, val)
+
+class Registers:
+    """
+    Utility class for storing, getting, and setting SO-rogue registers even if
+    they are not in the standard rogue tree, or settable by existing pysmurf
+    get/set functions
+    """
+    _root = 'AMCc:'
+    _processor = _root + "SmurfProcessor:"
+    _sostream = _processor + "SOStream:"
+    _sofilewriter = _sostream + 'SOFileWriter:'
+    _source_root = _root + 'StreamDataSource:'
+
+    _registers = {
+        'pysmurf_action': _sostream + 'pysmurf_action',
+        'pysmurf_action_timestamp': _sostream + "pysmurf_action_timestamp",
+        'stream_tag': _sostream + "stream_tag",
+        'open_g3stream': _sostream + "open_g3stream",
+        'g3_session_id': _sofilewriter + "session_id",
+        'debug_data': _sostream + "DebugData",
+        'debug_meta': _sostream + "DebugMeta",
+        'debug_builder': _sostream + "DebugBuilder",
+        'flac_level': _sostream + "FlacLevel",
+        'source_enable': _source_root + 'SourceEnable',
+        'enable_compression': _sostream + 'EnableCompression',
+    }
+
+    def __init__(self, S):
+        self.S = S
+        for name, reg in self._registers.items():
+            setattr(self, name, _Register(S, reg))

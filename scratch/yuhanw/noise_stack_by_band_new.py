@@ -1,79 +1,26 @@
-'''
-Code written in Oct 2021 by Yuhan Wang
-relock UFM with a given tune file
-'''
-
-
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 import pysmurf.client
 import argparse
 import numpy as np
-import pickle as pkl
+import os
+import time
+import glob
+from sodetlib.det_config  import DetConfig
+import numpy as np
+from scipy.interpolate import interp1d
+import argparse
+import time
+import csv
 from scipy import signal
 import os
 import time
 
-from sodetlib.det_config import DetConfig
-
-fav_tune_files = '/data/smurf_data/tune/1634501972_tune.npy'
-bands = [0,1,2,3,4,5,6,7]
-slot_num = 2
-
-cfg = DetConfig()
-cfg.load_config_files(slot=slot_num)
-S = cfg.get_smurf_control()
-
-print('plotting directory is:')
-print(S.plot_dir)
-
-S.all_off()
-S.set_rtm_arb_waveform_enable(0)
-S.set_filter_disable(0)
-S.set_downsample_factor(20)
-S.set_mode_dc()
-
-S.load_tune(fav_tune_files)
-
-
-
-
-for band in bands:
-	print('setting up band {}'.format(band))
-
-	S.set_att_dc(band,cfg.dev.bands[band]['dc_att'])
-	print('band {} dc_att {}'.format(band,S.get_att_dc(band)))
-
-	S.set_att_uc(band,cfg.dev.bands[band]['uc_att'])
-	print('band {} uc_att {}'.format(band,S.get_att_uc(band)))
-
-	S.amplitude_scale[band] = cfg.dev.bands[band]['drive']
-	print('band {} tone power {}'.format(band,S.amplitude_scale[band] ))
-
-	print('setting synthesis scale')
-	# hard coding it for the current fw
-	S.set_synthesis_scale(band,1)
-
-	print('running relock')
-	S.relock(band,tone_power=cfg.dev.bands[band]['drive'])
-	
-	S.run_serial_gradient_descent(band);
-	S.run_serial_eta_scan(band);
-	
-	print('running tracking setup')
-	S.set_feedback_enable(band,1) 
-	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
-	print('checking tracking')
-	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
-
-print('taking 20s timestream')
-
 
 fs = S.get_sample_frequency()
 # hard coded (for now) variables
-stream_time = 20
+stream_time = 60
 
 # non blocking statement to start time stream and return the dat filename
 dat_path = S.stream_data_on()

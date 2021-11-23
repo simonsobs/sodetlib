@@ -68,9 +68,7 @@ plt.show()
 
 save_name = '{}_full_band_resp_all.npy'.format(timestamp)
 print(f'Saving data to {os.path.join(S.output_dir, save_name)}')
-full_resp_data = os.path.join(S.output_dir, save_name)
-path = os.path.join(S.output_dir, full_resp_data) 
-np.save(path, resp_dict)
+np.save(save_name,resp_dict)
 
 # log plot file
 logf=open('/data/smurf_data/smurf_loop.log','a+')
