@@ -73,6 +73,10 @@ class BiasStepAnalysis:
     Most analysis inputs and products will be saved to a npy file so they can
     be loaded and re-analyzed easily on another computer like simons1.
 
+    To load data from an saved step file, you can run::
+
+        bsa = BiasStepAnalysis.load(<path>)
+
     Saved Fields:
         tunefile: path
             Path of the tunefile loaded by the pysmurf instance
@@ -537,9 +541,15 @@ class BiasStepAnalysis:
         m = ts > self.step_fit_tmin
         if plot_all_steps:
             for sig in self.step_resp[rc]:
-                plt.plot(ts*1000, sig, alpha=0.1)
-        plt.plot(ts*1000, self.mean_resp[rc], '.')
-        plt.plot(ts[m]*1000, exp_fit(ts[m], *self.step_fit_popts[rc]))
+                plt.plot(ts*1000, sig, alpha=0.1, color='grey')
+        plt.plot(ts*1000, self.mean_resp[rc], '.', label='avg step')
+        plt.plot(ts[m]*1000, exp_fit(ts[m], *self.step_fit_popts[rc]), label='fit')
+
+        text = r'$\tau_\mathrm{eff}$=' + f'{self.tau_eff[rc]*1000:0.2f} ms'
+        ax.text(0.7, 0.1, text, transform=ax.transAxes,
+                bbox={'facecolor': 'wheat', 'alpha': 0.3}, fontsize=12)
+
+        ax.legend()
         ax.set(xlabel="Time (ms)", ylabel="Current (Amps)")
 
         return fig, ax
