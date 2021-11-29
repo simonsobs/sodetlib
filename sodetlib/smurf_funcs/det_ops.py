@@ -15,6 +15,10 @@ from sodetlib.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
 
+# Imports bias step functions so you can run through det_ops
+from sodetlib.smurf_funcs.bias_steps import \
+    BiasStepAnalysis, play_bias_steps_dc, take_bias_steps
+
 
 def get_current_mode(S, bias_group):
     """
