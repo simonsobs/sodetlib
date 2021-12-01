@@ -69,7 +69,7 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
         shift at each bias value for each channel in each band.
     """
     cur_mode = S.get_cryo_card_ac_dc_mode()
-    if cur_mod == 'AC':
+    if cur_mode == 'AC':
         S.set_mode_dc()
     ctime = S.get_timestamp()
     fn_raw_data = f'{S.output_dir}/{ctime}_fr_sweep_data.npy'
@@ -207,7 +207,7 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     S.set_lms_enable2(band, prev_lms_enable2)
     S.set_lms_enable3(band, prev_lms_enable3)
     S.set_lms_gain(band, lms_gain)
-    if cur_mod == 'AC':
+    if cur_mode == 'AC':
         S.set_mode_ac()
     return raw_data
 
