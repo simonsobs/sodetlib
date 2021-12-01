@@ -5,6 +5,7 @@ An example configuration file for the detector mapping algorithms.
 
 import os
 import glob
+import pathlib
 
 import numpy as np
 
@@ -12,23 +13,31 @@ from scratch.chw3k5.detmap.download_example_data import sample_data_init
 
 # Check to see if the example data is available, if not it downloads it from a GoogleDrive host.
 sample_data_init()
+# get the absolute path for the configuration files
+abs_path_config_files = pathlib.Path(__file__).parent.resolve()
+# get the absolute path fo the detector mapping code
+abs_path_detmap = abs_path_config_files.parent.resolve()
+# set the absolute paths for the example and metadata directories.
+abs_path_metadata = os.path.join(abs_path_detmap, 'metadata')
+abs_path_sample_data = os.path.join(abs_path_detmap, 'sample_data')
 
-
-# start the example configuration file, this is only a first try, most of this should be determined dynamically.
-highband = "S"
+"""
+start the example configuration file, this is only a first try, most of this should be determined dynamically.
+"""
+highband = 'S'  # use either 'N' or 'S' for North or South, respectively.
 shift = 10
-waferfile = os.path.join("../metadata", "copper_map_corrected.csv")
-design_file = os.path.join("../metadata", "umux_32_map.pkl")
+waferfile = os.path.join(abs_path_metadata, "copper_map_corrected.csv")
+design_file = os.path.join(abs_path_metadata, "umux_32_map.pkl")
 bands = np.arange(8)
 dict_thru = {"N": [7], "S": []}
 dark_bias_lines = [4, 5, 6, 7, 8, 9, 10, 11]  # If certain sides are covered
-smurf_tune = os.path.join('../sample_data', 'sample_data/1632247315_tune.npy')
+smurf_tune = os.path.join(abs_path_sample_data, '1632247315_tune.npy')
 
 # mux position number (int in 0-27) to mux band number (int in 0-14) mapping file
-mux_pos_num_to_mux_band_num_path = os.path.join('../sample_data', 'sample_data/mux_pos_num_to_mux_band_num.csv')
+mux_pos_num_to_mux_band_num_path = os.path.join(abs_path_config_files, 'mux_pos_num_to_mux_band_num.csv')
 
-dir_N = os.path.join('../sample_data', 'sample_data/north_vna')
-dir_S = os.path.join('../sample_data', 'sample_data/south_vna')
+dir_N = os.path.join(abs_path_sample_data, 'north_vna')
+dir_S = os.path.join(abs_path_sample_data, 'south_vna')
 north_search_str = os.path.join(dir_N, '*.S2P')
 N_band = sorted(glob.glob(north_search_str))
 

@@ -131,21 +131,22 @@ def automated_map(S_files, N_files, highband, dict_thru, smurf_tune, dark_bias_l
 
 if __name__ == '__main__':
     # get a sample configuration to use with this example
-
-    #
-    smurf2det = automated_map(S_files=detmap_conifg.S_files, N_files=detmap_conifg.N_files,
-                              highband=detmap_conifg.highband, dict_thru=detmap_conifg.dict_thru,
-                              smurf_tune=detmap_conifg.smurf_tune, dark_bias_lines=detmap_conifg.dark_bias_lines,
-                              design_file=detmap_conifg.design_file,
-                              mux_pos_num_to_mux_band_num_path=detmap_conifg.mux_pos_num_to_mux_band_num_path,
-                              waferfile=detmap_conifg.waferfile)
+    from scratch.chw3k5.detmap.config_files.detmap_conifg_example import N_files, S_files, highband, dict_thru, \
+        smurf_tune, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, waferfile
+    # The main mapping file
+    smurf2det = automated_map(S_files=S_files, N_files=N_files,
+                              highband=highband, dict_thru=dict_thru,
+                              smurf_tune=smurf_tune, dark_bias_lines=dark_bias_lines,
+                              design_file=design_file,
+                              mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path,
+                              waferfile=waferfile)
 
 
     output_filename = "test_pixel_info.csv"
     smurf2det.to_csv(output_filename, index=False)
 
-    cold_ramp_file = os.path.join('sample_data', 'coldloadramp_example.csv')
-    data_by_column, data_by_row = read_csv(path=os.path.join('sample_data', 'coldloadramp_example.csv'))
+    cold_ramp_file = os.path.join('config_files', 'coldloadramp_example.csv')
+    data_by_column, data_by_row = read_csv(path=cold_ramp_file)
 
     coldload_ivs = [data_row for data_row in data_by_row if data_row['note'].lower() == 'iv']
 
