@@ -120,18 +120,10 @@ def read_psat(coldload_ivs, map_data=None, make_plot=False):
                 # test to initialize this part of the psat dict, if needed
                 if dict_key not in psat_dict.keys():
                     psat_dict[dict_key] = {"T": [], 'psat': []}
-                try:
-                    # if coldload_iv['bias_line'] != 'all':
-                    #     map_BL = int(map_data.loc[(map_data["smurf_band"] == band) & (map_data["smurf_chan"] == chan)][
-                    #                      "biasline"])
-                    #     assert map_BL == coldload_iv["bias_line"]
-                    ch_psat = np.float(get_psat(iv, band, chan, level=0.9, greedy=False))
-                    psat_dict[dict_key]['T'].append(coldload_iv['bath_temp'])
-                    psat_dict[dict_key]['psat'].append(ch_psat)
-                except TypeError:
-                    print(f'TypeError in read_psat() in the file read_iv.py')
-                finally:
-                    print('Successful band-channel lap in read_psat() in the file read_iv.py')
+
+                ch_psat = np.float(get_psat(iv, band, chan, level=0.9, greedy=False))
+                psat_dict[dict_key]['T'].append(coldload_iv['bath_temp'])
+                psat_dict[dict_key]['psat'].append(ch_psat)
 
     if make_plot:
         for key in psat_dict.keys():

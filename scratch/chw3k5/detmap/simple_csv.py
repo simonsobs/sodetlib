@@ -3,11 +3,36 @@ import os
 # working_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def make_num(test_datum):
+def make_int(test_num_str):
+    """
+    Parameters
+    ----------
+    test_num_str:
+        str, required. A string to test to see it it can be cast into and integer.
+
+    Returns int, if the string can be cast into and integer, otherwise it returns the original string.
+    -------
+    """
     try:
-        return float(test_datum)
+        return int(test_num_str)
     except ValueError:
-        return test_datum
+        return test_num_str
+
+
+def make_num(test_datum, null_str=None):
+    # see if this is an empty string, or and expected null value
+    if test_datum == '' or test_datum == null_str:
+        return None
+    # tests to se if this string is an int
+    test_datum_maybe_int = make_int(test_num_str=test_datum)
+    if isinstance(test_datum_maybe_int, int):
+        return test_datum_maybe_int
+    else:
+        # either a float or a sting.
+        try:
+            return float(test_datum_maybe_int)
+        except ValueError:
+            return test_datum_maybe_int
 
 
 def line_format(raw_line):

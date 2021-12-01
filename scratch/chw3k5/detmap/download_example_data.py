@@ -49,7 +49,7 @@ def sample_data_init(del_dir=False):
     zipfile_path = os.path.join(sample_data_dir, 'sample_data.zip')
     # start the download and tell the user what is happening
     print(f'  Beginning file download of at {zipfile_url}')
-    print(f'  This is 1.57 GB file so it make take a while depending on your connection speed...')
+    print(f'  This is ~500 Mb file so it make take a while depending on your connection speed...')
     download_file_from_google_drive(id=zip_file_id, destination=zipfile_path)
     print('Download Complete.\n')
 

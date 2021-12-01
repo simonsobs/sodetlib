@@ -7,50 +7,18 @@ Data goes in, Maps come out.
 """
 
 import os
-import glob
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # custom packages
-from read_iv import match_chan_map, read_psat, get_psat
+from read_iv import match_chan_map, read_psat
 from peak_finder_v2 import get_peaks_v2
 from vna_func import read_vna_data_array, correct_trend, read_smurf_channels
-from detector_map import smurf_chan_to_realized_freq, all_smurf_chan_to_realized_freq, vna_freq_to_muxpad, \
+from detector_map import vna_freq_to_muxpad, \
     smurf_to_mux, mux_band_to_mux_posn, get_pad_to_wafer, smurf_to_detector
-
-# caleb's packages
 from simple_csv import read_csv
-from download_example_data import sample_data_init
-
-# Check to see if the example data is avaible, if not it downloads it from a GoogleDrive host.
-sample_data_init()
-
-# start the example script
-highband = "S"
-shift = 10
-waferfile = os.path.join("metadata", "copper_map_corrected.csv")
-design_file = os.path.join("metadata", "umux_32_map.pkl")
-bands = np.arange(8)
-dict_thru = {"N": [7], "S": []}
-dark_bias_lines = [4, 5, 6, 7, 8, 9, 10, 11]  # If certain sides are covered
-smurf_tune = os.path.join('sample_data', '1632247315_tune.npy')
-band2posn = pd.DataFrame(
-    {'mux_band': np.array([1, 9, 4, 2, 0, 6, 8, 10, 12, 13, 11, 5, 3, 3, 5, 11, 13, 12, 10, 8, 6, 0, 2, 4, 9, 7, 1]),
-     'mux_posn': np.concatenate((np.array([0]), np.arange(2, 28)))})
-
-dir_N = os.path.join('sample_data', 'north_vna')
-dir_S = os.path.join('sample_data', 'south_vna')
-north_search_str = os.path.join(dir_N, '*.S2P')
-N_band = sorted(glob.glob(north_search_str))
-
-south_search_str = os.path.join(dir_S, '*.S2P')
-S_band = sorted(glob.glob(south_search_str))
-
-# hard cord sorting needs to fixed
-N_files = N_band[3:-1]
-S_files = S_band[2:]
 
 
 def get_peaks_from_vna(vna_files):
@@ -132,8 +100,8 @@ def assign_index_use_tune(smurf_tune, bands=np.arange(8), dict_thru=None, highba
     return pd.DataFrame({"Band": band_array, "Index": index_array, "UFM Frequency": chan_assign["frequency"]})
 
 
-def automated_map(S_files, N_files, highband, shift, dict_thru, smurf_tune, dark_bias_lines, design_file, band2posn,
-                  waferfile, threshold=0.1):
+def automated_map(S_files, N_files, highband, dict_thru, smurf_tune, dark_bias_lines, design_file,
+                  mux_pos_num_to_mux_band_num_path, waferfile, threshold=0.1):
     chan_assign = read_smurf_channels(smurf_tune)
 
     if N_files == [] and S_files == []:
@@ -154,60 +122,61 @@ def automated_map(S_files, N_files, highband, shift, dict_thru, smurf_tune, dark
     pad = pd.concat([df_pad_low, df_pad_high]).reset_index()
 
     smurf2mux = smurf_to_mux(chan_assign, pad, threshold)
-    smurf2padloc = mux_band_to_mux_posn(smurf2mux, band2posn)
+    smurf2padloc = mux_band_to_mux_posn(smurf2mux=smurf2mux, mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path)
     wafer_info = get_pad_to_wafer(waferfile, dark_bias_lines=dark_bias_lines)
     smurf2det = smurf_to_detector(smurf2padloc, wafer_info)
 
     return smurf2det
 
 
-smurf2det = automated_map(S_files, N_files, highband, shift, dict_thru, smurf_tune, dark_bias_lines, design_file,
-                          band2posn, waferfile)
+if __name__ == '__main__':
+    # get a sample configuration to use with this example
+
+    #
+    smurf2det = automated_map(S_files=detmap_conifg.S_files, N_files=detmap_conifg.N_files,
+                              highband=detmap_conifg.highband, dict_thru=detmap_conifg.dict_thru,
+                              smurf_tune=detmap_conifg.smurf_tune, dark_bias_lines=detmap_conifg.dark_bias_lines,
+                              design_file=detmap_conifg.design_file,
+                              mux_pos_num_to_mux_band_num_path=detmap_conifg.mux_pos_num_to_mux_band_num_path,
+                              waferfile=detmap_conifg.waferfile)
 
 
-output_filename = "test_pixel_info.csv"
-smurf2det.to_csv(output_filename, index=False)
+    output_filename = "test_pixel_info.csv"
+    smurf2det.to_csv(output_filename, index=False)
 
-cold_ramp_file = os.path.join('sample_data', 'coldloadramp_example.csv')
-data_by_column, data_by_row = read_csv(path=os.path.join('sample_data', 'coldloadramp_example.csv'))
+    cold_ramp_file = os.path.join('sample_data', 'coldloadramp_example.csv')
+    data_by_column, data_by_row = read_csv(path=os.path.join('sample_data', 'coldloadramp_example.csv'))
 
-coldload_ivs = [data_row for data_row in data_by_row if data_row['note'].lower() == 'iv']
-
-# coldload = pd.read_csv(cold_ramp_file, header=None)
-# coldload.columns = ["bath_temp", "bias_voltage", "bias_line", "band", "data_path", "note"]
-# coldload = coldload.loc[coldload["note"] == "IV"]
-# coldload.reset_index(drop=True)
-# coldload = coldload.rename(columns={'bath_temp': 'cold_load_temp'})
-# coldload = coldload[['cold_load_temp', 'bias_line', 'band', 'data_path']]
+    coldload_ivs = [data_row for data_row in data_by_row if data_row['note'].lower() == 'iv']
 
 
-psat_data = read_psat(coldload_ivs=coldload_ivs, map_data=smurf2det, make_plot=True)
+    psat_data = read_psat(coldload_ivs=coldload_ivs, map_data=smurf2det, make_plot=True)
 
-pixel_info = match_chan_map(output_filename, psat_data)
+    pixel_info = match_chan_map(output_filename, psat_data)
 
-T = 9.0
-mi = 0
-ma = 3e-12
+    T = 9.0
+    mi = 0
+    ma = 3e-12
 
-for key in pixel_info.keys():
-    if pixel_info[key]['det'][0]['freq'] == '90':
-        try:
-            plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
-                        c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
-        except:
-            pass
-plt.title("90 GHz Psat at 100mK CL=9K, range=0-3 pW")
-plt.show()
+    for key in pixel_info.keys():
+        if pixel_info[key]['det'][0]['freq'] == '90':
+            try:
+                plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
+                            c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
+            except:
+                pass
+    plt.title("90 GHz Psat at 100mK CL=9K, range=0-3 pW")
+    plt.show()
 
-T = 9.0
-mi = 0
-ma = 6e-12
-for key in pixel_info.keys():
-    if pixel_info[key]['det'][0]['freq'] == '150':
-        try:
-            plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
-                        c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
-        except:
-            pass
-plt.title("150 GHz Psat at 100mK CL=9K, range=0-6 pW")
-plt.show()
+    T = 9.0
+    mi = 0
+    ma = 6e-12
+    for key in pixel_info.keys():
+        if pixel_info[key]['det'][0]['freq'] == '150':
+            try:
+                plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
+                            c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
+            except:
+                pass
+    plt.title("150 GHz Psat at 100mK CL=9K, range=0-6 pW")
+    plt.show()

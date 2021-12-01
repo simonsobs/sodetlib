@@ -8,6 +8,8 @@ from functools import wraps
 import numpy as np
 import pandas as pd
 
+from simple_csv import read_csv
+
 
 def timing(f):
     @wraps(f)
@@ -177,14 +179,14 @@ def smurf_to_mux(smurf2Rfreq, vna2pad, threshold=0.01):
 
 
 @timing
-def mux_band_to_mux_posn(smurf2mux, mux_band2_mux_posn, highband='S'):
+def mux_band_to_mux_posn(smurf2mux, mux_pos_num_to_mux_band_num_path, highband='S'):
     """
     Find the wafer location index of each mux chip.
     ----------
     smurf2mux:
         A dataframe that includes information from each smurf band to mux band
-    mux_band2_mux_posn:
-        A file of mux_band to 'mux_posn' correspondence    
+    mux_pos_num_to_mux_band_num_path: str, path, required
+        A path to a csv file with unique mux_pos_numbers (ints 0-27) keys mapping to mux_band_num (ints 0-13).
     highband:
         'S' or 'N', indicates which side of the wafer is connected to SMuRF band 4-7
 
@@ -196,31 +198,69 @@ def mux_band_to_mux_posn(smurf2mux, mux_band2_mux_posn, highband='S'):
     smurf2mux = smurf2mux.reset_index(drop=True)
     smurf2padloc = pd.concat([smurf2mux, pd.DataFrame({"mux_posn": []})], axis=1)
 
-    if isinstance(mux_band2_mux_posn, pd.DataFrame):
-        band2posn = mux_band2_mux_posn
-    else:
-        band2posn = pd.read_csv(mux_band2_mux_posn)
-    band = np.array(band2posn['mux_band'])
-    posn = np.array(band2posn['mux_posn'])
-    all_posn = []
+    # read-in for the mux_pos_num mapping to mux_band_num
+    data_by_column, data_by_row = read_csv(mux_pos_num_to_mux_band_num_path)
+    # the mux position numbers should be be between 0 and 27 and be a unique list of numbers
+    mux_pos_nums = data_by_column['mux_pos_num']
+    # get a unique list of mux_pos_nums
+    mux_pos_nums_unique = set(mux_pos_nums)
+    # check to make sure there are is unique list of mux_pos_nums
+    if len(mux_pos_nums) != len(mux_pos_nums_unique):
+        mux_pos_nums_test_set = set()
+        mux_pos_nums_repeated = set()
+        for mux_pos_num in mux_pos_nums:
+            if mux_pos_num in mux_pos_nums_test_set:
+                mux_pos_nums_repeated.add(mux_pos_num)
+            mux_pos_nums_test_set.add(mux_pos_num)
+        raise KeyError(f'The mux_pos_nums in the csv file {mux_pos_num_to_mux_band_num_path}\n' +
+                       f'is required to be a unique set on integers,\n' +
+                       f'the follow mux position numbers are repeated: {mux_pos_nums_repeated}')
+    # check each mux_pos_num for compliance
+    for mux_pos_num in mux_pos_nums:
+        # check that the mux_pos_num is an integer
+        if not isinstance(mux_pos_num, int):
+            raise TypeError(f'mux_pos_num must be an int, got type: {type(mux_pos_num)}')
+        # check that the mux_pos_num is an expected value between 0 and 27
+        elif mux_pos_num < 0 or 27 < mux_pos_num:
+            raise ValueError(f'mux_pos_num must be between 0-27 (inclusive), got mux_pos_num: {mux_pos_num}')
 
-    assert ((-1 < band) & (band < 14)).all()
-    assert ((-1 < posn) & (posn < 28)).all()
+    # the mux_band_nums, they should be integers between 0 and 13
+    mux_band_nums = data_by_column['mux_band_num']
+    # check each mux_pos_num for compliance
+    for mux_band_num in mux_band_nums:
+        # check that the mux_pos_num is an integer
+        if not isinstance(mux_band_num, int):
+            raise TypeError(f'mux_band_num must be an int, got type: {type(mux_band_num)}')
+        # check that the mux_pos_num is an expected value between 0 and 13
+        elif mux_band_num < 0 or 13 < mux_band_num:
+            raise ValueError(f'mux_band_num must be between 0-13 (inclusive), got mux_band_num: {mux_band_num}')
 
+    # make a convenient dictionary to map mux_pos_num to mux_band_num
+    mux_pos_num_to_mux_band_num = {mux_pos_num: mux_band_num for mux_pos_num, mux_band_num
+                                   in zip(mux_pos_nums, mux_band_nums)}
+
+    # start Kaiwen's original code
     for i, smurf_band in enumerate(smurf2mux["smurf_band"]):
-        in_south = (smurf_band > 3 and highband == 'S') or (smurf_band <= 3 and highband == 'N')
-        in_north = (smurf_band > 3 and highband == 'N') or (smurf_band <= 3 and highband == 'S')
-        assert (in_south and in_north) == False
+        if highband.lower() == 'n':
+            if smurf_band < 4:
+                smurf_band_in_north = False
+            else:
+                smurf_band_in_north = True
+        elif highband.lower() == 's':
+            if smurf_band < 4:
+                smurf_band_in_north = True
+            else:
+                smurf_band_in_north = False
+        else:
+            raise KeyError(f'The high band is not a required value [N/S], instead {highband} was received.')
 
-        twosides = posn[np.where(np.array(smurf2mux["mux_band"])[i] == band)]
+        twosides = np.array(mux_pos_nums)[np.where(np.array(smurf2mux["mux_band"])[i] == np.array(mux_band_nums))]
         assert len(twosides) <= 2
 
-        if in_south:
+        if smurf_band_in_north:
             mux_posn = [x for x in twosides if x > 13]
-        elif in_north:
-            mux_posn = [x for x in twosides if x <= 13]
         else:
-            raise ValueError("mux band not on wafer layout file")
+            mux_posn = [x for x in twosides if x <= 13]
 
         try:
             smurf2padloc["mux_posn"][i] = mux_posn[0]
