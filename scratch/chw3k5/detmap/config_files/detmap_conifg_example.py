@@ -31,11 +31,15 @@ design_file = os.path.join(abs_path_metadata, "umux_32_map.pkl")
 bands = np.arange(8)
 dict_thru = {"N": [7], "S": []}
 dark_bias_lines = [4, 5, 6, 7, 8, 9, 10, 11]  # If certain sides are covered
-smurf_tune = os.path.join(abs_path_sample_data, '1632247315_tune.npy')
+tunefile = os.path.join(abs_path_sample_data, '1632247315_tune.npy')
 
 # mux position number (int in 0-27) to mux band number (int in 0-14) mapping file
 mux_pos_num_to_mux_band_num_path = os.path.join(abs_path_config_files, 'mux_pos_num_to_mux_band_num.csv')
 
+# cold ramp bath temperature sweep filename
+cold_ramp_file = os.path.join(abs_path_config_files, 'coldloadramp_example.csv')
+
+# vna data paths
 dir_N = os.path.join(abs_path_sample_data, 'north_vna')
 dir_S = os.path.join(abs_path_sample_data, 'south_vna')
 north_search_str = os.path.join(dir_N, '*.S2P')
@@ -47,3 +51,6 @@ S_band = sorted(glob.glob(south_search_str))
 # hard cord sorting needs to fixed
 N_files = N_band[3:-1]
 S_files = S_band[2:]
+
+# output filename
+output_filename = os.path.join(abs_path_sample_data, "test_pixel_info.csv")

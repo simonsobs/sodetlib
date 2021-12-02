@@ -190,22 +190,6 @@ def read_vna_data_array(filenames):
     # return freq,real,imag
 
 
-def read_smurf_channels(filename):
-    dres = {'frequency': [], 'band': [], 'subband': [], 'channel': []}
-    dfres = pd.DataFrame(dres)
-    data = np.load(filename, allow_pickle=True).item()
-    for band in list(data.keys()):
-        if 'resonances' in list(data[band].keys()):
-            for idx in list(data[band]['resonances'].keys()):
-                scan = data[band]['resonances'][idx]
-                f = scan['freq']
-                subband = scan['subband']
-                res_index = scan['channel']
-                dfres = dfres.append({'frequency': f, 'band': band, 'subband': subband, "channel": res_index},
-                                     ignore_index=True)
-    return dfres
-
-
 def vna_data_into_frame(freq, real, imag, f0s, resonance_s21, low_indice=[], high_indice=[], delta=2e5):
     # This function takes in s21 data and position of the peak, 
     # fits the peaks into models and outputs a dataframe of the parameters
