@@ -13,7 +13,7 @@ import skrf as rf
 import numpy as np
 import pandas as pd
 
-from peak_finder_v2 import get_dip_depth
+from peak_finder_v2 import get_dip_depth, get_peaks_v2
 from noise_analysis import fit_noise_model
 from resonator_model import get_qi, get_br, full_fit
 from read_stream_data_gcp_save import read_stream_data_gcp_save
@@ -337,3 +337,41 @@ def associate_smurf_and_vna(df_smurf, df_vna, tolerance=0.5):
          's_br': df_both[:, 3], 'v_br': df_both[:, 11], 's_depth': df_both[:, 4], 'v_depth': df_both[:, 12],
          'chan': df_both[:, 6]})  # 'v_index':comp[:,14]})
     return df_smurf_vna
+
+
+def get_peaks_from_vna(vna_files):
+    f, r, i = read_vna_data_array(vna_files)
+    s21_corrected = correct_trend(f, r, i, avg_over=1000)
+    f0s, resonance_s21, low, high = get_peaks_v2(f, s21_corrected, f_delta=1e5, det_num=1000, baseline=0.1)
+    return f0s
+
+
+def assign_freq_index(band, freqlist, dict_thru, highband):
+    if ((highband == "S") & (band > 3)) | ((highband == "N") & (band <= 3)):
+        missing_chip = dict_thru["S"]
+    else:
+        missing_chip = dict_thru["N"]
+    counts = len(freqlist)
+    mux_band = np.zeros(counts)
+    mux_index = np.zeros(counts)
+    init_band = np.floor((band % 4) * 3.5)
+    miss = (3.5 * 66) - counts
+    offset = 0
+    if band % 2 == 1:
+        offset = 33
+    for i in np.arange(4):
+        if (init_band + i) in missing_chip:
+            if missing_chip in [3, 10]:
+                miss -= 33
+                offset = 33
+            else:
+                miss -= 66
+                offset = 66
+            continue
+        start = max(0, 66 * i - offset)
+        end = min(counts, (i + 1) * 66 - offset)
+        mux_band[start:end] += i + init_band
+        mux_index[start:end] = np.arange(end - start)
+    print("Band %i misses %i resonators (%.2f percent)\n"
+          % (band, miss, 100 * miss / (miss + len(freqlist))))
+    return mux_band, mux_index, miss

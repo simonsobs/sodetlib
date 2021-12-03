@@ -14,69 +14,103 @@ import matplotlib.pyplot as plt
 
 # custom packages
 from read_iv import match_chan_map, read_psat
-from peak_finder_v2 import get_peaks_v2
-from vna_func import read_vna_data_array, correct_trend
+
+from vna_func import assign_freq_index, get_peaks_from_vna
 
 from detector_map import vna_freq_to_muxpad, \
     smurf_to_mux, mux_band_to_mux_posn, get_pad_to_wafer, smurf_to_detector
 from simple_csv import read_csv
 from channel_assignment import read_tunefile, OperateTuneData
 
-
-def get_peaks_from_vna(vna_files):
-    f, r, i = read_vna_data_array(vna_files)
-    s21_corrected = correct_trend(f, r, i, avg_over=1000)
-    f0s, resonance_s21, low, high = get_peaks_v2(f, s21_corrected, f_delta=1e5, det_num=1000, baseline=0.1)
-    return f0s
+allowed_highbands = {'N', 'S'}
 
 
-def assign_freq_index(band, freqlist, dict_thru, highband):
-    if ((highband == "S") & (band > 3)) | ((highband == "N") & (band <= 3)):
-        missing_chip = dict_thru["S"]
-    else:
-        missing_chip = dict_thru["N"]
-    counts = len(freqlist)
-    mux_band = np.zeros(counts)
-    mux_index = np.zeros(counts)
-    init_band = np.floor((band % 4) * 3.5)
-    miss = (3.5 * 66) - counts
-    offset = 0
-    if band % 2 == 1:
-        offset = 33
-    for i in np.arange(4):
-        if (init_band + i) in missing_chip:
-            if missing_chip in [3, 10]:
-                miss -= 33
-                offset = 33
-            else:
-                miss -= 66
-                offset = 66
-            continue
-        start = max(0, 66 * i - offset)
-        end = min(counts, (i + 1) * 66 - offset)
-        mux_band[start:end] += i + init_band
-        mux_index[start:end] = np.arange(end - start)
-    print("Band %i misses %i resonators (%.2f percent)\n"
-          % (band, miss, 100 * miss / (miss + len(freqlist))))
-    return mux_band, mux_index, miss
+def emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None):
+    if smurf_bands is None:
+        smurf_bands = [band for band in range(8)]
+
+    lower_bands = [band for band in smurf_bands if band < 4]
+    available_lower_bands = set(lower_bands)
+    upper_bands = [band for band in smurf_bands if 3 < band]
+    available_upper_bands = set(upper_bands)
+
+    real_band_bounds_mhz = {}
+    all_data_band_bounds_mhz = {}
+    all_data_lower_band_bounds_mhz = {}
+    all_data_upper_band_bounds_mhz = {}
+    for smurf_band in smurf_bands:
+        # simulate the real bounds
+        lower_bound_mhz = 4000.0 + (smurf_band * 500.0) + shift_mhz
+        upper_bound_mhz = lower_bound_mhz + 500.0
+        real_band_bounds_mhz[smurf_band] = (lower_bound_mhz, upper_bound_mhz)
+        # simulate bounds that will not cut out any data
+        # by default all bands are like this
+        all_data_lower_bound_mhz = lower_bound_mhz
+        all_data_upper_bound_mhz = upper_bound_mhz
+        if smurf_band == smurf_bands[0]:
+            # set the first band to go to zero
+            all_data_lower_bound_mhz = 0.0
+        elif smurf_band == smurf_bands[-1]:
+            # set the last band to go up to infinity
+            all_data_upper_bound_mhz = float('inf')
+        all_data_band_bounds_mhz[smurf_band] = (all_data_lower_bound_mhz, all_data_upper_bound_mhz)
+
+        # set bounds just for the lower bands i.e. bands
+        if smurf_band in available_lower_bands:
+            all_data_lower_band_lower_bound_mhz = lower_bound_mhz
+            all_data_lower_band_upper_bound_mhz = upper_bound_mhz
+            if smurf_band == lower_bands[0]:
+                # set the first band to go to zero
+                all_data_lower_band_lower_bound_mhz = 0.0
+            elif smurf_band == lower_bands[-1]:
+                # set the last band to go up to infinity
+                all_data_lower_band_upper_bound_mhz = float('inf')
+            all_data_lower_band_bounds_mhz[smurf_band] = (all_data_lower_band_lower_bound_mhz,
+                                                          all_data_lower_band_upper_bound_mhz)
+
+        # set bounds just for the lower bands i.e. bands
+        if smurf_band in available_upper_bands:
+            all_data_upper_band_lower_bound_mhz = lower_bound_mhz
+            all_data_upper_band_upper_bound_mhz = upper_bound_mhz
+            if smurf_band == upper_bands[0]:
+                # set the first band to go to zero
+                all_data_upper_band_lower_bound_mhz = 0.0
+            elif smurf_band == upper_bands[-1]:
+                # set the last band to go up to infinity
+                all_data_upper_band_upper_bound_mhz = float('inf')
+            all_data_upper_band_bounds_mhz[smurf_band] = (all_data_upper_band_lower_bound_mhz,
+                                                          all_data_upper_band_upper_bound_mhz)
+
+    return real_band_bounds_mhz, all_data_band_bounds_mhz, all_data_lower_band_bounds_mhz, \
+           all_data_upper_band_bounds_mhz
 
 
-def assign_channel_use_vna(S_files, N_files, highband, dict_thru, shift=10):
-    assert ((highband == "N") | (highband == "S"))
-    south_res = get_peaks_from_vna(S_files)
+def assign_channel_use_vna(south_files, north_files, highband, dict_thru, shift_mhz=10):
+    highband = highband.strip().upper()
+    if highband not in allowed_highbands:
+        raise KeyError(f'the value for highband that was received: "{highband}"\n' +
+                       f'is not of the allow values: "{allowed_highbands}"')
+    south_res_mhz = get_peaks_from_vna(south_files) / 1.0e6
     print("South Side fit completed.")
-    north_res = get_peaks_from_vna(N_files)
+    north_res_mhz = get_peaks_from_vna(north_files) / 1.0e6
     print("North Side fit completed.")
-    south_res = south_res / 1e6 + 2000 * (highband == "S")
-    north_res = north_res / 1e6 + 2000 * (highband == "N")
+    # to emulate the  smurf tune file output we add 2000 MHz to the 'highband'
+    if highband == 'N':
+        north_res = north_res_mhz + 2000
+    else:
+        south_res = south_res_mhz + 2000
+
+        
     band_array = []
     channel_array = []
     freq_array = []
     for band in np.arange(8):
         if ((highband == "S") & (band > 3)) | ((highband == "N") & (band <= 3)):
-            bandfreq = south_res[(south_res > band * 500 + 4000 + shift) & (south_res < band * 500 + 4500 + shift)]
+            bandfreq = south_res[
+                (south_res > band * 500 + 4000 + shift_mhz) & (south_res < band * 500 + 4500 + shift_mhz)]
         else:
-            bandfreq = north_res[(north_res > band * 500 + 4000 + shift) & (north_res < band * 500 + 4500 + shift)]
+            bandfreq = north_res[
+                (north_res > band * 500 + 4000 + shift_mhz) & (north_res < band * 500 + 4500 + shift_mhz)]
         print("Band", band, " has ", len(bandfreq), " resonators.")
         mux_band, mux_index, miss = assign_freq_index(band, bandfreq, dict_thru, highband)
         band_array = np.concatenate((band_array, mux_band))
@@ -102,24 +136,25 @@ def assign_channel_use_tune(tunefile, bands=np.arange(8), dict_thru=None, highba
     return pd.DataFrame({"Band": band_array, "channel": channel_array, "UFM Frequency": chan_assign["frequency"]})
 
 
-def automated_map(S_files, N_files, highband, shift, dict_thru, tunefile, dark_bias_lines, design_file,
+def automated_map(south_files, north_files, highband, shift_mhz, dict_thru, tunefile, dark_bias_lines, design_file,
                   mux_pos_num_to_mux_band_num_path, waferfile, threshold=0.1,
-                  tune_data_vna_output_filename='tune_data_vna.csv'):
+                  tune_data_vna_output_filename='tune_data_vna.csv', redo_vna_tune=False):
+    # get the tune file data from smurf
     tune_data_smurf = OperateTuneData(path=tunefile)
-
-    # do peak finding on the VNA data return a data structure the relates frequency to smurf band and channel number.
-    if N_files == [] and S_files == []:
-        raise FileNotFoundError("Both North and South VNA files were empty lists)")
+    # parse/get date from a Vector Network Analyzer
+    if os.path.exists(tune_data_vna_output_filename) and not redo_vna_tune:
+        tune_data_vna = OperateTuneData(path=tune_data_vna_output_filename)
     else:
+        if north_files == [] and south_files == []:
+            raise FileNotFoundError("Both North and South VNA files were empty lists)")
         tune_data_vna = OperateTuneData()
-        if os.path.exists(tune_data_vna_output_filename):
-            pass
-        else:
-            vna_df = assign_channel_use_vna(S_files, N_files, highband, dict_thru, shift=shift)
-            tune_data_vna.from_dataframe(data_frame=vna_df)
-            tune_data_vna.write_csv()
-
-
+        # Kaiwen's VNA peak finding function
+        # peak finding on the VNA data return a data structure the relates frequency to smurf band and channel number.
+        vna_df = assign_channel_use_vna(south_files, north_files, highband, dict_thru, shift_mhz=shift_mhz)
+        # transform into Caleb's data class
+        tune_data_vna.from_dataframe(data_frame=vna_df)
+        # write this data to skip this step next time and simply read in these results
+        tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
 
     chan_assign = chan_assign[["smurf_band", "channel", "freq_mhz"]]
     chan_assign = chan_assign.rename(
@@ -147,9 +182,10 @@ if __name__ == '__main__':
     from scratch.chw3k5.detmap.config_files.detmap_conifg_example import N_files, S_files, cold_ramp_file, \
         highband, shift, dict_thru, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
         waferfile, output_filename
+
     # The main mapping file
-    smurf2det = automated_map(S_files=S_files, N_files=N_files,
-                              highband=highband, shift=shift, dict_thru=dict_thru,
+    smurf2det = automated_map(south_files=S_files, north_files=N_files,
+                              highband=highband, shift_mhz=shift, dict_thru=dict_thru,
                               tunefile=tunefile, dark_bias_lines=dark_bias_lines,
                               design_file=design_file,
                               mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path, waferfile=waferfile)

@@ -4,8 +4,8 @@ Author: Caleb Wheeler, written by reading code originally writen by Kaiwen Zheng
 This file handles the data structures, reading, and analysis of resonator frequency to smurf band-channel index pairs.
 """
 import os.path
-from typing import NamedTuple, Optional
 from operator import attrgetter
+from typing import NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -21,12 +21,13 @@ class TuneDatum(NamedTuple):
     smurf_band: int
     channel: int
     is_north: Optional[bool] = None
+    is_highband: Optional[bool] = None
     subband: Optional[int] = None
 
     def __str__(self):
         output_str = ''
-        for column_name in list(self._fields):
-            output_str += f'{self.__getattribute__(column_name)},'
+        for column in list(self._fields):
+            output_str += f'{self.__getattribute__(column)},'
         # the last comma is not needed
         final_output = output_str[:-1]
         return final_output
@@ -41,7 +42,6 @@ class TuneDatum(NamedTuple):
     def dict_without_none(self):
         return {field_key: self.__getattribute__(field_key) for field_key in self._fields
                 if self.__getattribute__(field_key) is not None}
-
 
 
 tune_data_column_names = list(TuneDatum._fields)
@@ -81,8 +81,16 @@ class OperateTuneData:
     For a measurement of tune data across a single UFM
     """
     def __init__(self, path=None):
+        # read-in path
         self.path = path
+        if self.path is None:
+            extension = None
+        else:
+            basename = os.path.basename(self.path)
+            _prefix, extension = basename.rsplit('.', 1)
+            extension = extension.lower()
 
+        # a default that is used when output_path_csv=None in the method self.write_csv()
         self.output_prefix = 'test_tune_data_vna'
 
         # initial values for variables the are populated in this class's methods.
@@ -90,8 +98,14 @@ class OperateTuneData:
         self.tune_data_by_band_and_channel_index = None
         self.pandas_data_frame = None
 
+        # auto read in know file types
         if path is not None:
-            self.read_tunefile()
+            if extension == 'npy':
+                self.read_tunefile()
+            elif extension == 'csv':
+                self.read_csv()
+            else:
+                raise KeyError(f'File extension: "{extension}" is not recognized type.')
 
     def __iter__(self):
         """
@@ -138,7 +152,7 @@ class OperateTuneData:
                     self.tune_data.add(tune_datum_this_res)
                     self.tune_data_by_band_and_channel_index[smurf_band][channel] = tune_datum_this_res
 
-    def from_dataframe(self, data_frame):
+    def from_dataframe(self, data_frame, is_north=None, is_highband=None):
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         self.tune_data_by_band_and_channel_index = {}
@@ -154,7 +168,7 @@ class OperateTuneData:
             if channel not in self.tune_data_by_band_and_channel_index[smurf_band].keys():
                 self.tune_data_by_band_and_channel_index[smurf_band][channel] = set()
             # set the tune datum for this row, note ** is a kwargs variable unpacking.
-            tune_datum_this_res = TuneDatum(**row)
+            tune_datum_this_res = TuneDatum(**row, is_north=is_north, is_highband=is_highband)
             self.tune_data.add(tune_datum_this_res)
             self.tune_data_by_band_and_channel_index[smurf_band][channel].add(tune_datum_this_res)
 
@@ -183,12 +197,14 @@ class OperateTuneData:
             for tune_datum_this_res in list(self):
                 f.write(f'{tune_datum_this_res}\n')
 
-    def read_csv(self, input_path_csv=None):
-        if input_path_csv is None:
+    def read_csv(self):
+        if self.path is None:
             last_filename, _new_filename = get_filename(filename_func=operate_tune_data_csv_filename,
                                                         prefix=self.output_prefix)
-            input_path_csv = last_filename
-        with open(input_path_csv, 'r') as f:
+            if last_filename is None:
+                raise FileNotFoundError
+            self.path = last_filename
+        with open(self.path, 'r') as f:
             pass
 
 
