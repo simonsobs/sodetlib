@@ -6,6 +6,9 @@ The DetConfig System
 
 DetConfig is the sodetlib module that manages and groups all configuration info.
 
+
+.. _LoadConfigs:
+
 Loading a Configuration
 ````````````````````````
 Below is an example for how to populate the ``DetConfig`` object for slot 2::
@@ -39,6 +42,14 @@ directory. For example::
    cfg = DetConfig()
    cfg.load_config_files(slot=2)
    S = cfg.get_smurf_control(dump_configs=True)
+
+It is also possible to take all the configuration information and apply it to
+the pysmurf-instance using the `apply_dev_configs` argument. This is useful for 
+things like loading pre-set amplifier biases. The argument `load_device_tune` can be
+used to automatically load the tune file in the configuration file::
+    
+    S = cfg.get_smurf_control(dump_configs=True, make_logfile=True,
+                          apply_dev_configs=True, load_device_tune=True)
 
 
 .. _DetConfig parser:

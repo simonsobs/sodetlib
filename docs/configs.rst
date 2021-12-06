@@ -65,6 +65,9 @@ Slot Configuration
 Slot configuration will grouped under the ``slots`` key, and each slot will 
 have its own entry ``SLOT[<slot>]``.
 
+.. warning::
+    Are the stream ports used at all anymore?
+
 .. list-table:: Slot Configuration
    :widths: 10 80
 

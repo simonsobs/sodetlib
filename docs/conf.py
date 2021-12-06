@@ -43,7 +43,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.todo',
 ]
-extensions += ['sphinxarg.ext']
+extensions += ['sphinxarg.ext', 'sphinx.ext.autosummary']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -74,7 +74,7 @@ pygments_style = 'sphinx'
 
 # Have __init__ and class docstrings both show up
 autoclass_content = "both"
-
+autosummary_generate=True
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -164,4 +164,3 @@ man_pages = [
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
-
