@@ -41,9 +41,9 @@ cooldown, because the resonators shift a bit each time we get down to 100 mK.
 Alternatively, every time we make a new channel assignment we cannot guarantee 
 that the mapping between channel and TES remains the same. This means that if we
 want to maintain the same detector mapping throughout a cooldown we need to tune
-on the same set of channel assignments. This will become very important when
-running in Chile or while doing optical tests where detector mapping information
-if acquired spread out in time. 
+on the same set of channel assignments. The channel to detector mapping  will become 
+very important when running in Chile or while doing optical tests where detector 
+mapping information if acquired spread out in time. 
 
 Eventually the code snippets below will need to become defined scripts or tasks,
 but for now we will have them here.
@@ -93,7 +93,7 @@ assignment file for that band.
 These are setup pieces that you usually have to do once per device + readout chain
 but afterwards seem to be constant across cooldowns.
 
-1. Setting the phase delay for the system. This delay value is saved in the
+1. **Setting the phase delay for the system.** This delay value is saved in the
 `pysmurf` config file and is generally constant across cooldowns. But the first
 time you plug in a device to a specific readout chain you should set this delay
 number. (We often check it each cooldown but if it's changed that's usually
@@ -107,13 +107,13 @@ config file, the `pymurf` config file must be updated by hand.::
         delay, res = S.estimate_phase_delay(band)
         S.set_band_delay_us(band, delay)
 
-2. Setting the attenuation levels. This is adjusting the `atten_uc` and
+2. **Setting the attenuation levels.** This is adjusting the `atten_uc` and
 `atten_dc` values to minimize the readout noise for the band. These values are
 constant across cooldowns.
 
 .. todo:: Add info on how to use optimization functions for attenuation
 
-3. Setting the Tracking parameters. We want to adjust some of the tracking
+3. **Setting the Tracking parameters.** We want to adjust some of the tracking
 parameters. Chicago/LATRt has found this to be very close to constant across
 cooldowns. To do this for each band::
     
