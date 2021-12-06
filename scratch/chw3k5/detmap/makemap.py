@@ -25,98 +25,37 @@ from channel_assignment import read_tunefile, OperateTuneData
 allowed_highbands = {'N', 'S'}
 
 
-def emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None):
-    if smurf_bands is None:
-        smurf_bands = [band for band in range(8)]
-
-    lower_bands = [band for band in smurf_bands if band < 4]
-    available_lower_bands = set(lower_bands)
-    upper_bands = [band for band in smurf_bands if 3 < band]
-    available_upper_bands = set(upper_bands)
-
-    real_band_bounds_mhz = {}
-    all_data_band_bounds_mhz = {}
-    all_data_lower_band_bounds_mhz = {}
-    all_data_upper_band_bounds_mhz = {}
-    for smurf_band in smurf_bands:
-        # simulate the real bounds
-        lower_bound_mhz = 4000.0 + (smurf_band * 500.0) + shift_mhz
-        upper_bound_mhz = lower_bound_mhz + 500.0
-        real_band_bounds_mhz[smurf_band] = (lower_bound_mhz, upper_bound_mhz)
-        # simulate bounds that will not cut out any data
-        # by default all bands are like this
-        all_data_lower_bound_mhz = lower_bound_mhz
-        all_data_upper_bound_mhz = upper_bound_mhz
-        if smurf_band == smurf_bands[0]:
-            # set the first band to go to zero
-            all_data_lower_bound_mhz = 0.0
-        elif smurf_band == smurf_bands[-1]:
-            # set the last band to go up to infinity
-            all_data_upper_bound_mhz = float('inf')
-        all_data_band_bounds_mhz[smurf_band] = (all_data_lower_bound_mhz, all_data_upper_bound_mhz)
-
-        # set bounds just for the lower bands i.e. bands
-        if smurf_band in available_lower_bands:
-            all_data_lower_band_lower_bound_mhz = lower_bound_mhz
-            all_data_lower_band_upper_bound_mhz = upper_bound_mhz
-            if smurf_band == lower_bands[0]:
-                # set the first band to go to zero
-                all_data_lower_band_lower_bound_mhz = 0.0
-            elif smurf_band == lower_bands[-1]:
-                # set the last band to go up to infinity
-                all_data_lower_band_upper_bound_mhz = float('inf')
-            all_data_lower_band_bounds_mhz[smurf_band] = (all_data_lower_band_lower_bound_mhz,
-                                                          all_data_lower_band_upper_bound_mhz)
-
-        # set bounds just for the lower bands i.e. bands
-        if smurf_band in available_upper_bands:
-            all_data_upper_band_lower_bound_mhz = lower_bound_mhz
-            all_data_upper_band_upper_bound_mhz = upper_bound_mhz
-            if smurf_band == upper_bands[0]:
-                # set the first band to go to zero
-                all_data_upper_band_lower_bound_mhz = 0.0
-            elif smurf_band == upper_bands[-1]:
-                # set the last band to go up to infinity
-                all_data_upper_band_upper_bound_mhz = float('inf')
-            all_data_upper_band_bounds_mhz[smurf_band] = (all_data_upper_band_lower_bound_mhz,
-                                                          all_data_upper_band_upper_bound_mhz)
-
-    return real_band_bounds_mhz, all_data_band_bounds_mhz, all_data_lower_band_bounds_mhz, \
-           all_data_upper_band_bounds_mhz
-
-
-def assign_channel_use_vna(south_files, north_files, highband, dict_thru, shift_mhz=10):
+def assign_channel_from_vna(south_files, north_files, highband, dict_thru, shift_mhz=10):
     highband = highband.strip().upper()
     if highband not in allowed_highbands:
         raise KeyError(f'the value for highband that was received: "{highband}"\n' +
                        f'is not of the allow values: "{allowed_highbands}"')
+    # Kaiwen peak finding algorithms
     south_res_mhz = get_peaks_from_vna(south_files) / 1.0e6
     print("South Side fit completed.")
     north_res_mhz = get_peaks_from_vna(north_files) / 1.0e6
     print("North Side fit completed.")
-    # to emulate the  smurf tune file output we add 2000 MHz to the 'highband'
-    if highband == 'N':
-        north_res = north_res_mhz + 2000
-    else:
-        south_res = south_res_mhz + 2000
 
-        
-    band_array = []
-    channel_array = []
-    freq_array = []
-    for band in np.arange(8):
-        if ((highband == "S") & (band > 3)) | ((highband == "N") & (band <= 3)):
-            bandfreq = south_res[
-                (south_res > band * 500 + 4000 + shift_mhz) & (south_res < band * 500 + 4500 + shift_mhz)]
-        else:
-            bandfreq = north_res[
-                (north_res > band * 500 + 4000 + shift_mhz) & (north_res < band * 500 + 4500 + shift_mhz)]
-        print("Band", band, " has ", len(bandfreq), " resonators.")
-        mux_band, mux_index, miss = assign_freq_index(band, bandfreq, dict_thru, highband)
-        band_array = np.concatenate((band_array, mux_band))
-        channel_array = np.concatenate((channel_array, mux_index))
-        freq_array = np.concatenate((freq_array, bandfreq))
-    return pd.DataFrame({"smurf_band": band_array, "channel": channel_array, "freq_mhz": freq_array})
+    upper_res_tune_data = OperateTuneData()
+    lower_res_tune_data = OperateTuneData()
+    if highband == 'N':
+        # North Side: to emulate the smurf tune file output we add 2000 MHz to the 'highband' (upper band)
+        upper_res = north_res_mhz + 2000
+        upper_res_is_north = True
+        lower_res = south_res_mhz
+    else:
+        # South side: to emulate the smurf tune file output we add 2000 MHz to the 'highband' (upper band)
+        upper_res = south_res_mhz + 2000
+        upper_res_is_north = False
+        lower_res = north_res_mhz
+    # this is simple the opposite of the upper band bool value
+    lower_res_is_north = not upper_res_is_north
+    # put the data into bands and channels.
+    upper_res_tune_data.from_peak_array(peak_array_mhz=upper_res, is_north=upper_res_is_north,
+                                        is_highband=True, shift_mhz=shift_mhz, smurf_bands=None)
+    lower_res_tune_data.from_peak_array(peak_array_mhz=lower_res, is_north=lower_res_is_north,
+                                        is_highband=False, shift_mhz=shift_mhz, smurf_bands=None)
+    return upper_res_tune_data + lower_res_tune_data
 
 
 def assign_channel_use_tune(tunefile, bands=np.arange(8), dict_thru=None, highband="S"):
@@ -147,12 +86,9 @@ def automated_map(south_files, north_files, highband, shift_mhz, dict_thru, tune
     else:
         if north_files == [] and south_files == []:
             raise FileNotFoundError("Both North and South VNA files were empty lists)")
-        tune_data_vna = OperateTuneData()
         # Kaiwen's VNA peak finding function
-        # peak finding on the VNA data return a data structure the relates frequency to smurf band and channel number.
-        vna_df = assign_channel_use_vna(south_files, north_files, highband, dict_thru, shift_mhz=shift_mhz)
-        # transform into Caleb's data class
-        tune_data_vna.from_dataframe(data_frame=vna_df)
+        # peak finding on the VNA data return a data structure that relates frequency to smurf band and channel number.
+        tune_data_vna = assign_channel_from_vna(south_files, north_files, highband, dict_thru, shift_mhz=shift_mhz)
         # write this data to skip this step next time and simply read in these results
         tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
 

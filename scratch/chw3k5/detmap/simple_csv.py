@@ -1,6 +1,8 @@
 import os
 
-# working_dir = os.path.dirname(os.path.abspath(__file__))
+default_null_strings = {'', 'None', 'none', 'null', 'NaN', 'nan'}
+default_true_strings = {'Y', 'y', 'True', 'true'}
+default_false_strings = {'N', 'n', 'False', 'false'}
 
 
 def make_int(test_num_str):
@@ -19,10 +21,8 @@ def make_int(test_num_str):
         return test_num_str
 
 
-def make_num(test_datum, null_str=None):
-    # see if this is an empty string, or and expected null value
-    if test_datum == '' or test_datum == null_str:
-        return None
+def make_num(test_datum):
+
     # tests to se if this string is an int
     test_datum_maybe_int = make_int(test_num_str=test_datum)
     if isinstance(test_datum_maybe_int, int):
@@ -35,29 +35,51 @@ def make_num(test_datum, null_str=None):
             return test_datum_maybe_int
 
 
-def line_format(raw_line):
-    line_list = []
-    for datum_raw in raw_line.split(','):
-        datum_stripped = datum_raw.strip()
-        if datum_stripped == '':
-            datum = None
-        else:
-            datum = make_num(datum_stripped)
-        line_list.append(datum)
-    return line_list
+def format_datum(test_datum, null_strs=None, true_strs=None, false_strs=None):
+    # strip off spaces and newline charters
+    test_datum_stripped = test_datum.strip()
+    # Null handling
+    if null_strs is None:
+        null_strs = default_null_strings
+    if not isinstance(null_strs, set):
+        null_strs = set(null_strs)
+    # True handling
+    if true_strs is None:
+        true_strs = default_true_strings
+    if not isinstance(true_strs, set):
+        true_strs = set(true_strs)
+    # False handling
+    if false_strs is None:
+        false_strs = default_false_strings
+    if not isinstance(false_strs, set):
+        false_strs = set(false_strs)
+    # see if this an expected null, true, or false value, else move on to number testing
+    if test_datum_stripped in null_strs:
+        return None
+    elif test_datum_stripped in true_strs:
+        return True
+    elif test_datum_stripped in false_strs:
+        return False
+    else:
+        return make_num(test_datum=test_datum_stripped)
+
+
+def line_format(raw_line, delimiter=','):
+    return [format_datum(datum_raw) for datum_raw in raw_line.split(delimiter)]
 
 
 def read_csv(path, header=None):
     with open(path, 'r') as f:
         if header is None:
-            header = line_format(f.readline())
+            # if header is not specified, the first line on then file is expected to be the header.
+            raw_header = f.readline()
+            header = [raw_column_name.strip().lower() for raw_column_name in raw_header.split(',')]
         data_by_column = {column_name: [] for column_name in header}
         data_by_row = []
         for raw_line in f.readlines():
             line_data = line_format(raw_line=raw_line)
             line_dict = {}
-            for column_name, datum in zip(header, line_data):
-                datum_converted = make_num(test_datum=datum)
+            for column_name, datum_converted in zip(header, line_data):
                 data_by_column[column_name].append(datum_converted)
                 line_dict[column_name] = datum_converted
             data_by_row.append(line_dict)
