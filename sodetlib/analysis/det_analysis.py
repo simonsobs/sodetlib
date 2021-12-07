@@ -1228,7 +1228,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
 
     for bg in bias_groups:
         try:
-            bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+            bg_biases['biases'][bg] = np.median(bg_ch_bias_targets[bg])
         except KeyError:
             print(f'No channels found on bias group {bg}.')
 
