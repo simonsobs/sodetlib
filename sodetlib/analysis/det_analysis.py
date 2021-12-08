@@ -574,6 +574,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
     iv_full_dict = {'metadata': {}, 'data': {}}
 
     iv_full_dict['metadata']['iv_info'] = iv_info
+    iv_full_dict['metadata']['iv_info_fp'] = iv_info_fp
     if iv_info['wafer_id'] is not None:
         iv_full_dict['metadata']['wafer_id'] = iv_info['wafer_id']
     else:
@@ -1173,8 +1174,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
     """
 
     iv_analyze = np.load(iv_analyze_fp, allow_pickle=True).item()
-    iv_info_fp = iv_analyze['metadata']['iv_info']
-    iv_info = np.load(iv_info_fp, allow_pickle=True).item()
+    iv_info = iv_analyze['metadata']['iv_info']
 
     if bias_groups is None:
         bias_groups = iv_info['bias group']
@@ -1228,7 +1228,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
 
     for bg in bias_groups:
         try:
-            bg_biases['biases'][bg] = np.mean(bg_ch_bias_targets[bg])
+            bg_biases['biases'][bg] = np.median(bg_ch_bias_targets[bg])
         except KeyError:
             print(f'No channels found on bias group {bg}.')
 
