@@ -44,6 +44,8 @@ dir_N = os.path.join(abs_path_sample_data, 'north_vna')
 dir_S = os.path.join(abs_path_sample_data, 'south_vna')
 north_search_str = os.path.join(dir_N, '*.S2P')
 N_band = sorted(glob.glob(north_search_str))
+tune_data_vna_output_filename = os.path.join(abs_path_sample_data, 'tune_data_vna.csv')
+redo_vna_tune = False  # when true the peak finder is rerun, even if the resulting output csv already exists.
 
 south_search_str = os.path.join(dir_S, '*.S2P')
 S_band = sorted(glob.glob(south_search_str))

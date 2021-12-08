@@ -5,8 +5,8 @@ This file handles the data structures, reading, and analysis of resonator freque
 """
 import os.path
 from copy import deepcopy
-from operator import attrgetter
-from typing import NamedTuple, Optional
+from operator import attrgetter, itemgetter
+from typing import NamedTuple, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,11 @@ class TuneDatum(NamedTuple):
     is_north: Optional[bool] = None
     is_highband: Optional[bool] = None
     subband: Optional[int] = None
+    pad_num: Optional[int] = None
+    mux_band: Optional[int] = None
+    mux_channel: Optional[int] = None
+    mux_subband: Optional[str] = None
+    design_freq_mhz: Optional[float] = None
 
     def __str__(self):
         output_str = ''
@@ -80,36 +85,81 @@ def get_filename(filename_func, **kwargs):
     return last_filename, new_filename
 
 
+"""
+Data Conversion
+"""
+
+
+def design_pickle_to_csv(design_file_path, design_filename_csv,
+                         design_file_pickle_to_csv_header):
+    # creat the human-readable csf file from the Pandas data frame.
+    design_df = pd.read_pickle(design_file_path)
+    # A mistake in header,freq is in Hz
+    design_df['Frequency(MHz)'] = design_df['Frequency(MHz)'] / 1e6
+    # loop over the data frame. !Never do this for calculations, only for casting as done below!
+    # for more info https://stackoverflow.com/questions/16476924/how-to-iterate-over-rows-in-a-dataframe-in-pandas#:~:text=DataFrame%20in%20Pandas%3F-,Answer%3A%20DON%27T*!,-Iteration%20in%20Pandas
+    design_data = sorted([row for index, row in design_df.iterrows()], key=attrgetter('Frequency(MHz)'))
+    csv_file_column_names = [csv_column for pandas_column, csv_column in design_file_pickle_to_csv_header]
+    csv_file_column_name_to_pandas = {csv_column: pandas_column for pandas_column, csv_column in
+                                      design_file_pickle_to_csv_header}
+    # tune the data into text and write it to disk
+    with open(design_filename_csv, 'w') as f:
+        # generate the header for the csv file
+        header_str = ''
+        for csv_file_column_name in csv_file_column_names:
+            header_str += f'{csv_file_column_name},'
+        # write the header
+        f.write(f'{header_str[:-1]}\n')
+        # loop over the frequency ordered data
+        for data_row in design_data:
+            # generate a row string each line of data
+            row_str = ''
+            for csv_file_column_name in csv_file_column_names:
+                single_value = data_row[csv_file_column_name_to_pandas[csv_file_column_name]]
+                row_str += f'{single_value},'
+            #  write the row string
+            f.write(f'{row_str[:-1]}\n')
+
+
 class OperateTuneData:
     """
     For a measurement of tune data across a single UFM
     """
-    def __init__(self, path=None):
-        # read-in path
-        self.path = path
-        if self.path is None:
+
+    # hard coded variables that may need to be changed in the future
+    # the order of this list determines the order of csv file created from the design pickle
+    design_file_pickle_to_csv_header = [('Band', 'mux_band'), ('Freq-index', 'mux_channel'),
+                                        ('Frequency(MHz)', 'freq_mhz'), ('Subband', 'mux_subband'), ('Pad', 'pad_num')]
+    # a default that is used when output_path_csv=None in the method self.write_csv()
+    output_prefix = 'test_tune_data_vna'
+
+    def __init__(self, tune_path=None, design_file_path=None):
+        # read-in path for tune files
+        self.tune_path = tune_path
+        if self.tune_path is None:
             extension = None
         else:
-            basename = os.path.basename(self.path)
+            basename = os.path.basename(self.tune_path)
             _prefix, extension = basename.rsplit('.', 1)
             extension = extension.lower()
+        # read-in path for the design files
+        self.design_file_path = design_file_path
 
-        # a default that is used when output_path_csv=None in the method self.write_csv()
-        self.output_prefix = 'test_tune_data_vna'
-
-        # initial values for variables the are populated in this class's methods.
+        # initial values for variables that are populated in this class's methods.
         self.tune_data = None
         self.tune_data_by_band_and_channel_index = None
         self.pandas_data_frame = None
 
-        # auto read in know file types
-        if path is not None:
+        # auto read in known file types
+        if tune_path is not None:
             if extension == 'npy':
                 self.read_tunefile()
             elif extension == 'csv':
                 self.read_csv()
             else:
                 raise KeyError(f'File extension: "{extension}" is not recognized type.')
+        if self.design_file_path is not None:
+            self.read_design_file()
 
     def __iter__(self):
         """
@@ -125,11 +175,15 @@ class OperateTuneData:
             tune_data_this_band_by_index = self.tune_data_by_band_and_channel_index[smurf_band]
             channels = sorted(tune_data_this_band_by_index.keys())
             for channel in channels:
-                tune_data_this_band_and_channel = tune_data_this_band_by_index[channel]
-                freq_sorted_tune_data = sorted(tune_data_this_band_and_channel,
-                                               key=attrgetter('freq_mhz'))
-                for tune_datum in freq_sorted_tune_data:
-                    yield tune_datum
+                tune_datum_this_band_and_channel = tune_data_this_band_by_index[channel]
+                if channel == -1:
+                    # special handling for channel == -1
+                    freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
+                    for tune_datum in freq_sorted_tune_data:
+                        yield tune_datum
+                else:
+                    # these are a required have a single TuneDatum for band-channel pairs
+                    yield tune_datum_this_band_and_channel
 
     def __add__(self, other):
         """
@@ -178,43 +232,32 @@ class OperateTuneData:
             # make a dictionary instance if this is the first resonance found in this band.
             if smurf_band_this_datum not in self.tune_data_by_band_and_channel_index.keys():
                 self.tune_data_by_band_and_channel_index[smurf_band_this_datum] = {}
-            # make a new set instance is this is the first resonance in this band-channel pair.
-            if channel_this_tune_datum not in self.tune_data_by_band_and_channel_index[smurf_band_this_datum].keys():
-                self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum] = set()
-            # add the tune datum to this mapping
-            self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum].add(tune_datum)
+            tune_dict_this_band = self.tune_data_by_band_and_channel_index[smurf_band_this_datum]
+            # map the data to a dictionary structure
+            if channel_this_tune_datum == -1:
+                # special handling for the channel value -1
+                if -1 not in tune_dict_this_band.keys():
+                    self.tune_data_by_band_and_channel_index[smurf_band_this_datum][-1] = set()
+                self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum].add(tune_datum)
 
-    def read_tunefile(self):
-        # initialize the data the variable that stores the data we are reading.
-        self.tune_data = set()
-        # read the
-        tunefile_data = np.load(self.path, allow_pickle=True).item()
-
-        for smurf_band in list(tunefile_data.keys()):
-            data_this_band = tunefile_data[smurf_band]
-            if 'resonances' in data_this_band.keys():
-                # loop over the tune data in this band
-                resonator_data_this_band = data_this_band['resonances']
-                for channel_index in resonator_data_this_band.keys():
-                    single_res = resonator_data_this_band[channel_index]
-                    freq_mhz = single_res['freq']
-                    channel = single_res['channel']
-                    subband = single_res['subband']
-                    tune_datum_this_res = TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band,
-                                                    subband=subband, channel=channel)
-                    self.tune_data.add(tune_datum_this_res)
-        # do a data organization and validation
-        self.tune_data_organization_and_validation()
+            elif channel_this_tune_datum in tune_dict_this_band.keys():
+                # make a new set instance is this is the first resonance in this band-channel pair.
+                existing_tune_datum = tune_dict_this_band[channel_this_tune_datum]
+                raise KeyError(f'Only Unique band-channel are allowed. ' +
+                               f'For smurf_band: {smurf_band_this_datum} and channel {channel_this_tune_datum} ' +
+                               f'The existing datum: {existing_tune_datum} ' +
+                               f'uses has the same band-channel data as the new: {tune_datum}')
+            else:
+                # add the tune datum to this mapping
+                self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum] = tune_datum
 
     def from_dataframe(self, data_frame, is_north=None, is_highband=None):
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
-        # loop over the enter data frame. !Never do this for calculations, only fo casting as done below!
+        # loop over the data frame. !Never do this for calculations, only for casting as done below!
         # for more info https://stackoverflow.com/questions/16476924/how-to-iterate-over-rows-in-a-dataframe-in-pandas#:~:text=DataFrame%20in%20Pandas%3F-,Answer%3A%20DON%27T*!,-Iteration%20in%20Pandas
         for index, row in data_frame.iterrows():
             # These are always required. Need to be hashable and cast as integers for faster search nad comparison.
-            smurf_band = int(row['smurf_band'])
-            channel = int(row['channel'])
             # set the tune datum for this row, note ** is a kwargs variable unpacking.
             tune_datum_this_res = TuneDatum(**row, is_north=is_north, is_highband=is_highband)
             self.tune_data.add(tune_datum_this_res)
@@ -277,22 +320,102 @@ class OperateTuneData:
                 f.write(f'{tune_datum_str_pandas_null}\n')
 
     def read_csv(self):
-        if self.path is None:
+        if self.tune_path is None:
             last_filename, _new_filename = get_filename(filename_func=operate_tune_data_csv_filename,
                                                         prefix=self.output_prefix)
             if last_filename is None:
                 raise FileNotFoundError
-            self.path = last_filename
+            self.tune_path = last_filename
         # read in the data
-        data_by_column, data_by_row = read_csv(path=self.path)
+        data_by_column, data_by_row = read_csv(path=self.tune_path)
         # set the data in the standard format for this class
         self.tune_data = {TuneDatum(**row_dict) for row_dict in data_by_row}
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
+    def read_tunefile(self):
+        # initialize the data the variable that stores the data we are reading.
+        self.tune_data = set()
+        # read the tune file
+        tunefile_data = np.load(self.tune_path, allow_pickle=True).item()
+        # loop of the bands in order
+        for smurf_band in sorted(list(tunefile_data.keys())):
+            data_this_band = tunefile_data[smurf_band]
+            # resonances may not be present in all bands
+            if 'resonances' in data_this_band.keys():
+                # loop over the tune data in this band
+                resonator_data_this_band = data_this_band['resonances']
+                for channel_index in sorted(resonator_data_this_band.keys()):
+                    single_res = resonator_data_this_band[channel_index]
+                    freq_mhz = single_res['freq']
+                    channel = single_res['channel']
+                    subband = single_res['subband']
+                    tune_datum_this_res = TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band,
+                                                    subband=subband, channel=channel)
+                    self.tune_data.add(tune_datum_this_res)
+        # do a data organization and validation
+        self.tune_data_organization_and_validation()
+
+    def read_design_file(self):
+        if self.design_file_path is None:
+            raise ValueError(f'Design file not specified, i.e. self.design_file_path is None')
+        # determine if this is a pickle file from the file's extension
+        prefix, extension = self.design_file_path.rsplit('.', 1)
+        extension = extension.lower()
+        # if this is a pickle file we will read that in first and write it to a csv file, the desired format
+        if extension in {'pkl', 'pickle'}:
+            # We will use the csv file if it exists, else we will creat it here
+            design_filename_csv = prefix + '.csv'
+            if not os.path.exists(design_filename_csv):
+                design_pickle_to_csv(design_file_path=self.design_file_path, design_filename_csv=design_filename_csv,
+                                     design_file_pickle_to_csv_header=self.design_file_pickle_to_csv_header)
+                print(f'csv design file: {design_filename_csv}\nwritten from pickle file: {self.design_file_path}.')
+            # with the csv file written or found we will now reset the self.design_file_path
+            self.design_file_path = design_filename_csv
+        # read the design file csv
+        data_by_column, data_by_row = read_csv(path=self.design_file_path)
+        # get the smurf band data to classify the design data.
+        real_band_bounds_mhz, _all_data_band_bounds_mhz, _all_data_lower_band_bounds_mhz, \
+            _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None)
+        # counter for the smurf channel
+        # initialize a counter used to determine channel number
+        channel_count_by_band = {smurf_band: 0 for smurf_band in real_band_bounds_mhz.keys()}
+        # set the data in the standard format for this class
+        self.tune_data = set()
+        for row_dict in sorted(data_by_row, key=itemgetter('freq_mhz')):
+            if row_dict['mux_band'] > 14:
+                row_dict['mux_band'] =- 14
+            # determine the smurf band
+            for smurf_band in sorted(real_band_bounds_mhz.keys()):
+                lower_bound_mhz, upper_bound_mhz = real_band_bounds_mhz[smurf_band]
+                if lower_bound_mhz <= row_dict['freq_mhz'] < upper_bound_mhz:
+                    row_dict['smurf_band'] = smurf_band
+                    if smurf_band > 3:
+                        row_dict['is_highband'] = True
+                    else:
+                        row_dict['is_highband'] = False
+                    # set the smurf channel
+                    row_dict['channel'] = channel_count_by_band[smurf_band]
+                    # integrate the counter
+                    channel_count_by_band[smurf_band] += 1
+                    # no need to keep searching when we find what we are looking for
+                    break
+            else:
+                # Force a smurf band to be set, this happens when the break statement was not reached
+                raise KeyError(f"Design frequency {row_dict['freq_mhz']} MHz, was not found to be withing the " +
+                               f"the real smurf bands, {real_band_bounds_mhz}, this should not be possible! " +
+                               f"Check the design file: {self.design_file_path}")
+            self.tune_data.add(TuneDatum(**row_dict))
+
+        # do a data organization and validation
+        self.tune_data_organization_and_validation()
+
+    def map_design_data(self):
+        pass
+
 
 def read_tunefile(tunefile, return_pandas_df=False):
-    operate_tune_data = OperateTuneData(path=tunefile)
+    operate_tune_data = OperateTuneData(tune_path=tunefile, design_file_path=None)
     if return_pandas_df:
         return operate_tune_data.return_pandas_df()
     else:

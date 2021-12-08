@@ -79,10 +79,11 @@ def automated_map(south_files, north_files, highband, shift_mhz, dict_thru, tune
                   mux_pos_num_to_mux_band_num_path, waferfile, threshold=0.1,
                   tune_data_vna_output_filename='tune_data_vna.csv', redo_vna_tune=False):
     # get the tune file data from smurf
-    tune_data_smurf = OperateTuneData(path=tunefile)
+    tune_data_smurf = OperateTuneData(tune_path=tunefile)
+
     # parse/get date from a Vector Network Analyzer
     if os.path.exists(tune_data_vna_output_filename) and not redo_vna_tune:
-        tune_data_vna = OperateTuneData(path=tune_data_vna_output_filename)
+        tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename)
     else:
         if north_files == [] and south_files == []:
             raise FileNotFoundError("Both North and South VNA files were empty lists)")
@@ -92,17 +93,8 @@ def automated_map(south_files, north_files, highband, shift_mhz, dict_thru, tune
         # write this data to skip this step next time and simply read in these results
         tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
 
-    chan_assign = chan_assign[["smurf_band", "channel", "freq_mhz"]]
-    chan_assign = chan_assign.rename(
-        columns={"smurf_band": "smurf_band", "channel": "smurf_chan", "freq_mhz": "smurf_freq"}).reset_index(drop=True)
+    design_data = OperateTuneData(design_file_path=design_file)
 
-    df_low = df_vna.loc[df_vna["UFM Frequency"] < 6e3].drop_duplicates(subset=['Band', 'Index']).reset_index()
-    df_high = df_vna.loc[(df_vna["UFM Frequency"] > 6e3) & (df_vna["UFM Frequency"] < 8e3)].drop_duplicates(
-        subset=['Band', 'Index']).reset_index()
-
-    df_pad_low = vna_freq_to_muxpad(df_low, design_file)
-    df_pad_high = vna_freq_to_muxpad(df_high, design_file)
-    pad = pd.concat([df_pad_low, df_pad_high]).reset_index()
 
     smurf2mux = smurf_to_mux(chan_assign, pad, threshold)
     smurf2padloc = mux_band_to_mux_posn(smurf2mux=smurf2mux,
@@ -117,14 +109,15 @@ if __name__ == '__main__':
     # get a sample configuration to use with this example
     from scratch.chw3k5.detmap.config_files.detmap_conifg_example import N_files, S_files, cold_ramp_file, \
         highband, shift, dict_thru, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
-        waferfile, output_filename
+        waferfile, output_filename, tune_data_vna_output_filename, redo_vna_tune
 
     # The main mapping file
     smurf2det = automated_map(south_files=S_files, north_files=N_files,
                               highband=highband, shift_mhz=shift, dict_thru=dict_thru,
                               tunefile=tunefile, dark_bias_lines=dark_bias_lines,
                               design_file=design_file,
-                              mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path, waferfile=waferfile)
+                              mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path, waferfile=waferfile,
+                              tune_data_vna_output_filename=tune_data_vna_output_filename, redo_vna_tune=redo_vna_tune)
 
     smurf2det.to_csv(output_filename, index=False)
 
