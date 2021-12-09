@@ -20,7 +20,7 @@ jobs:
         build-command: "make html latexpdf"
 
     - name: Deploy HTML
-      uses: burnett01/rsync-deployments@4.1
+      uses: burnett01/rsync-deployments@5.1
       with:
         switches: -avzr --delete
         path: _build/html/
@@ -31,7 +31,7 @@ jobs:
         remote_key_pass: ${{ secrets.DEPLOY_KEY_PASS }}
 
     - name: Deploy pdf
-      uses: burnett01/rsync-deployments@4.1
+      uses: burnett01/rsync-deployments@5.1
       with:
         switches: -avzr --delete
         path: _build/latex/sodetlib.pdf
