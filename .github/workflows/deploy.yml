@@ -15,7 +15,7 @@ jobs:
     - name: Sphinx Build
       uses: ammaraskar/sphinx-action@0.4
       with:
-        docs-folder: "./"
+        docs-folder: "docs/"
         pre-build-command: "apt-get update -y && apt-get install -y latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended"
         build-command: "make html latexpdf"
 
