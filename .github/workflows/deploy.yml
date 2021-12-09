@@ -2,8 +2,7 @@ name: Deploy
 
 on:
   push:
-    # commented out for testing deployment
-    #branches: [ master ]
+    branches: [ master ]
 
 jobs:
   build:
