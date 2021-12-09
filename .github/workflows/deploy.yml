@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    # commented out for testing deployment
+    #branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+   
+    - name: Sphinx Build
+      uses: ammaraskar/sphinx-action@0.4
+      with:
+        docs-folder: "./"
+        pre-build-command: "apt-get update -y && apt-get install -y latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended"
+        build-command: "make html latexpdf"
+
+    - name: Deploy HTML
+      uses: burnett01/rsync-deployments@4.1
+      with:
+        switches: -avzr --delete
+        path: _build/html/
+        remote_path: /mnt/so1/html/github-actions/sodetlib/
+        remote_host: ${{ secrets.DEPLOY_HOST }}
+        remote_user: ${{ secrets.DEPLOY_USER }}
+        remote_key: ${{ secrets.DEPLOY_KEY }}
+        remote_key_pass: ${{ secrets.DEPLOY_KEY_PASS }}
+
+    - name: Deploy pdf
+      uses: burnett01/rsync-deployments@4.1
+      with:
+        switches: -avzr --delete
+        path: _build/latex/sodetlib.pdf
+        remote_path: /mnt/so1/html/github-actions/sodetlib/
+        remote_host: ${{ secrets.DEPLOY_HOST }}
+        remote_user: ${{ secrets.DEPLOY_USER }}
+        remote_key: ${{ secrets.DEPLOY_KEY }}
+        remote_key_pass: ${{ secrets.DEPLOY_KEY_PASS }}

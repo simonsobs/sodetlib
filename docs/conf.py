@@ -144,7 +144,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'OCS.tex', 'OCS Documentation',
+    (master_doc, 'sodetlib.tex', 'sodetlib Documentation',
      'Simons Observatory DAQ Group', 'manual'),
 ]
 
