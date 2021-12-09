@@ -16,25 +16,13 @@ jobs:
       uses: ammaraskar/sphinx-action@0.4
       with:
         docs-folder: "docs/"
-        pre-build-command: "apt-get update -y && apt-get install -y latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended"
-        build-command: "make html latexpdf"
+        build-command: "make html"
 
     - name: Deploy HTML
       uses: burnett01/rsync-deployments@5.1
       with:
         switches: -avzr --delete
         path: docs/_build/html/
-        remote_path: /mnt/so1/html/github-actions/sodetlib/
-        remote_host: ${{ secrets.DEPLOY_HOST }}
-        remote_user: ${{ secrets.DEPLOY_USER }}
-        remote_key: ${{ secrets.DEPLOY_KEY }}
-        remote_key_pass: ${{ secrets.DEPLOY_KEY_PASS }}
-
-    - name: Deploy pdf
-      uses: burnett01/rsync-deployments@5.1
-      with:
-        switches: -avzr --delete
-        path: docs/_build/latex/sodetlib.pdf
         remote_path: /mnt/so1/html/github-actions/sodetlib/
         remote_host: ${{ secrets.DEPLOY_HOST }}
         remote_user: ${{ secrets.DEPLOY_USER }}
