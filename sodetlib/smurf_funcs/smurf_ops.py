@@ -599,7 +599,7 @@ def cryo_amp_check(S, cfg):
     # Optimize bias voltages
     if biased_hemt and biased_50K:
         cprint("Scanning hemt bias voltage", TermColors.HEADER)
-        Id_hemt_in_range = op.optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
+        Id_hemt_in_range = op.optimize_bias(S, amp_hemt_Id, -1.8, -0.6, 'hemt')
         cprint("Scanning 50K bias voltage", TermColors.HEADER)
         Id_50K_in_range = op.optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
         time.sleep(0.2)

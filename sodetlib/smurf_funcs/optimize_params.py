@@ -354,9 +354,9 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
             return False
 
         if amp_name == 'hemt':
-            S.set_hemt_gate_voltage(Vg_next)
+            S.set_hemt_gate_voltage(Vg_next, override=True)
         else:
-            S.set_50k_amp_gate_voltage(Vg_next)
+            S.set_50k_amp_gate_voltage(Vg_next, override=True)
         time.sleep(0.2)
     su.cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
               f"Unable to get target Id for {amp_name}.", False)
