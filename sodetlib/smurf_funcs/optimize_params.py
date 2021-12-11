@@ -654,40 +654,40 @@ def cryo_amp_check(S, cfg):
 
     # Turns on both amplifiers and checks biasing.
 
-    cprint("Checking biases", TermColors.HEADER)
+    su.cprint("Checking biases", su.TermColors.HEADER)
     S.C.write_ps_en(11)
     amp_biases = S.get_amplifier_biases()
     biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
     biased_50K = np.abs(amp_biases['50K_Id']) > 0.2
     if not biased_hemt:
-        cprint("hemt amplifier could not be biased. Check for loose cable",
+        su.cprint("hemt amplifier could not be biased. Check for loose cable",
                False)
     if not biased_50K:
-        cprint("50K amplifier could not be biased. Check for loose cable",
+        su.cprint("50K amplifier could not be biased. Check for loose cable",
                False)
 
     # Optimize bias voltages
     if biased_hemt and biased_50K:
-        cprint("Scanning hemt bias voltage", TermColors.HEADER)
-        Id_hemt_in_range = optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
-        cprint("Scanning 50K bias voltage", TermColors.HEADER)
+        su.cprint("Scanning hemt bias voltage", su.TermColors.HEADER)
+        Id_hemt_in_range = optimize_bias(S, amp_hemt_Id, -1.8, -0.6, 'hemt')
+        su.cprint("Scanning 50K bias voltage", su.TermColors.HEADER)
         Id_50K_in_range = optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
         time.sleep(0.2)
         amp_biases = S.get_amplifier_biases()
         Vg_hemt, Vg_50K = amp_biases['hemt_Vg'], amp_biases['50K_Vg']
         print(f"Final hemt current = {amp_biases['hemt_Id']}")
         print(f"Desired hemt current = {amp_hemt_Id}")
-        cprint(f"hemt current within range of desired value: "
+        su.cprint(f"hemt current within range of desired value: "
                             f" {Id_hemt_in_range}",Id_hemt_in_range)
         print(f"Final hemt gate voltage is {amp_biases['hemt_Vg']}")
 
         print(f"Final 50K current = {amp_biases['50K_Id']}")
         print(f"Desired 50K current = {amp_50K_Id}")
-        cprint(f"50K current within range of desired value:"
+        su.cprint(f"50K current within range of desired value:"
                             f"{Id_50K_in_range}", Id_50K_in_range)
         print(f"Final 50K gate voltage is {amp_biases['50K_Vg']}")
     else:
-        cprint("Both amplifiers could not be biased... skipping bias voltage "
+        su.cprint("Both amplifiers could not be biased... skipping bias voltage "
                "scan", False)
         Id_hemt_in_range = False
         Id_50K_in_range = False
@@ -698,18 +698,18 @@ def cryo_amp_check(S, cfg):
 
     # Check JESD connection on bay 0 and bay 1
     # Return connections for both bays, or passes if bays not active
-    cprint("Checking JESD Connections", TermColors.HEADER)
+    su.cprint("Checking JESD Connections", su.TermColors.HEADER)
     if bay0:
         jesd_tx0, jesd_rx0, status = S.check_jesd(0)
         if jesd_tx0:
-            cprint(f"bay 0 jesd_tx connection working", True)
+            su.cprint(f"bay 0 jesd_tx connection working", True)
         else:
-            cprint(f"bay 0 jesd_tx connection NOT working. "
+            su.cprint(f"bay 0 jesd_tx connection NOT working. "
                     "Rest of script may not function", False)
         if jesd_rx0:
-            cprint(f"bay 0 jesd_rx connection working", True)
+            su.cprint(f"bay 0 jesd_rx connection working", True)
         else:
-            cprint(f"bay 0 jesd_rx connection NOT working. "
+            su.cprint(f"bay 0 jesd_rx connection NOT working. "
                     "Rest of script may not function", False)
     else:
         jesd_tx0, jesd_rx0 = False, False
@@ -718,14 +718,14 @@ def cryo_amp_check(S, cfg):
     if bay1:
         jesd_tx1, jesd_rx1, status = S.check_jesd(1)
         if jesd_tx1:
-            cprint(f"bay 1 jesd_tx connection working", True)
+            su.cprint(f"bay 1 jesd_tx connection working", True)
         else:
-            cprint(f"bay 1 jesd_tx connection NOT working. Rest of script may "
+            su.cprint(f"bay 1 jesd_tx connection NOT working. Rest of script may "
                    "not function", False)
         if jesd_rx1:
-            cprint(f"bay 1 jesd_rx connection working", True)
+            su.cprint(f"bay 1 jesd_rx connection working", True)
         else:
-            cprint(f"bay 1 jesd_rx connection NOT working. Rest of script may "
+            su.cprint(f"bay 1 jesd_rx connection NOT working. Rest of script may "
                     "not function", False)
     else:
         jesd_tx1, jesd_rx1 = False, False
@@ -736,7 +736,7 @@ def cryo_amp_check(S, cfg):
     # that average value of noise through band 0 is above 1.  
 
     # Check limit makes sense when through system
-    cprint("Checking full-band response for band 0", TermColors.HEADER)
+    su.cprint("Checking full-band response for band 0", su.TermColors.HEADER)
     band_cfg = cfg.dev.bands[0]
     S.set_att_uc(0, band_cfg['uc_att'])
 
@@ -750,10 +750,10 @@ def cryo_amp_check(S, cfg):
     # If the mean is > 1, say response received
     if np.mean(resp_inband) > 1: #LESS THAN CHANGE
         resp_check = True
-        cprint("Full band response check passed", True)
+        su.cprint("Full band response check passed", True)
     else:
         resp_check = False
-        cprint("Full band response check failed - maybe something isn't "
+        su.cprint("Full band response check failed - maybe something isn't "
                "plugged in?", False)
 
     # Check if ADC is clipping. Probably should be a different script, after
@@ -769,20 +769,20 @@ def cryo_amp_check(S, cfg):
         'amp_50k_Vg': Vg_50K,
     })
 
-    cprint("Health check finished! Final status", TermColors.HEADER)
-    cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
-    cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
+    su.cprint("Health check finished! Final status", su.TermColors.HEADER)
+    su.cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
+    su.cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
     print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
-    cprint(f" - 50K biased: \t\t{biased_50K}", biased_50K)
-    cprint(f" - 50K Id in range: \t{Id_50K_in_range}", Id_50K_in_range)
+    su.cprint(f" - 50K biased: \t\t{biased_50K}", biased_50K)
+    su.cprint(f" - 50K Id in range: \t{Id_50K_in_range}", Id_50K_in_range)
     print(f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
-    cprint(f" - Response check: \t{resp_check}", resp_check)
+    su.cprint(f" - Response check: \t{resp_check}", resp_check)
 
     if bay0:
-        cprint(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}",
+        su.cprint(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}",
                jesd_tx0 and jesd_rx0)
     if bay1:
-        cprint(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}",
+        su.cprint(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}",
                jesd_tx1 and jesd_rx1)
 
     status_bools = [biased_hemt, biased_50K, Id_hemt_in_range, Id_50K_in_range,
