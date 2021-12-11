@@ -139,6 +139,7 @@ channel assignments::
         S.load_master_assignment( band, S.freq_resp[band]['channel_assignment'])
     
     for band in bands:
+        iband_cfg = cfg.dev.bands[band]
         S.setup_notches(band, tone_power=band_cfg['drive'],
                         new_master_assignment=False)
     for _ in range(3):
