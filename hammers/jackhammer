@@ -149,6 +149,46 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
             subprocess.run(f'docker stop {cid}'.split())
             subprocess.run(f'docker rm {cid}'.split())
 
+def dump_docker_logs(slots):
+    """
+        Dumps all docker logs and the rogue state for the specified
+        slots to text files.
+
+        Args:
+            slots (list of ints):
+                list of slots which we should dump the rogue state of.
+    """
+    dump_dir = os.path.join(
+        '/data/logs',
+        str(time.time())[:5],
+        str(int(time.time()))
+    )
+
+    if not os.path.exists(dump_dir):
+        os.makedirs(dump_dir)
+
+    cprint(f"Dumping docker logs to {dump_dir}", style=TermColors.HEADER)
+    docker_state_file = os.path.join(dump_dir, 'docker_state.log')
+    with open(docker_state_file, 'w') as f:
+        print(f"Saving 'docker ps' to {docker_state_file}")
+        subprocess.run('docker ps -a'.split(), stdout=f, stderr=f)
+
+    for cid, image, name in get_running_dockers(get_all=True):
+        log_file = os.path.join(dump_dir, f'{name}.log')
+        with open(log_file, 'w') as f:
+            print(f"Saving {name} logs to {log_file}")
+            subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
+
+    dump_script = '/sodetlib/scripts/dump_rogue_state.py'
+    for slot in slots:
+        if check_epics_connection(f'smurf_server_s{slot}', retry=False):
+            out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
+            cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
+            util_run('python3', args=[dump_script, str(slot), out_file],
+                     name=f'rogue_dump_s{slot}')
+        else:
+            print(f"Could not connect to epics for slot {slot}")
+
 def run_on_shelf_manager(cmd_str):
     """ Runs a command on the shelf manager. Takes in the command as a string"""
     cmd = ['ssh', f'root@{sys_config["shelf_manager"]}', f'{cmd_str}']
@@ -249,6 +289,16 @@ def hammer_func(args):
                     f"slots in: {sys_config['slot_order']}")
 
     reboot = not (args.no_reboot)
+
+    reboot_str = "hard" if reboot else "soft"
+    cmd = input(f"You are {reboot_str}-resetting slots {slots}. "
+                "Are you sure (y/n)? ")
+    if cmd.lower() not in ["y", "yes"]:
+        return
+
+    # dump docker logs for debugging.
+    if not args.no_dump:
+        dump_docker_logs(slots)
 
     cprint(f"Hammering for slots {slots}", True)
 
@@ -362,36 +412,17 @@ def gui_func(args):
 
 # Entrypoint for jackhammer dump
 def dump_func(args):
-    dump_dir = os.path.join(
-        '/data/logs',
-        str(time.time())[:5],
-        str(int(time.time()))
-    )
+    if not args.slots:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+        for s in slots:
+            if s not in sys_config['slot_order']:
+                raise ValueError(
+                    f"Slot {s} is not valid for this system! Can only use "
+                    f"slots in: {sys_config['slot_order']}")
 
-    if not os.path.exists(dump_dir):
-        os.makedirs(dump_dir)
-
-    cprint(f"Dumping docker logs to {dump_dir}", style=TermColors.HEADER)
-    docker_state_file = os.path.join(dump_dir, 'docker_state.log')
-    with open(docker_state_file, 'w') as f:
-        print(f"Saving 'docker ps' to {docker_state_file}")
-        subprocess.run('docker ps -a'.split(), stdout=f, stderr=f)
-
-    for cid, image, name in get_running_dockers(get_all=True):
-        log_file = os.path.join(dump_dir, f'{name}.log')
-        with open(log_file, 'w') as f:
-            print(f"Saving {name} logs to {log_file}")
-            subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
-
-    dump_script = '/sodetlib/scripts/dump_rogue_state.py'
-    for slot in sys_config['slot_order']:
-        if check_epics_connection(f'smurf_server_s{slot}', retry=False):
-            out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
-            cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
-            util_run('python3', args=[dump_script, str(slot), out_file],
-                     name=f'rogue_dump_s{slot}')
-        else:
-            print(f"Could not connect to epics for slot {slot}")
+    dump_docker_logs(slots)
 
 
 # Entrypoint for jackhammer write-env
@@ -431,6 +462,8 @@ if __name__ == '__main__':
     hammer_parser.add_argument('--no-reboot', '--soft', '-n',
                                action='store_true',
                                help="If True, will not reboot slots.")
+    hammer_parser.add_argument('--no-dump', action='store_true',
+                               help="If True, will not dump logs.")
     hammer_parser.add_argument('--agg', action='store_true')
 
     ########### Jackhammer logs parser ############
@@ -452,6 +485,8 @@ if __name__ == '__main__':
 
     ########### Jackhammer dump parser ###########
     dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
+    dump_parser.add_argument('slots', nargs='*', type=int,
+                             help='Specifies the slots to dump rogue states')
     dump_parser.set_defaults(func=dump_func)
 
     ########### Jackhammer write-env parser ###########

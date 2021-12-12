@@ -49,6 +49,7 @@ class ChannelState:
         self.wls = np.full(NCHANS, np.nan)
         self.band_medians = np.full(NBANDS, np.nan)
         self.timestamp = None
+        self.sid = None
 
         if S is not None:
             self.timestamp = S.get_timestamp()
@@ -79,7 +80,8 @@ class ChannelState:
                 File where state is saved
         """
         general = {
-            'timestamp': self.timestamp
+            'sid': self.sid,
+            'timestamp': self.timestamp,
         }
         np.savez(
             path, enabled=self.enabled, wls=self.wls,
@@ -105,6 +107,7 @@ class ChannelState:
         self.save_path = path
         general = npz['general'].item()
         self.timestamp = general['timestamp']
+        self.sid = general.get('sid')
         return self
 
     def desc(self):
@@ -204,6 +207,7 @@ def get_channel_state(S, cfg):
     sid = smurf_ops.take_g3_data(S, 30)
     am = smurf_ops.load_session(cfg, sid)
     chan_state.set_channel_wls(am)
+    chan_state.sid = sid
 
     path = make_filename(S, 'channel_state.npz')
     chan_state.save(path)

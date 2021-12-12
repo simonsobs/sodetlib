@@ -1,13 +1,13 @@
 import matplotlib
 matplotlib.use('Agg')
 
-#import pysmurf.client
+import pysmurf.client
 import argparse
 import numpy as np
 import os
 import time
 import glob
-
+from sodetlib.smurf_funcs.smurf_ops import take_g3_data, stream_g3_off, stream_g3_on
 from sodetlib.det_config  import DetConfig
 import numpy as np
 
@@ -112,9 +112,9 @@ if __name__=='__main__':
         # For right now, we take each set of bias steps twice, but only keep the second one
         # This is a remnant from an old pysmurf bug, but it isn't hurting anything except
         # storage space on the smurf-srv. Can probably take this out now
-        for i in range(2):
+        for i in range(1):
             start = S.get_timestamp()
-            datfile = S.stream_data_on()
+            g3_id = S.stream_g3_on(S)
             time.sleep(1)
             S.play_tes_bipolar_waveform(bg,sig)
             time.sleep(5)
@@ -129,7 +129,7 @@ if __name__=='__main__':
         # Save datfile info
 
         with open(out_file, 'a') as fname:
-            fname.write(f'{b_bias},{datfile},{S.output_dir},{fs},{start},{stop}\n')
+            fname.write(f'{b_bias},{g3_id},{S.output_dir},{fs},{start},{stop}\n')
         
         # Sleep for 15 seconds before next step
         time.sleep(15)

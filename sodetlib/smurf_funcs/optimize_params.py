@@ -13,7 +13,6 @@ from scipy import interpolate
 import pickle as pkl
 import sodetlib.util as su
 import sodetlib.smurf_funcs as sf
-import sodetlib.smurf_funcs.smurf_ops as so
 from pysmurf.client.util.pub import set_action
 from tqdm.auto import tqdm
 
@@ -232,7 +231,7 @@ def analyze_noise_psd(S, band, dat_file, chans=None, fit_curve=True,
     fit_curve: bool
         If true, will use the pysmurf ``analyze_psd`` function to calculate the
         white noise, n, and f_knee values.  If false, calculate the white noise
-        value by taking the median of the PSD between 5 Hz and 100 Hz, and will
+        value by taking the median of the PSD between 5 Hz and 50 Hz, and will
         set n=f_knee=None, which is much faster.
     max_phase_span : float
         If set, will cut channels based on the phase span when calculating the
@@ -355,9 +354,9 @@ def optimize_bias(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
             return False
 
         if amp_name == 'hemt':
-            S.set_hemt_gate_voltage(Vg_next)
+            S.set_hemt_gate_voltage(Vg_next, override=True)
         else:
-            S.set_50k_amp_gate_voltage(Vg_next)
+            S.set_50k_amp_gate_voltage(Vg_next, override=True)
         time.sleep(0.2)
     su.cprint(f"Max allowed Vg iterations ({max_iter}) has been reached. "
               f"Unable to get target Id for {amp_name}.", False)
@@ -413,7 +412,7 @@ def plot_optimize_attens(S, summary, wlmax=1000, vmin=None, vmax=None):
             ax.set(ylim=(vmin, vmax))
 
         else:  # Do full 2d heat map
-            im = ax.pcolor(ucs, dcs, wls[band].T, vmin=vmin, vmax=vmax)
+            im = ax.pcolor(ucs, dcs, wls[i].T, vmin=vmin, vmax=vmax)
             ax.set(xlabel="UC atten", ylabel="DC atten", title=f"Band {band}")
             if i == 0:
                 fig.colorbar(im, label='Median White Noise [pA/rt(Hz)]',
@@ -533,11 +532,11 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
             # Take data
             atten_grid.append([uc_atten, dc_atten])
             start_times.append(time.time())
-            sid = so.take_g3_data(S, meas_time)
+            sid = sf.smurf_ops.take_g3_data(S, meas_time)
             sids.append(sid)
             stop_times.append(time.time())
 
-            am = so.load_session(cfg, sid)
+            am = sf.smurf_ops.load_session(cfg, sid)
             wls, band_meds = su.get_wls_from_am(am)
             for k, b in enumerate(bands):
                 wl_medians[k, i, j] = band_meds[b]
