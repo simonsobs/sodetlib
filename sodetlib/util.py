@@ -9,6 +9,13 @@ import os
 from collections import namedtuple
 from sodetlib import det_config
 
+try:
+    import epics
+    from pysmurf.client.command.cryo_card import cmd_make
+except Exception:
+    pass
+
+
 # This is a pysmurf constant
 # Max bias voltage is 20 V, and there are 20 bits
 # so this number is 20/2**20 = 1.907e-5
@@ -326,3 +333,86 @@ class Registers:
         self.S = S
         for name, reg in self._registers.items():
             setattr(self, name, _Register(S, reg))
+
+
+def set_current_mode(S, bgs, mode, const_current=True):
+    """
+    Sets one or more bias lines to high current mode. If const_current is True,
+    will also update the DC bias voltages to try and preserve current based on
+    the set high_low_current_ratio. We need this function to replace the
+    existing pysmurf function so we can set both PV's in a single epics call,
+    minimizing heating on the cryostat.
+
+    This function will attempt to check the existing rogue relay state to
+    determine if the voltages need to be updated or not. This may not work all
+    of the time since there is no relay readback for the high-current-mode
+    relays.  That means this will set the voltages incorrectly if there is
+    somehow an inconsistency between the rogue relay state and the real relay
+    state.
+
+    Args
+    ----
+        S : SmurfControl
+            Pysmurf control instance
+        bgs : (int, list)
+            Bias groups to switch to high-current-mode
+        mode : int
+            1 for high-current, 0 for low-current
+        const_current : bool
+            If true, will adjust voltage values simultaneously based on
+            S.high_low_current_ratio
+    """
+
+    bgs = np.atleast_1d(bgs).astype(int)
+
+    # DO this twice bc pysmurf does for some reason
+    old_relay = S.get_cryo_card_relays()
+    old_relay = S.get_cryo_card_relays()
+    new_relay = np.copy(old_relay)
+
+    old_dac_volt_arr = S.get_rtm_slow_dac_volt_array()
+    new_dac_volt_arr = np.copy(old_dac_volt_arr)
+
+    for bg in bgs:
+        # Gets relay bit index for bg
+        idx = np.where(S._pic_to_bias_group[:, 1] == bg)[0][0]
+        # Bit in relay mask corresponding to this bg's high-current
+        r = S._pic_to_bias_group[idx, 0]
+
+        # Index of bg's DAC pair
+        pair_idx = np.where(S._bias_group_to_pair[:, 0] == bg)[0][0]
+        pos_idx = S._bias_group_to_pair[pair_idx, 1]
+        neg_idx = S._bias_group_to_pair[pair_idx, 2]
+        if mode:
+            # sets relay bit to 1
+            new_relay = new_relay & (1 << r)
+
+            # if const_current and the old_relay bit was zero, divide bias
+            # voltage by high_low_ratio
+            if const_current and not (old_relay >> r) & 1:
+                new_dac_volt_arr[pos_idx] /= S.high_low_current_ratio
+                new_dac_volt_arr[neg_idx] /= S.high_low_current_ratio
+        else:
+            # Sets relay bit to 0
+            new_relay = new_relay & ~(1 << r)
+
+            # if const_current and the old_relay bit was one, mult bias
+            # voltage by high_low_ratio
+            if const_current and (old_relay >> r) & 1:
+                new_dac_volt_arr[pos_idx] *= S.high_low_current_ratio
+                new_dac_volt_arr[neg_idx] *= S.high_low_current_ratio
+
+    relay_data = cmd_make(0, S.C.relay_address, new_relay)
+
+    # Sets DAC data values, clipping the data array to make sure they contain
+    # the correct no. of bits
+    dac_data = (new_dac_volt_arr / S._rtm_slow_dac_bit_to_volt).astype(int)
+    nbits = S._rtm_slow_dac_nbits
+    dac_data = np.clip(dac_data, -2**(nbits-1), 2**(nbits-1)-1)
+
+    dac_data_reg = S.rtm_spi_max_root + S._rtm_slow_dac_data_array_reg
+
+    # Writes PV's simultaneously
+    epics.caput_many([S.C.writepv, dac_data_reg], [relay_data, dac_data],
+                     wait=True)
+
