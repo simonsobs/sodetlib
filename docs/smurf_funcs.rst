@@ -7,7 +7,10 @@ pysmurf instance created as described in :ref:`LoadConfigs`.
 Biasing Amplifiers
 -------------------
 
-Check and change Gate voltage settings::
+.. todo:: Add information on using health checks/optimization functions for 
+    amplifier biases.
+
+Just doing things by hand, you can check and change Gate voltage settings::
     
     S.get_amplifier_biases()
     ## Example Numbers
@@ -30,7 +33,6 @@ Save to device config file::
     cfg.dev.update_experiment({'amp_hemt_Vg': biases['hemt_Vg']})
     cfg.dev.dump(cfg.dev_file, clobber=True)
 
-.. todo:: Add information on using optimization functions for amplifier biases.
 
 Tuning On Resonators
 ---------------------
@@ -38,18 +40,81 @@ There are several different ways to tune on the resonators and the choice of how
 to run the tuning depends on where you are in a cooldown and how carefully you
 are managing the channel mapping. We need to make new channel assignments every
 cooldown, because the resonators shift a bit each time we get down to 100 mK.
+This has to do with the Nb trannsition so this includes times you warm up to 4K
+and go back down to 100mK.
+
 Alternatively, every time we make a new channel assignment we cannot guarantee 
 that the mapping between channel and TES remains the same. This means that if we
 want to maintain the same detector mapping throughout a cooldown we need to tune
-on the same set of channel assignments. The channel to detector mapping  will become 
+on the same set of channel assignments. The channel to detector mapping will become 
 very important when running in Chile or while doing optical tests where detector 
-mapping information if acquired spread out in time. 
+mapping information is acquired spread out in time. 
 
 Eventually the code snippets below will need to become defined scripts or tasks,
 but for now we will have them here.
 
-Tuning from Sratch
-...................
+
+Tuning a Device for the First Time
+..................................
+
+These are setup pieces that you usually have to do once per device + readout
+chain but afterwards seem to be constant across cooldowns. Note that these are
+done in conjunction the call in :ref:`scratch_tuning`. That's because the first
+time setup is the hardest.
+
+1. **Setting the attenuation levels.** This is adjusting the `atten_uc` and
+`atten_dc`, and the optimized values are constant across cooldowns. Initial
+estimates are needed for these values before running any of the calls in
+:ref:`scratch_tuning` because if they are way off they will affect the initial
+setup of things like the phase delay measurements. A good starting point is
+usually 15/15 but if you have no information it might be better to chat with
+someone more experienced. 
+
+After tracking has been completely set up there's another point where you want
+to optimize these parameters to minimize the readout noise in the setup.
+
+.. todo:: Add info on how to use optimization functions for attenuation
+
+2. **Setting the phase delay for the system.** This delay value is saved in the
+`pysmurf` config file and is generally constant across cooldowns. But the first
+time you plug in a device to a specific readout chain you should set this delay
+number. (We often check it each cooldown but if it's changed that's usually
+reflecting a firmware update error and not an actual change.) Unlike the device
+config file, the `pymurf` config file must be updated by hand.::
+     
+    for band in bands:
+        band_cfg = cfg.dev.bands[band]
+        S.set_att_uc( band, band_cfg['uc_att'] )
+        S.set_att_dc( band, band_cfg['dc_att'] )
+        delay, res = S.estimate_phase_delay(band)
+        S.set_band_delay_us(band, delay)
+
+Note that `S.set_band_delay_us` overwrites `S.freq_resp` so you have to reload
+channel assignments / tune files if you call this function.
+
+3. **Setting the Tracking parameters.** This is technically after tuning, but
+the very first time you run `S.tracking_setup` you need to measure and adjust
+some of parameters used in this function. Chicago/LATRt has found this to be
+very close to constant across cooldowns. To do this for each band::
+    
+    S.tracking_setup(..., meas_lms_freq=True, lms_freq_hz=None ...)
+    band_cfg = cfg.dev.bands[band]
+    frac_pp = band_cfg['frac_pp'] * 20000 / S.get_lms_freq_hz(band)
+    cfg.dev.update_band( band, {'frac_pp':frac_pp, 'lms_freq_hz':20000})
+    cfg.dev.dump(cfg.dev_file, clobber=True)
+    S.tracking_setup(...,meas_lms_freq=False,lms_freq_hz=band_cfg['lms_freq_hz'] ...)
+
+Even this explanation is a bit simplified from a complete optimization of the
+tracking. If you are reading this and need more information / things aren't
+working you should chat with someone with more experience.
+
+.. todo:: Add info on how to use optimization functions for tracking parameters
+
+
+.. _scratch_tuning: 
+
+Tuning from Sratch for a Cooldown
+.................................
 
 Assuming `bands` is a list of SMuRF Bands available on the device that you have
 plugged in. The first time you're tuning on resonators for a cooldown you should
@@ -72,7 +137,7 @@ use::
     cfg.dev.update_experiment({'tunefile': S.tune_file})
     cfg.dev.dump(cfg.dev_file, clobber=True)
     
-    ## Defaul Setup Tracking Call, used after all versions of tuning
+    ## Default Setup Tracking Call, used after all versions of tuning
     for band in bands:
         band_cfg = cfg.dev.bands[band]
         S.tracking_setup(band, reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],
@@ -88,43 +153,6 @@ The critical parts here is that we run `S.find_freq` and `S.setup_notches(...
 new_master_assignment=True)`. These two piece combined make a new channel
 assignment file for that band.
 
-**Adjustments the first time you use a device**
-
-These are setup pieces that you usually have to do once per device + readout chain
-but afterwards seem to be constant across cooldowns.
-
-1. **Setting the phase delay for the system.** This delay value is saved in the
-`pysmurf` config file and is generally constant across cooldowns. But the first
-time you plug in a device to a specific readout chain you should set this delay
-number. (We often check it each cooldown but if it's changed that's usually
-reflecting a firmware update error and not an actual change.) Unlike the device
-config file, the `pymurf` config file must be updated by hand.::
-     
-    for band in bands:
-        band_cfg = cfg.dev.bands[band]
-        S.set_att_uc( band, band_cfg['uc_att'] )
-        S.set_att_dc( band, band_cfg['dc_att'] )
-        delay, res = S.estimate_phase_delay(band)
-        S.set_band_delay_us(band, delay)
-
-2. **Setting the attenuation levels.** This is adjusting the `atten_uc` and
-`atten_dc` values to minimize the readout noise for the band. These values are
-constant across cooldowns.
-
-.. todo:: Add info on how to use optimization functions for attenuation
-
-3. **Setting the Tracking parameters.** We want to adjust some of the tracking
-parameters. Chicago/LATRt has found this to be very close to constant across
-cooldowns. To do this for each band::
-    
-    S.tracking_setup(..., meas_lms_freq=True, ...)
-    band_cfg = cfg.dev.bands[band]
-    frac_pp = band_cfg['frac_pp'] * 20000 / S.get_lms_freq_hz(band)
-    cfg.dev.update_band( band, {'frac_pp':frac_pp, 'lms_freq_hz':20000})
-    cfg.dev.dump(cfg.dev_file, clobber=True)
-    S.tracking_setup(..., meas_lms_freq=False, ...)
-
-.. todo:: Add info on how to use optimization functions for tracking parameters
 
 
 Re-Tuning on an existing tune file
@@ -139,7 +167,7 @@ channel assignments::
         S.load_master_assignment( band, S.freq_resp[band]['channel_assignment'])
     
     for band in bands:
-        iband_cfg = cfg.dev.bands[band]
+        band_cfg = cfg.dev.bands[band]
         S.setup_notches(band, tone_power=band_cfg['drive'],
                         new_master_assignment=False)
     for _ in range(3):
