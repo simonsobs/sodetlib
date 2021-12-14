@@ -10,5 +10,6 @@ Contents
    configs
    det_config
    scripting_guide
+   module_overview
    smurf_funcs
    analysis
