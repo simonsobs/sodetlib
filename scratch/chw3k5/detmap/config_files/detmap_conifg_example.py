@@ -7,8 +7,6 @@ import os
 import glob
 import pathlib
 
-import numpy as np
-
 from scratch.chw3k5.detmap.download_example_data import sample_data_init
 
 # Check to see if the example data is available, if not it downloads it from a GoogleDrive host.
@@ -24,12 +22,12 @@ abs_path_sample_data = os.path.join(abs_path_detmap, 'sample_data')
 """
 start the example configuration file, this is only a first try, most of this should be determined dynamically.
 """
-highband = 'S'  # use either 'N' or 'S' for North or South, respectively.
-shift = 10
+north_is_highband = False  # use None for no highband, True for North as the highband, False for South as the highband
+shift = 10  # in MHz
 waferfile = os.path.join(abs_path_metadata, "copper_map_corrected.csv")
 design_file = os.path.join(abs_path_metadata, "umux_32_map.pkl")
-bands = np.arange(8)
-dict_thru = {"N": [7], "S": []}
+bands = range(8)
+# dict_thru = {"N": [7], "S": []}  # deprecated
 dark_bias_lines = [4, 5, 6, 7, 8, 9, 10, 11]  # If certain sides are covered
 tunefile = os.path.join(abs_path_sample_data, '1632247315_tune.npy')
 

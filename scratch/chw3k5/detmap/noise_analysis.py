@@ -9,7 +9,10 @@ import numpy as np
 import matplotlib as plt
 from scipy import optimize, signal
 
+from timer_wrap import timing
 
+
+@timing
 def noise_model_pysmurf(f, wl, fk, alpha):
     # f, frequency
     # wl, white noise level
@@ -25,11 +28,13 @@ def noise_model_pysmurf(f, wl, fk, alpha):
     return (wl) * (1 + (fk / f) ** alpha) * tf
 
 
+@timing
 def find_nearest(a, b):
     idx = (np.abs(a - b)).argmin()
     return idx
 
 
+@timing
 def fit_noise_model(ts_pA, fs):
     bounds_low = [0., 0., 0.]
     bounds_high = [np.inf, np.inf, np.inf]

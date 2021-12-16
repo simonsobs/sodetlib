@@ -1,5 +1,7 @@
 import numpy as np
-from lmfit import Model, Parameters
+from lmfit import Model
+
+from timer_wrap import timing
 
 
 def linear_resonator(f, f_0, Q, Q_e_real, Q_e_imag):
@@ -24,6 +26,7 @@ def resonator_cable(f, f_0, Q, Q_e_real, Q_e_imag, delay, phi, f_min, A_mag, A_s
     return cable_term * resonator_term
 
 
+@timing
 def full_fit(freqs, real, imag):
     # takes numpy arrays of freq, real and imag values
 
@@ -88,6 +91,7 @@ def get_br(Q, f_0):
     return f_0 * (2 * Q) ** -1
 
 
+@timing
 def reduced_chi_squared(ydata, ymod, n_param=9, sd=None):
     # red chi squared in lmfit does not return something reasonable
     # so here is a handwritten function

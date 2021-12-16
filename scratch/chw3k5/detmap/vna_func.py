@@ -7,18 +7,23 @@ Additional Author(s): Caleb Wheeler
 
 import os
 import glob
+import time
+from functools import wraps
 
 import scipy
 import skrf as rf
 import numpy as np
 import pandas as pd
 
+from timer_wrap import timing
 from peak_finder_v2 import get_dip_depth, get_peaks_v2
 from noise_analysis import fit_noise_model
 from resonator_model import get_qi, get_br, full_fit
 from read_stream_data_gcp_save import read_stream_data_gcp_save
 
 
+
+@timing
 def s21_find_baseline(fs, s21, avg_over=800):
     # freqsarr and s21arr are your frequency and transmission
     # average the data every avg_over points to find the baseline
@@ -51,6 +56,7 @@ def s21_find_baseline(fs, s21, avg_over=800):
     return ynew
 
 
+@timing
 def correct_trend(freq, real, imag, avg_over=800):
     # Input the real and imaginary part of a s21
     # Out put the s21 in db, without the trend.
@@ -62,6 +68,7 @@ def correct_trend(freq, real, imag, avg_over=800):
     return s21_corrected
 
 
+@timing
 def get_all_tune_timestamps(tune_files):
     # pass a list of tunefiles and
     # get a dict of the timestamps associated with the tune files
@@ -74,6 +81,7 @@ def get_all_tune_timestamps(tune_files):
     return (tune_file_dict)
 
 
+@timing
 def get_all_noise_timestamps(noise_files):
     # pass a list of noise files and
     # get a dict of the timestamps associated with them
@@ -86,6 +94,7 @@ def get_all_noise_timestamps(noise_files):
     return (noise_file_dict)
 
 
+@timing
 def find_nearest_tune_file(noise_file_dict, tune_file_dict, d_file):
     # Given two dictionaries of noise and tun files with key of ctime
     # Associate each noise file to tunning file and append to d_file
@@ -104,6 +113,7 @@ def find_nearest_tune_file(noise_file_dict, tune_file_dict, d_file):
     return d_file
 
 
+@timing
 def match_file_names(tune_dir, noise_dir):
     # Pass the directory of tunning file and noise file
     # Associates all the files in the directory
@@ -117,6 +127,7 @@ def match_file_names(tune_dir, noise_dir):
     return d_file
 
 
+@timing
 def associate_noise_to_frame(d_file, fs=200, pA_per_phi0=9e6 / (2. * np.pi)):
     # Given a dataframe of associated noise and tunning files. Fit each
     # tunning file and append the fitting parameter to the frame.
@@ -145,6 +156,7 @@ def associate_noise_to_frame(d_file, fs=200, pA_per_phi0=9e6 / (2. * np.pi)):
     return d_noise
 
 
+@timing
 def read_vna_data(filename):
     # Reads vna data in s2p or csv format
     # outputs frequency, real and imaginary parts
@@ -161,13 +173,14 @@ def read_vna_data(filename):
         real = np.array(csvdata[' Formatted Data'])
         imag = np.array(csvdata[' Formatted Data.1'])
     else:
-        freq = 0;
-        real = 0;
-        imag = 0;
+        freq = 0
+        real = 0
+        imag = 0
         print('invalid file type')
     return freq, real, imag
 
 
+@timing
 def read_vna_data_array(filenames):
     # Input an array of vna filenames or just one file
     # Outputs all data in the file, organized by frequency
@@ -190,6 +203,7 @@ def read_vna_data_array(filenames):
     # return freq,real,imag
 
 
+@timing
 def vna_data_into_frame(freq, real, imag, f0s, resonance_s21, low_indice=[], high_indice=[], delta=2e5):
     # This function takes in s21 data and position of the peak, 
     # fits the peaks into models and outputs a dataframe of the parameters
@@ -235,6 +249,7 @@ def vna_data_into_frame(freq, real, imag, f0s, resonance_s21, low_indice=[], hig
     return dfres
 
 
+@timing
 def read_smurf_tuning_data(filename):
     # Reads the smurf file and extract frequency,
     # complex s21 and resonator index.
@@ -254,6 +269,7 @@ def read_smurf_tuning_data(filename):
     return dfres
 
 
+@timing
 def read_smurf_tuning_data_array(filenames):
     # Reads one or an array of smurf files.
 
@@ -267,6 +283,7 @@ def read_smurf_tuning_data_array(filenames):
     return frame
 
 
+@timing
 def smurf_into_frame(filename):
     # Takes a smurf file. Fit each resonator into a model and outputs a
     # dataframe of the parameters. You should use the function below instead.
@@ -295,6 +312,7 @@ def smurf_into_frame(filename):
     return dfres
 
 
+@timing
 def smurf_data_into_frame(filenames):
     # Takes an array of smurf files and output the
     # fitting parameter.
@@ -309,6 +327,7 @@ def smurf_data_into_frame(filenames):
     return frame
 
 
+@timing
 def associate_smurf_and_vna(df_smurf, df_vna, tolerance=0.5):
     # Given a dataframe of smurf fitting parameter and VNA fitting parameter,
     # the function associates their peaks and combines the dataframe.
@@ -339,6 +358,7 @@ def associate_smurf_and_vna(df_smurf, df_vna, tolerance=0.5):
     return df_smurf_vna
 
 
+@timing
 def get_peaks_from_vna(vna_files):
     f, r, i = read_vna_data_array(vna_files)
     s21_corrected = correct_trend(f, r, i, avg_over=1000)
@@ -346,6 +366,7 @@ def get_peaks_from_vna(vna_files):
     return f0s
 
 
+@timing
 def assign_freq_index(band, freqlist, dict_thru, highband):
     if ((highband == "S") & (band > 3)) | ((highband == "N") & (band <= 3)):
         missing_chip = dict_thru["S"]

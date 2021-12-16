@@ -1,3 +1,12 @@
+"""
+Princeton Detector Mapping.
+Original Source: Kaiwen Zheng
+Additional Author(s): Caleb Wheeler
+
+A definition that calculates the band boundaries that emulate the SMuRF band boundaries.
+"""
+
+
 def emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None):
     # Auto-set the bands to the default
     if smurf_bands is None:

@@ -1,17 +1,23 @@
 import numpy as np
 import pandas as pd
+
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
+from timer_wrap import timing
 
+
+@timing
 def pbias(Tbath, n, Tc, kappa):
     return kappa * (Tc ** n - Tbath ** n)
 
 
+@timing
 def get_g(n, Tc, kappa):
     return n * kappa * Tc ** (n - 1)
 
 
+@timing
 def get_vbias(data_dict, band, chan, level=0.5, greedy=False):
     '''Returns the conventional P_sat from a SMuRF IV curve dictionary.
     Parameters
@@ -48,6 +54,7 @@ def get_vbias(data_dict, band, chan, level=0.5, greedy=False):
     return rn2p(level)
 
 
+@timing
 def get_psat(data_dict, band, chan, unit=1e-12, level=0.9, greedy=False):
     """Returns the conventional P_sat from a SMuRF IV curve dictionary.
 
@@ -102,6 +109,7 @@ def get_psat(data_dict, band, chan, unit=1e-12, level=0.9, greedy=False):
     return unit * rn2p(level)
 
 
+@timing
 def read_psat(coldload_ivs, map_data=None, make_plot=False):
     psat_dict = {}
     for coldload_iv in coldload_ivs:
@@ -135,6 +143,7 @@ def read_psat(coldload_ivs, map_data=None, make_plot=False):
     return psat_dict
 
 
+@timing
 def filter_good_chans(psat_data, psat_dict, badchan=None, max_psat=20e-12, min_psat=0.5e-12, min_sat_T=14,
                       make_plot=False):
     if badchan is None:
@@ -170,6 +179,7 @@ def filter_good_chans(psat_data, psat_dict, badchan=None, max_psat=20e-12, min_p
     return filtered_dict, goodchan
 
 
+@timing
 def match_chan_map(ass_map, psat_dict):
     df_map = pd.read_csv(ass_map)
     pixel_info = {}
@@ -192,6 +202,7 @@ def match_chan_map(ass_map, psat_dict):
     return pixel_info
 
 
+@timing
 def plot_wafer_psat(pixel_info, T, pol=None, freq=None, cbrange=None, **kwargs):
     if pol is None:
         pol = ['A', 'B', 'D']
@@ -216,6 +227,7 @@ def plot_wafer_psat(pixel_info, T, pol=None, freq=None, cbrange=None, **kwargs):
     wafer_scatter(x, y, psat, 'Psat', title, cbrange, **kwargs)
 
 
+@timing
 def wafer_scatter(x, y, vals, label, title, cbrange=None, cmap=plt.cm.inferno, **kwargs):
     if cbrange is None:
         cbrange = []
@@ -239,6 +251,7 @@ def wafer_scatter(x, y, vals, label, title, cbrange=None, cmap=plt.cm.inferno, *
     plt.show()
 
 
+@timing
 def plot_psat_vs_T(pixel_info, freqlist=None, optlist=None):
     if freqlist is None:
         freqlist = [90, 150]
@@ -276,5 +289,3 @@ def plot_psat_vs_T(pixel_info, freqlist=None, optlist=None):
     plt.grid(which='both')
     plt.title(f'$P_{{sat}}$ Curves')
     plt.show()
-
-

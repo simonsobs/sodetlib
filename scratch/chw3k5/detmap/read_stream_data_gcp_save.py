@@ -11,7 +11,10 @@ import glob
 import struct
 import numpy as np
 
+from timer_wrap import timing
 
+
+@timing
 def read_stream_data_gcp_save(datafile, channel=None,
                               unwrap=True, downsample=1, n_samp=None):
     """
@@ -118,6 +121,7 @@ def read_stream_data_gcp_save(datafile, channel=None,
     return timestamp2, phase, mask
 
 
+@timing
 def make_mask_lookup(mask_file):
     """
         Makes an n_band x n_channel array where the elements correspond

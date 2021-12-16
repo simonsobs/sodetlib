@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Oct 28th
+Created on Oct 28th, 2020?
 
 @author: Kaiwen Zheng
 
@@ -14,7 +14,10 @@ function after.
 
 import numpy as np
 
+from timer_wrap import timing
 
+
+@timing
 def find_nearest(array, value):
     # stolen from stack exchange
     array = np.asarray(array)
@@ -22,6 +25,7 @@ def find_nearest(array, value):
     return idx
 
 
+@timing
 def get_dip_depth(real, imag):
     # Input an array of real and imaginary s21, find the
     # depth between maximal and minimal point.
@@ -30,6 +34,7 @@ def get_dip_depth(real, imag):
     return depth
 
 
+@timing
 def get_peaks_v2(f, s21_corrected, f_delta=1e5, det_num=300, baseline=-0.5, min_depth=0.5):
     # Input the frequency and s21. S21 must be in db and the trend should be corrected already.
     # f_delta is the minimal width of each peak. det_num is the maximal number of detectors.

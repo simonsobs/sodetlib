@@ -31,6 +31,7 @@ class TuneDatum(NamedTuple):
     mux_band: Optional[int] = None
     mux_channel: Optional[int] = None
     mux_subband: Optional[str] = None
+    mux_layout_position: Optional[int] = None
     design_freq_mhz: Optional[float] = None
 
     def __str__(self):
@@ -133,7 +134,13 @@ class OperateTuneData:
     # a default that is used when output_path_csv=None in the method self.write_csv()
     output_prefix = 'test_tune_data_vna'
 
-    def __init__(self, tune_path=None, design_file_path=None):
+    # the attributes of design data that should be directly mapped in to TuneDatum, not freq_mhz is handled differently
+    design_attributes = {'pad_num', 'mux_band', 'mux_channel', 'mux_subband', 'mux_layout_position'}
+
+    # interation order for values that are allowed for TuneDatum.is_highband
+    is_highband_iter_order = [True, False, None]
+
+    def __init__(self, tune_path=None, design_file_path=None, layout_position_path=None, north_is_highband=None):
         # read-in path for tune files
         self.tune_path = tune_path
         if self.tune_path is None:
@@ -144,11 +151,16 @@ class OperateTuneData:
             extension = extension.lower()
         # read-in path for the design files
         self.design_file_path = design_file_path
+        # read-in path for the layout position csv file, how the mux wafers are layout on a UFM
+        self.layout_position_path = layout_position_path
+        # True is the north side the high band, False if not, None if not applicable or unknown
+        self.north_is_highband = north_is_highband
 
         # initial values for variables that are populated in this class's methods.
         self.tune_data = None
-        self.tune_data_by_band_and_channel_index = None
+        self.tune_data_side_band_channel = None
         self.pandas_data_frame = None
+        self.tune_data_without_design_data = None
 
         # auto read in known file types
         if tune_path is not None:
@@ -170,20 +182,24 @@ class OperateTuneData:
         comparison, it is often desirable to have a constantly ordered output for analysis,
         debugging, and writing files. This is where we determine that ordering.
         """
-        smurf_bands = sorted(self.tune_data_by_band_and_channel_index.keys())
-        for smurf_band in smurf_bands:
-            tune_data_this_band_by_index = self.tune_data_by_band_and_channel_index[smurf_band]
-            channels = sorted(tune_data_this_band_by_index.keys())
-            for channel in channels:
-                tune_datum_this_band_and_channel = tune_data_this_band_by_index[channel]
-                if channel == -1:
-                    # special handling for channel == -1
-                    freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
-                    for tune_datum in freq_sorted_tune_data:
-                        yield tune_datum
-                else:
-                    # these are a required have a single TuneDatum for band-channel pairs
-                    yield tune_datum_this_band_and_channel
+
+        for is_highband in self.is_highband_iter_order:
+            if is_highband in self.tune_data_side_band_channel.keys():
+                tune_data_this_side = self.tune_data_side_band_channel[is_highband]
+                smurf_bands = sorted(tune_data_this_side.keys())
+                for smurf_band in smurf_bands:
+                    tune_data_this_band = tune_data_this_side[smurf_band]
+                    channels = sorted(tune_data_this_band.keys())
+                    for channel in channels:
+                        tune_datum_this_band_and_channel = tune_data_this_band[channel]
+                        if channel == -1:
+                            # special handling for channel == -1
+                            freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
+                            for tune_datum in freq_sorted_tune_data:
+                                yield tune_datum
+                        else:
+                            # these are a required have a single TuneDatum for side-band-channel combinations
+                            yield tune_datum_this_band_and_channel
 
     def __add__(self, other):
         """
@@ -214,44 +230,67 @@ class OperateTuneData:
         else:
             return len(self.tune_data)
 
+    def is_highband_rank_key(self, is_highband):
+        for count, is_highband_state in list(enumerate(self.is_highband_iter_order)):
+            if is_highband == is_highband_state:
+                return count
+        else:
+            return float('inf')
+
     def tune_data_organization_and_validation(self):
         """
-        Populates the self.tune_data_by_band_and_channel_index instance variable. Checks for validation should be
-        conducted here. This method is meant to be used internally with in this class' methods, and should not be
-        required for user understanding.
+        Populates the self.tune_data_side_band_channel instance variable. Checks for validation should be
+         conducted here. This method is meant to be used internally with in this class' methods, and should not be
+         required for user understanding.
 
-        Returns
+        Also, this method does a data validation, raising exceptions for unexpected data sets before the data is
+         probated to analysis, matching, where it could cause unexpected results.
+
+
+        Returns: self.tune_data_side_band_channel a three level dictionary tree that uses a unique set of keys to lead
+                 to a single TuneDatum. These keys are is_highband, smurf_band, channel (smurf_channel). The allowed
+                 values for these keys are: 1) is_highband {True, False, None}
+                                            2) smurf_band ints {-1, 0, 1, 2, 3, 4, 5, 6, 7}
+                                            3) channels {-1, 0, 1, 2, ... , ~280}.
+
+                There is special handling channel -1, with is denotes a found but untracked/unused resonator
+                by the SMuRF. First, when channel == -1, then smurf_band is always also -1. Many unused resonatotors
+                given this designation, instead of these keys leading to a unique TuneDatum, they lead to a set() of
+                TuneDatum with smurf_band == -1 and channel == -1.
         -------
         """
 
-        self.tune_data_by_band_and_channel_index = {}
+        self.tune_data_side_band_channel = {}
         # loop over all the TuneDatum(s), here we sort the data to get consistent results for debugging
         for tune_datum in sorted(self.tune_data, key=attrgetter('smurf_band', 'channel', 'freq_mhz')):
             smurf_band_this_datum = tune_datum.smurf_band
             channel_this_tune_datum = tune_datum.channel
-            # make a dictionary instance if this is the first resonance found in this band.
-            if smurf_band_this_datum not in self.tune_data_by_band_and_channel_index.keys():
-                self.tune_data_by_band_and_channel_index[smurf_band_this_datum] = {}
-            tune_dict_this_band = self.tune_data_by_band_and_channel_index[smurf_band_this_datum]
+            is_highband = tune_datum.is_highband
+            # make a new dictionary instance if this is the first resonance found for this side.
+            if is_highband not in self.tune_data_side_band_channel.keys():
+                self.tune_data_side_band_channel[is_highband] = {}
+            # make a new dictionary instance if this is the first resonance found in this band.
+            if smurf_band_this_datum not in self.tune_data_side_band_channel[is_highband].keys():
+                self.tune_data_side_band_channel[is_highband][smurf_band_this_datum] = {}
             # map the data to a dictionary structure
             if channel_this_tune_datum == -1:
                 # special handling for the channel value -1
-                if -1 not in tune_dict_this_band.keys():
-                    self.tune_data_by_band_and_channel_index[smurf_band_this_datum][-1] = set()
-                self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum].add(tune_datum)
-
-            elif channel_this_tune_datum in tune_dict_this_band.keys():
-                # make a new set instance is this is the first resonance in this band-channel pair.
-                existing_tune_datum = tune_dict_this_band[channel_this_tune_datum]
-                raise KeyError(f'Only Unique band-channel are allowed. ' +
-                               f'For smurf_band: {smurf_band_this_datum} and channel {channel_this_tune_datum} ' +
+                if -1 not in self.tune_data_side_band_channel[is_highband][smurf_band_this_datum].keys():
+                    self.tune_data_side_band_channel[is_highband][smurf_band_this_datum][-1] = set()
+                self.tune_data_side_band_channel[is_highband][smurf_band_this_datum][channel_this_tune_datum].add(tune_datum)
+            elif channel_this_tune_datum in self.tune_data_side_band_channel[is_highband][smurf_band_this_datum].keys():
+                # This is happens if there is already TuneDatum for this combination of side-smurf_band-channel
+                existing_tune_datum = self.tune_data_side_band_channel[is_highband][channel_this_tune_datum]
+                raise KeyError(f'Only Unique side-band-channel combinations are allowed. ' +
+                               f'For side: {is_highband} smurf_band: {smurf_band_this_datum} ' +
+                               'and channel: {channel_this_tune_datum} ' +
                                f'The existing datum: {existing_tune_datum} ' +
                                f'uses has the same band-channel data as the new: {tune_datum}')
             else:
                 # add the tune datum to this mapping
-                self.tune_data_by_band_and_channel_index[smurf_band_this_datum][channel_this_tune_datum] = tune_datum
+                self.tune_data_side_band_channel[is_highband][smurf_band_this_datum][channel_this_tune_datum] = tune_datum
 
-    def from_dataframe(self, data_frame, is_north=None, is_highband=None):
+    def from_dataframe(self, data_frame, is_highband=None, is_north=None):
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         # loop over the data frame. !Never do this for calculations, only for casting as done below!
@@ -268,11 +307,9 @@ class OperateTuneData:
                         shift_mhz=10, smurf_bands=None):
         self.tune_data = set()
         _real_band_bounds_mhz, _all_data_band_bounds_mhz, all_data_lower_band_bounds_mhz, \
-            all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=shift_mhz, smurf_bands=smurf_bands)
-        if is_highband:
-            band_bounds_mhz = all_data_upper_band_bounds_mhz
-        else:
-            band_bounds_mhz = all_data_lower_band_bounds_mhz
+            _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=shift_mhz, smurf_bands=smurf_bands)
+        # Highband is an artificial designation, only low band resonators were ever fabricated in practice.
+        band_bounds_mhz = all_data_lower_band_bounds_mhz
         # initialize a counter used to determine channel number
         channel_count_by_band = {smurf_band: 0 for smurf_band in band_bounds_mhz}
         # this is the outer loop to be extra sure there are no repeats, it is sorted by freq_mhz for the channel count
@@ -281,7 +318,13 @@ class OperateTuneData:
                 lower_bound_mhz, upper_bound_mhz = band_bounds_mhz[smurf_band]
                 if lower_bound_mhz <= res_freq_mhz < upper_bound_mhz:
                     channel = channel_count_by_band[smurf_band]
-                    tune_datum_this_res = TuneDatum(freq_mhz=res_freq_mhz, smurf_band=smurf_band,
+                    # this is how the SMuRF reports the Highband designation
+                    if is_highband:
+                        smurf_band_emulated = smurf_band + 4
+                    else:
+                        smurf_band_emulated = smurf_band
+                    # record the tune data
+                    tune_datum_this_res = TuneDatum(freq_mhz=res_freq_mhz, smurf_band=smurf_band_emulated,
                                                     channel=channel, is_north=is_north, is_highband=is_highband)
                     # assign the tune datum to the storage variable
                     self.tune_data.add(tune_datum_this_res)
@@ -294,7 +337,7 @@ class OperateTuneData:
 
     def return_pandas_df(self):
         # make sure the tune data was load before this method was called.
-        if self.tune_data_by_band_and_channel_index is None:
+        if self.tune_data_side_band_channel is None:
             raise IOError(f'No tune data has been loaded.')
         # initialize the pandas data frame
         self.pandas_data_frame = pd.DataFrame({header_key: [] for header_key in tune_data_column_names})
@@ -340,6 +383,25 @@ class OperateTuneData:
         tunefile_data = np.load(self.tune_path, allow_pickle=True).item()
         # loop of the bands in order
         for smurf_band in sorted(list(tunefile_data.keys())):
+            if -1 < smurf_band < 4:
+                is_highband = False
+                if self.north_is_highband is None:
+                    is_north = None
+                elif self.north_is_highband:
+                    is_north = False
+                else:
+                    is_north = True
+            elif 3 < smurf_band < 8:
+                is_highband = True
+                if self.north_is_highband is None:
+                    is_north = None
+                elif self.north_is_highband:
+                    is_north = True
+                else:
+                    is_north = False
+            else:
+                is_highband = None
+                is_north = None
             data_this_band = tunefile_data[smurf_band]
             # resonances may not be present in all bands
             if 'resonances' in data_this_band.keys():
@@ -347,11 +409,16 @@ class OperateTuneData:
                 resonator_data_this_band = data_this_band['resonances']
                 for channel_index in sorted(resonator_data_this_band.keys()):
                     single_res = resonator_data_this_band[channel_index]
-                    freq_mhz = single_res['freq']
+                    if is_highband:
+                        # the real frequency is 2000.0 less than what is reported for high band data
+                        freq_mhz = single_res['freq'] - 2000.0
+                    else:
+                        freq_mhz = single_res['freq']
                     channel = single_res['channel']
                     subband = single_res['subband']
                     tune_datum_this_res = TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band,
-                                                    subband=subband, channel=channel)
+                                                    subband=subband, channel=channel,
+                                                    is_north=is_north, is_highband=is_highband)
                     self.tune_data.add(tune_datum_this_res)
         # do a data organization and validation
         self.tune_data_organization_and_validation()
@@ -377,41 +444,102 @@ class OperateTuneData:
         # get the smurf band data to classify the design data.
         real_band_bounds_mhz, _all_data_band_bounds_mhz, _all_data_lower_band_bounds_mhz, \
             _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None)
-        # counter for the smurf channel
-        # initialize a counter used to determine channel number
+        # get positional layout dat for the mux chips if it is available
+        if self.layout_position_path is not None:
+            mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=self.layout_position_path)
+            mux_band_to_mux_pos_dict = {mux_band: mux_pos for mux_band, mux_pos
+                                        in zip(mux_layout_position_by_column['mux_band_num'],
+                                               mux_layout_position_by_column['mux_pos_num'])}
+
+        else:
+            mux_band_to_mux_pos_dict = None
+
+        # counter for the smurf channel, initialize a counter used to determine channel number
         channel_count_by_band = {smurf_band: 0 for smurf_band in real_band_bounds_mhz.keys()}
         # set the data in the standard format for this class
         self.tune_data = set()
         for row_dict in sorted(data_by_row, key=itemgetter('freq_mhz')):
-            if row_dict['mux_band'] > 14:
-                row_dict['mux_band'] =- 14
             # determine the smurf band
             for smurf_band in sorted(real_band_bounds_mhz.keys()):
                 lower_bound_mhz, upper_bound_mhz = real_band_bounds_mhz[smurf_band]
                 if lower_bound_mhz <= row_dict['freq_mhz'] < upper_bound_mhz:
                     row_dict['smurf_band'] = smurf_band
-                    if smurf_band > 3:
-                        row_dict['is_highband'] = True
-                    else:
-                        row_dict['is_highband'] = False
-                    # set the smurf channel
-                    row_dict['channel'] = channel_count_by_band[smurf_band]
-                    # integrate the counter
-                    channel_count_by_band[smurf_band] += 1
-                    # no need to keep searching when we find what we are looking for
-                    break
+                    # the design data file is outdated, bands 4-7 are is a repeat of 0-3, there is no highband design
+                    if smurf_band < 4:
+                        # this would happen automatically, but we be explicit design is_highband has no meaning for design data
+                        row_dict['is_highband'] = None
+                        # set the smurf channel
+                        row_dict['channel'] = channel_count_by_band[smurf_band]
+                        # set the mux_layout_position is available
+                        if mux_band_to_mux_pos_dict is not None:
+                            mux_band = row_dict['mux_band']
+                            if mux_band in mux_band_to_mux_pos_dict.keys():
+                                row_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[mux_band]
+                        # iterate the counter
+                        channel_count_by_band[smurf_band] += 1
+                        # add this datum
+                        self.tune_data.add(TuneDatum(**row_dict))
+                        # no need to keep searching when we find what we are looking for
+                        break
+                    elif 3 < smurf_band:
+                        # ignore the highband design, those resonators were never fabricated
+                        break
             else:
                 # Force a smurf band to be set, this happens when the break statement was not reached
                 raise KeyError(f"Design frequency {row_dict['freq_mhz']} MHz, was not found to be withing the " +
                                f"the real smurf bands, {real_band_bounds_mhz}, this should not be possible! " +
                                f"Check the design file: {self.design_file_path}")
-            self.tune_data.add(TuneDatum(**row_dict))
+
+        # the highband design resonators are simply a copy of the low band design, now we do that in software
+        for tune_datum_low_band in list(self.tune_data):
+            tune_datum_high_band_copy = tune_datum_low_band.dict()
+            tune_datum_high_band_copy['smurf_band'] = tune_datum_high_band_copy['smurf_band'] + 4
+            # this would happen automatically, but we be explicit design is_highband has no meaning for design data
+            tune_datum_high_band_copy['is_highband'] = None
+            self.tune_data.add(TuneDatum(**tune_datum_high_band_copy))
 
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
-    def map_design_data(self):
-        pass
+    def map_design_data(self, design_data):
+        # make a new set to hold the tune data that is updated with design data
+        tune_data_with_design_data = set()
+        # track TuneDatums that are not attached to a design record
+        self.tune_data_without_design_data = set()
+        # is_highband has no meaning for design data
+        design_tune_data_by_band_channel = design_data.tune_data_side_band_channel[None]
+        # loop overall the data
+        for tune_datum in list(self):
+            # pull these properties out to access the design data
+            is_highband = tune_datum.is_highband
+            smurf_band = tune_datum.smurf_band
+            channel = tune_datum.channel
+            # see if there is design data available for this band-channel pair
+            if smurf_band in design_tune_data_by_band_channel.keys() and \
+                    channel in design_tune_data_by_band_channel[smurf_band].keys():
+                design_datum = design_tune_data_by_band_channel[smurf_band][channel]
+                # we can extract specific parameters from the design_datum and build a dictionary
+                design_dict = {design_key: design_datum.__getattribute__(design_key)
+                               for design_key in self.design_attributes}
+                # move the design frequency to the appropriate attribute
+                design_dict['design_freq_mhz'] = design_datum.freq_mhz
+                # get a mutable dictionary for the tune datum
+                tune_dict = tune_datum.dict()
+                # update the tune dict with the design parameters
+                tune_dict.update(design_dict)
+                # reassign these key-value pairs to the immutable TuneDatum
+                tune_datum_with_design_data = TuneDatum(**tune_dict)
+                # add this to the new data set
+                tune_data_with_design_data.add(tune_datum_with_design_data)
+            else:
+                # if there is no available design data then we pass the unchanged tune_datum to the new set
+                tune_data_with_design_data.add(tune_datum)
+                # we also track what datums were not able to matched with design data.
+                self.tune_data_without_design_data.add(tune_datum)
+        # if everything was successful, assign the combined mapping to this instances self.tune_data
+        self.tune_data = tune_data_with_design_data
+        # do a data organization and validation
+        self.tune_data_organization_and_validation()
 
 
 def read_tunefile(tunefile, return_pandas_df=False):
