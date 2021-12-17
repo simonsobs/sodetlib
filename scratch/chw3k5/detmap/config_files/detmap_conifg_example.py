@@ -23,7 +23,7 @@ abs_path_sample_data = os.path.join(abs_path_detmap, 'sample_data')
 start the example configuration file, this is only a first try, most of this should be determined dynamically.
 """
 north_is_highband = False  # use None for no highband, True for North as the highband, False for South as the highband
-shift = 10  # in MHz
+vna_shift_mhz = 10  # in MHz
 waferfile = os.path.join(abs_path_metadata, "copper_map_corrected.csv")
 design_file = os.path.join(abs_path_metadata, "umux_32_map.pkl")
 bands = range(8)
@@ -52,5 +52,8 @@ S_band = sorted(glob.glob(south_search_str))
 N_files = N_band[3:-1]
 S_files = S_band[2:]
 
-# output filename
+# output smurf data filename
 output_filename = os.path.join(abs_path_sample_data, "test_pixel_info.csv")
+
+# output vna data filename
+output_filename_vna = os.path.join(abs_path_sample_data, "test_pixel_info_vna.csv")

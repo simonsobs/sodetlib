@@ -15,18 +15,18 @@ from read_iv import match_chan_map, read_psat
 
 from vna_func import get_peaks_from_vna
 
-from detector_map import get_pad_to_wafer, smurf_to_detector
 from simple_csv import read_csv
 from channel_assignment import OperateTuneData
+from layout_data import get_layout_data
 
 allowed_highbands = {'N', 'S'}
 
 
-def assign_channel_from_vna(south_files, north_files, north_is_highband, shift_mhz=10):
+def assign_channel_from_vna(south_raw_files, north_raw_files, north_is_highband, shift_mhz=10.0):
     # Kaiwen peak finding algorithms
-    south_res_mhz = get_peaks_from_vna(south_files) / 1.0e6
+    south_res_mhz = get_peaks_from_vna(south_raw_files) / 1.0e6
     print("South Side fit completed.")
-    north_res_mhz = get_peaks_from_vna(north_files) / 1.0e6
+    north_res_mhz = get_peaks_from_vna(north_raw_files) / 1.0e6
     print("North Side fit completed.")
 
     upper_res_tune_data = OperateTuneData()
@@ -51,59 +51,80 @@ def assign_channel_from_vna(south_files, north_files, north_is_highband, shift_m
     return upper_res_tune_data + lower_res_tune_data
 
 
-def automated_map(south_files, north_files, north_is_highband, shift_mhz, tunefile, dark_bias_lines, design_file,
-                  mux_pos_num_to_mux_band_num_path, waferfile, design_threshold_mhz=0.1,
-                  tune_data_vna_output_filename='tune_data_vna.csv', redo_vna_tune=False):
+def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_data=None, csv_filename=None):
     # get the tune file data from smurf
     tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband)
+    # update the tune_data collections to include design data.
+    if design_data is not None:
+        tune_data_smurf.map_design_data(design_data=design_data)
+        # update the tune data to include the layout data.
+        if layout_data is None:
+            tune_data_smurf.map_layout_data(layout_data=layout_data)
+    if csv_filename is None:
+        # write a CSV file of this data
+        tune_data_smurf.write_csv(output_path_csv=csv_filename)
+    return tune_data_smurf
+
+
+def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
+                 north_raw_files=None, south_raw_files=None, north_is_highband=None, shift_mhz=10.0,
+                 design_data=None, layout_data=None, redo_vna_tune=False, csv_filename=None):
 
     # parse/get date from a Vector Network Analyzer
     if os.path.exists(tune_data_vna_output_filename) and not redo_vna_tune:
         tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename)
     else:
-        if north_files == [] and south_files == []:
+        if north_raw_files is None:
+            north_raw_files = []
+        if south_raw_files is None:
+            south_raw_files = []
+        if north_raw_files == [] and south_raw_files == []:
             raise FileNotFoundError("Both North and South VNA files were empty lists)")
         # Run Kaiwen's peak finder and return a data structure that relates frequency to smurf band and channel number.
-        tune_data_vna = assign_channel_from_vna(south_files=south_files, north_files=north_files,
+        tune_data_vna = assign_channel_from_vna(south_raw_files=south_raw_files, north_raw_files=north_raw_files,
                                                 north_is_highband=north_is_highband, shift_mhz=shift_mhz)
         # write this data to skip this step next time and simply read in these results
         tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
-
-    design_data = OperateTuneData(design_file_path=design_file, layout_position_path=mux_pos_num_to_mux_band_num_path)
     # update the tune_data collections to include design data.
-    tune_data_smurf.map_design_data(design_data=design_data)
     tune_data_vna.map_design_data(design_data=design_data)
-
-    wafer_info = get_pad_to_wafer(waferfile, dark_bias_lines=dark_bias_lines)
-
-    # Not refactored below
-    smurf2det = smurf_to_detector(smurf2padloc, wafer_info)
-
-    return tune_data_smurf, tune_data_vna
+    # update the tune data to include the layout data.
+    tune_data_vna.map_layout_data(layout_data=layout_data)
+    if csv_filename is None:
+        # write a CSV file of this data
+        tune_data_smurf.write_csv(output_path_csv=csv_filename)
+    return tune_data_vna
 
 
 if __name__ == '__main__':
     # get a sample configuration to use with this example
     from scratch.chw3k5.detmap.config_files.detmap_conifg_example import N_files, S_files, cold_ramp_file, \
-        north_is_highband, shift, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
-        waferfile, output_filename, tune_data_vna_output_filename, redo_vna_tune
+        north_is_highband, vna_shift_mhz, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
+        waferfile, output_filename, output_filename_vna, tune_data_vna_output_filename, redo_vna_tune
+    # # Metadata
+    # get the design file for the resonators
+    design_data_example = OperateTuneData(design_file_path=design_file,
+                                          layout_position_path=mux_pos_num_to_mux_band_num_path)
+    # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
+    layout_data_example = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines)
 
-    # The main mapping file
-    tune_data_smurf, tune_data_vna = automated_map(south_files=S_files, north_files=N_files,
-                                                   north_is_highband=north_is_highband, shift_mhz=shift,
-                                                   tunefile=tunefile, dark_bias_lines=dark_bias_lines,
-                                                   design_file=design_file,
-                                                   mux_pos_num_to_mux_band_num_path=mux_pos_num_to_mux_band_num_path,
-                                                   waferfile=waferfile,
-                                                   tune_data_vna_output_filename=tune_data_vna_output_filename,
-                                                   redo_vna_tune=redo_vna_tune)
+    # # Smurf Tune File
+    # read the tunefile and initialize the data instance
+    tune_data_smurf = make_map_smurf(tunefile=tunefile, north_is_highband=north_is_highband,
+                                     design_data=design_data_example, layout_data=layout_data_example,
+                                     csv_filename=output_filename)
+
+    # # VNA scans
+    tune_data_vna = make_map_vna(tune_data_vna_output_filename=tune_data_vna_output_filename,
+                                 north_raw_files=N_files, south_raw_files=S_files,
+                                 north_is_highband=north_is_highband, shift_mhz=vna_shift_mhz,
+                                 design_data=design_data_example, layout_data=layout_data_example,
+                                 redo_vna_tune=redo_vna_tune, csv_filename=output_filename_vna)
+
+    # Optical power data from validation of dark bias lines.
+    _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
+    coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
+
     # not refactored below
-    smurf2det.to_csv(output_filename, index=False)
-
-    data_by_column, data_by_row = read_csv(path=cold_ramp_file)
-
-    coldload_ivs = [data_row for data_row in data_by_row if data_row['note'].lower() == 'iv']
-
     psat_data = read_psat(coldload_ivs=coldload_ivs, map_data=smurf2det, make_plot=True)
 
     pixel_info = match_chan_map(output_filename, psat_data)

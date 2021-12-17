@@ -259,10 +259,12 @@ def mux_band_to_mux_posn(smurf2mux, mux_pos_num_to_mux_band_num_path, highband='
 
 
 @timing
-def get_pad_to_wafer(filename, dark_bias_lines=[]):
+def get_pad_to_wafer(filename, dark_bias_lines=None):
     """
     Extracts routing wafer to detector wafer map
-    Mostly from Zach Atkin's script 
+    Mostly from Zach Atkin's script
+
+    Upgraded for speed and converted to PEP-8 format by Caleb Wheeler Dec 2021
     ----------
     filename:
         Path to the detector-routing wafer map created by NIST and Princeton
@@ -277,63 +279,63 @@ def get_pad_to_wafer(filename, dark_bias_lines=[]):
         detectors which is 90ghz but has different property as optical ones,
         and NC for no-coupled resonators
     """
-
+    if dark_bias_lines is None:
+        dark_bias_lines = []
     wafer_file = pd.read_csv(filename)
     wafer_info = pd.DataFrame({"mux_posn": {}, "pad": {}, "biasline": {}, "pol": {}, "freq": {}, "det_row": {},
                                "det_col": {}, "rhomb": {}, "opt": {}, "det_x": {}, "det_y": {}})
 
     for index, row in wafer_file.iterrows():
-
+        # string that search for data unique to the SQUID_PIN data column
         pad_re = 'SQ_(.+)_Ch_(.+)_\+'
         pad_str = row['SQUID_PIN']
         searcher = re.search(pad_re, pad_str)
-        if searcher == None:
-            pass
+
+        _, pad_str = searcher.groups()
+        pad = int(pad_str)
+        posn = row['Mux chip position']
+
+        pol_str = row['DTPadlabel']
+        pol_letter = pol_str[0].upper()
+        if pol_letter in {'T', 'R'}:
+            pol = 'A'
+        elif pol_letter in {'B', 'L'}:
+            pol = 'B'
+        elif pol_letter == 'X':
+            pol = 'D'
         else:
-            _, pad_str = searcher.groups()
-            pad = int(pad_str)
-            posn = row['Mux chip position']
+            raise KeyError(f'polarization character: {pol_letter} is not one of the expected types.')
 
-            pol_str = row['DTPadlabel']
-            if pol_str[0] in ['T', 'R']:
-                pol = 'A'
-            elif pol_str[0] in ['B', 'L']:
-                pol = 'B'
-            elif pol_str[0] in ['X']:
-                pol = 'D'
-            else:
-                assert False
+        rhomb = row['DTPixelsection']
 
-            rhomb = row['DTPixelsection']
+        bias_line = int(row['Bias line'])
 
-            bias_line = int(row['Bias line'])
+        det_row = int(row['DTPixelrow'])
+        det_col = int(row['DTPixelcolumn'])
 
-            r = int(row['DTPixelrow'])
-            c = int(row['DTPixelcolumn'])
+        det_x = float(row['x']) / 1e3
+        det_y = float(row['y']) / 1e3
 
-            det_x = float(row['x']) / 1e3
-            det_y = float(row['y']) / 1e3
+        if (bias_line in dark_bias_lines) or (pol == 'D') or row['DTSignaldescription'] == 'NC':
+            opt = False
+        else:
+            opt = True
 
-            if (bias_line in dark_bias_lines) or (pol == 'D') or row['DTSignaldescription'] == 'NC':
-                opt = False
-            else:
-                opt = True
+        freq_re = '(.+)ghz'
+        freq_str = row['DTSignaldescription']
+        searcher = re.search(freq_re, freq_str)
+        if searcher is None:
+            if row['DTSignaldescription'] == 'NC':
+                freq = 'NC'
+            if pol == 'D':
+                freq = 'D'
+        else:
+            freq_str = searcher.groups()
+            freq = int(*freq_str)
 
-            freq_re = '(.+)ghz'
-            freq_str = row['DTSignaldescription']
-            searcher = re.search(freq_re, freq_str)
-            if searcher is None:
-                if row['DTSignaldescription'] == 'NC':
-                    freq = 'NC'
-                if pol == 'D':
-                    freq = 'D'
-            else:
-                freq_str = searcher.groups()
-                freq = int(*freq_str)
-
-            wafer_info = wafer_info.append(
-                {"mux_posn": posn, "pad": pad, "biasline": bias_line, "pol": pol, "freq": freq, "det_row": r,
-                 "det_col": c, "rhomb": rhomb, "opt": opt, "det_x": det_x, "det_y": det_y}, ignore_index=True)
+        wafer_info = wafer_info.append(
+            {"mux_posn": posn, "pad": pad, "biasline": bias_line, "pol": pol, "freq": freq, "det_row": det_row,
+             "det_col": det_col, "rhomb": rhomb, "opt": opt, "det_x": det_x, "det_y": det_y}, ignore_index=True)
     return wafer_info
 
 

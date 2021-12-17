@@ -28,12 +28,21 @@ class TuneDatum(NamedTuple):
     is_highband: Optional[bool] = None
     smurf_channel: Optional[int] = None
     smurf_subband: Optional[int] = None
-    pad_num: Optional[int] = None
+    bond_pad: Optional[int] = None
     mux_band: Optional[int] = None
     mux_channel: Optional[int] = None
     mux_subband: Optional[str] = None
     mux_layout_position: Optional[int] = None
     design_freq_mhz: Optional[float] = None
+    bias_line: Optional[int] = None
+    pol: Optional[str] = None
+    freq_obs_ghz: Optional[Union[int, str]] = None
+    det_row: Optional[int] = None
+    det_col: Optional[int] = None
+    rhomb: Optional[str] = None
+    is_optical: Optional[bool] = None
+    det_x: Optional[float] = None
+    det_y: Optional[float] = None
 
     def __str__(self):
         output_str = ''
@@ -131,12 +140,15 @@ class OperateTuneData:
     # hard coded variables that may need to be changed in the future
     # the order of this list determines the order of csv file created from the design pickle
     design_file_pickle_to_csv_header = [('Band', 'mux_band'), ('Freq-index', 'mux_channel'),
-                                        ('Frequency(MHz)', 'freq_mhz'), ('Subband', 'mux_subband'), ('Pad', 'pad_num')]
+                                        ('Frequency(MHz)', 'freq_mhz'), ('Subband', 'mux_subband'), ('Pad', 'bond_pad')]
     # a default that is used when output_path_csv=None in the method self.write_csv()
     output_prefix = 'test_tune_data_vna'
 
-    # the attributes of design data that should be directly mapped in to TuneDatum, not freq_mhz is handled differently
-    design_attributes = {'pad_num', 'mux_band', 'mux_channel', 'mux_subband', 'mux_layout_position'}
+    # the attributes of design data that are mapped into TuneDatum, not freq_mhz is handled differently
+    design_attributes = {'bond_pad', 'mux_band', 'mux_channel', 'mux_subband', 'mux_layout_position'}
+    # the attributes of layout data that are mapper into TuneDatum
+    layout_attributes = {"bias_line", "pol", "freq_obs_ghz", "det_row", "det_col", "rhomb", "is_optical",
+                         "det_x", "det_y"}
 
     # interation order for values that are allowed for TuneDatum.is_north
     is_north_iter_order = [True, False, None]
@@ -163,6 +175,8 @@ class OperateTuneData:
         self.pandas_data_frame = None
         self.tune_data_with_design_data = None
         self.tune_data_without_design_data = None
+        self.tune_data_with_layout_data = None
+        self.tune_data_without_layout_data = None
 
         # auto read in known file types
         if tune_path is not None:
@@ -221,7 +235,7 @@ class OperateTuneData:
         # spawn a new instance of this class to contain the combined data
         result = OperateTuneData()
         # combine and the 'self' and 'other' instances and combine the into the new 'result' instance
-        result.tune_data = deepcopy(self.tune_data | other.tune_data)
+        result.tune_data = deepcopy(self.tune_data.union(other.tune_data))
         # do a data organization and validation
         result.tune_data_organization_and_validation()
         return result
@@ -267,7 +281,7 @@ class OperateTuneData:
         for tune_datum in sorted(self.tune_data, key=attrgetter('smurf_band', 'channel_index', 'freq_mhz')):
             smurf_band_this_datum = tune_datum.smurf_band
             channel_index = tune_datum.channel_index
-            smurf_channel = tune_datum.channel_index
+            smurf_channel = tune_datum.smurf_channel
             is_north = tune_datum.is_north
             # make a new dictionary instance if this is the first resonance found for this side.
             if is_north not in self.tune_data_side_band_channel.keys():
@@ -572,6 +586,45 @@ class OperateTuneData:
         self.tune_data_with_design_data = self.from_tune_datums(tune_data=tune_data_with_design_data,
                                                                 north_is_highband=self.north_is_highband)
         self.tune_data_without_design_data = self.from_tune_datums(tune_data=tune_data_without_design_data,
+                                                                   north_is_highband=self.north_is_highband)
+
+    def map_layout_data(self, layout_data):
+        # make a new set to hold the tune data that is updated with design data
+        tune_data_new = set()
+        # track TuneDatums that are mapped to a design record
+        tune_data_with_layout_data = set()
+        # track TuneDatums that are *not* mapped to a design record
+        tune_data_without_layout_data = set()
+        for tune_datum in list(self):
+            # get the primary key for layout data
+            mux_layout_position = tune_datum.mux_layout_position
+            # get the secondary key for layout data
+            bond_pad = tune_datum.bond_pad
+            # check for layout data with this key pair, the key values may be None
+            if mux_layout_position in layout_data.keys() and bond_pad in layout_data[mux_layout_position].keys():
+                # the layout information for this tune_datum
+                layout_datum = layout_data[mux_layout_position][bond_pad]
+                # get a mutable version of the tune_datum to update
+                tune_datum_updated = tune_datum.dict()
+                # update the mutable dictionary with the requested layout data specified in this class
+                tune_datum_updated.update({layout_key: layout_datum[layout_key]
+                                           for layout_key in self.layout_attributes})
+                # map this to a new tune_datum, which does a data type validation
+                tune_datum_with_layout = TuneDatum(**tune_datum_updated)
+                # save the results
+                tune_data_new.add(tune_datum_with_layout)
+                tune_data_with_layout_data.add(tune_datum_with_layout)
+            else:
+                tune_data_new.add(tune_datum)
+                # track what does not get layout data
+                tune_data_without_layout_data.add(tune_datum)
+        # reset this instances tune_data
+        self.tune_data = tune_data_new
+        # do a validation on this new set of data with added map layout data
+        self.tune_data_organization_and_validation()
+        self.tune_data_with_layout_data = self.from_tune_datums(tune_data=tune_data_with_layout_data,
+                                                                north_is_highband=self.north_is_highband)
+        self.tune_data_without_layout_data = self.from_tune_datums(tune_data=tune_data_without_layout_data,
                                                                    north_is_highband=self.north_is_highband)
 
 
