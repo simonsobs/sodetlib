@@ -104,15 +104,15 @@ def get_running_dockers(get_all=True):
     return containers
 
 
-def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
+def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
     """
         Kills relevant dockers for a given set of slots.
 
         Args:
             slots (list of ints):
                 list of slots which we should kill related dockers
-            ocs (bool):
-                If true, will also kill ocs-related dockers
+            kill_monitor (bool):
+                If true, will also kill the pysmurf_monitor
             names (list of strings):
                 List of additional docker names we should kill
             images (list of strings):
@@ -130,9 +130,9 @@ def kill_bad_dockers(slots, ocs=False, names=[], images=[]):
         bad_names.append(f"pysmurf_s{slot}")
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
-        if ocs:
-            bad_names.append(f'ocs-pysmurf-s{slot}')
-    if ocs:
+        bad_names.append(f'ocs-pysmurf-s{slot}')
+
+    if kill_monitor:
         bad_names.append('ocs-pysmurf-monitor')
 
     bad_images = images
@@ -289,6 +289,7 @@ def hammer_func(args):
                     f"slots in: {sys_config['slot_order']}")
 
     reboot = not (args.no_reboot)
+    all_slots = len(slots) == len(sys_config['slot_order'])
 
     reboot_str = "hard" if reboot else "soft"
     cmd = input(f"You are {reboot_str}-resetting slots {slots}. "
@@ -303,34 +304,35 @@ def hammer_func(args):
     cprint(f"Hammering for slots {slots}", True)
 
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
-    kill_bad_dockers(slots, ocs=True)
+    kill_bad_dockers(slots, kill_monitor=all_slots)
 
-    cprint("Restarting smurf-util", style=TermColors.HEADER)
-    # Restarts smurf-util to clean up any running processes
-    subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
-    subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
-    start_services('smurf-util', write_env=True)
+    if all_slots:
+        cprint("Restarting smurf-util", style=TermColors.HEADER)
+        # Restarts smurf-util to clean up any running processes
+        subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
+        subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
+        start_services('smurf-util', write_env=True)
 
-    # Sets fan levels on crate
-    cprint("Setting fan levels", style=TermColors.HEADER)
+        # Sets fan levels on crate
+        cprint("Setting fan levels", style=TermColors.HEADER)
 
-    min_fan_level = sys_config.get('min_fan_level')
-    init_fan_level = sys_config.get('init_fan_level')
+        min_fan_level = sys_config.get('min_fan_level')
+        init_fan_level = sys_config.get('init_fan_level')
 
-    if (min_fan_level is None) or (init_fan_level is None):
-        # Run with old way, using max_fan_level to set both minfanlevel and
-        # init
-        min_fan_level = sys_config['max_fan_level']
-        init_fan_level = sys_config['max_fan_level']
-        cprint("Using max_fan_level sys_config value to set minfanlevel and "
-               "initial level. If you've switched to a Comtel crate, please "
-               "change your sys_config to use the `min_fan_level` and "
-               "`init_fan_level` variables", style=TermColors.WARNING)
+        if (min_fan_level is None) or (init_fan_level is None):
+            # Run with old way, using max_fan_level to set both minfanlevel and
+            # init
+            min_fan_level = sys_config['max_fan_level']
+            init_fan_level = sys_config['max_fan_level']
+            cprint("Using max_fan_level sys_config value to set minfanlevel and "
+                   "initial level. If you've switched to a Comtel crate, please "
+                   "change your sys_config to use the `min_fan_level` and "
+                   "`init_fan_level` variables", style=TermColors.WARNING)
 
-    cmd = f'clia minfanlevel {min_fan_level}; '
-    cmd += f'clia setfanlevel all {init_fan_level}'
-    print(f"Setting crate fans to {init_fan_level}...")
-    run_on_shelf_manager(cmd)
+        cmd = f'clia minfanlevel {min_fan_level}; '
+        cmd += f'clia setfanlevel all {init_fan_level}'
+        print(f"Setting crate fans to {init_fan_level}...")
+        run_on_shelf_manager(cmd)
 
     if reboot:
         cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
