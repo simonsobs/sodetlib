@@ -1,4 +1,3 @@
-from timer_wrap import timing
 from simple_csv import read_csv
 
 
@@ -58,7 +57,6 @@ def bond_pad_to_wafer_row_parse(single_row, dark_bias_lines=None):
     return layout_dict_this_row
 
 
-@timing
 def get_layout_data(filename, dark_bias_lines=None):
     """
     Extracts routing wafer to detector wafer map

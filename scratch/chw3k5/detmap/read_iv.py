@@ -1,3 +1,6 @@
+from typing import NamedTuple
+from operator import attrgetter
+
 import numpy as np
 import pandas as pd
 
@@ -7,17 +10,19 @@ from scipy.interpolate import interp1d
 from timer_wrap import timing
 
 
-@timing
+class PsatBath(NamedTuple):
+    psat: float
+    temp_k: float
+
+
 def pbias(Tbath, n, Tc, kappa):
     return kappa * (Tc ** n - Tbath ** n)
 
 
-@timing
 def get_g(n, Tc, kappa):
     return n * kappa * Tc ** (n - 1)
 
 
-@timing
 def get_vbias(data_dict, band, chan, level=0.5, greedy=False):
     '''Returns the conventional P_sat from a SMuRF IV curve dictionary.
     Parameters
@@ -54,7 +59,6 @@ def get_vbias(data_dict, band, chan, level=0.5, greedy=False):
     return rn2p(level)
 
 
-@timing
 def get_psat(data_dict, band, chan, unit=1e-12, level=0.9, greedy=False):
     """Returns the conventional P_sat from a SMuRF IV curve dictionary.
 
@@ -110,8 +114,9 @@ def get_psat(data_dict, band, chan, unit=1e-12, level=0.9, greedy=False):
 
 
 @timing
-def read_psat(coldload_ivs, map_data=None, make_plot=False):
-    psat_dict = {}
+def read_psat(coldload_ivs, make_plot=False):
+    psat_by_temp = {}
+    psat_by_band_chan = {}
     for coldload_iv in coldload_ivs:
         ivfile = coldload_iv['data_path']
         iv = np.load(ivfile, allow_pickle=True).item()
@@ -121,26 +126,38 @@ def read_psat(coldload_ivs, map_data=None, make_plot=False):
             band_list = [int(coldload_iv['band'])]
         else:
             band_list = [b for b in iv.keys() if type(b) == np.int64]
-
+        temp_k = coldload_iv['bath_temp']
+        if temp_k not in psat_by_temp.keys():
+            psat_by_temp[temp_k] = {}
         for band in band_list:
+            band = int(band)
+            if band not in psat_by_temp[temp_k].keys():
+                psat_by_temp[temp_k][band] = {}
+            if band not in psat_by_band_chan.keys():
+                psat_by_band_chan[band] = {}
             for chan in iv[band].keys():
-                dict_key = (int(band), int(chan))
-                # test to initialize this part of the psat dict, if needed
-                if dict_key not in psat_dict.keys():
-                    psat_dict[dict_key] = {"T": [], 'psat': []}
-
+                chan = int(chan)
+                if chan not in psat_by_band_chan[band].keys():
+                    psat_by_band_chan[band][chan] = set()
                 ch_psat = np.float(get_psat(iv, band, chan, level=0.9, greedy=False))
-                psat_dict[dict_key]['T'].append(coldload_iv['bath_temp'])
-                psat_dict[dict_key]['psat'].append(ch_psat)
+                psat_by_temp[temp_k][band][chan] = ch_psat
+                psat_bath = PsatBath(psat=ch_psat, temp_k=temp_k)
+                psat_by_band_chan[band][chan].add(psat_bath)
 
     if make_plot:
-        for key in psat_dict.keys():
-            plt.plot(psat_dict[key]['T'], psat_dict[key]['psat'])
+        for band in sorted(psat_by_band_chan.keys()):
+            for chan in sorted(psat_by_band_chan[band].keys()):
+                temps_k = []
+                psats = []
+                for psat, temp_k in sorted(psat_by_band_chan[band][chan], key=attrgetter('temp_k')):
+                    temps_k.append(temp_k)
+                    psats.append(psat)
+                plt.plot(temps_k, psats, marker='o', alpha=0.5)
         plt.xlabel('Temp(K)')
         plt.ylabel('Psat(W)')
         plt.show()
 
-    return psat_dict
+    return psat_by_band_chan, psat_by_temp
 
 
 @timing

@@ -58,7 +58,7 @@ def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_da
     if design_data is not None:
         tune_data_smurf.map_design_data(design_data=design_data)
         # update the tune data to include the layout data.
-        if layout_data is None:
+        if layout_data is not None:
             tune_data_smurf.map_layout_data(layout_data=layout_data)
     if csv_filename is None:
         # write a CSV file of this data
@@ -85,10 +85,12 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
                                                 north_is_highband=north_is_highband, shift_mhz=shift_mhz)
         # write this data to skip this step next time and simply read in these results
         tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
-    # update the tune_data collections to include design data.
-    tune_data_vna.map_design_data(design_data=design_data)
-    # update the tune data to include the layout data.
-    tune_data_vna.map_layout_data(layout_data=layout_data)
+    if design_data is not None:
+        # update the tune_data collections to include design data.
+        tune_data_vna.map_design_data(design_data=design_data)
+        if layout_data is not None:
+            # update the tune data to include the layout data.
+            tune_data_vna.map_layout_data(layout_data=layout_data)
     if csv_filename is None:
         # write a CSV file of this data
         tune_data_smurf.write_csv(output_path_csv=csv_filename)
@@ -125,9 +127,9 @@ if __name__ == '__main__':
     coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
 
     # not refactored below
-    psat_data = read_psat(coldload_ivs=coldload_ivs, map_data=smurf2det, make_plot=True)
+    _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
-    pixel_info = match_chan_map(output_filename, psat_data)
+    tune_data_smurf.plot_with_psat(psat_data=psat_by_temp[9.0], psat_min=0.0, psat_max=3.0e-12)
 
     T = 9.0
     mi = 0

@@ -10,6 +10,9 @@ from typing import NamedTuple, Optional, Union
 
 import numpy as np
 import pandas as pd
+import matplotlib as mpl
+mpl.use(backend='TkAgg')
+import matplotlib.pyplot as plt
 
 from simple_csv import read_csv
 from vna_to_smurf import emulate_smurf_bands
@@ -170,8 +173,10 @@ class OperateTuneData:
         self.north_is_highband = north_is_highband
 
         # initial values for variables that are populated in this class's methods.
+        self.is_smurf = False
         self.tune_data = None
         self.tune_data_side_band_channel = None
+        self.tune_data_smurf_band_and_channel = None
         self.pandas_data_frame = None
         self.tune_data_with_design_data = None
         self.tune_data_without_design_data = None
@@ -199,23 +204,22 @@ class OperateTuneData:
         debugging, and writing files. This is where we determine that ordering.
         """
 
-        for is_north in self.is_north_iter_order:
-            if is_north in self.tune_data_side_band_channel.keys():
-                tune_data_this_side = self.tune_data_side_band_channel[is_north]
-                smurf_bands = sorted(tune_data_this_side.keys())
-                for smurf_band in smurf_bands:
-                    tune_data_this_band = tune_data_this_side[smurf_band]
-                    channels = sorted(tune_data_this_band.keys())
-                    for channel in channels:
-                        tune_datum_this_band_and_channel = tune_data_this_band[channel]
-                        if channel == -1:
-                            # special handling for channel == -1
-                            freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
-                            for tune_datum in freq_sorted_tune_data:
-                                yield tune_datum
-                        else:
-                            # these are a required have a single TuneDatum for side-band-channel combinations
-                            yield tune_datum_this_band_and_channel
+        for is_north in sorted(self.tune_data_side_band_channel.keys(), key=self.is_north_rank_key):
+            tune_data_this_side = self.tune_data_side_band_channel[is_north]
+            smurf_bands = sorted(tune_data_this_side.keys())
+            for smurf_band in smurf_bands:
+                tune_data_this_band = tune_data_this_side[smurf_band]
+                channels_indexes = sorted(tune_data_this_band.keys())
+                for channel_index in channels_indexes:
+                    tune_datum_this_band_and_channel = tune_data_this_band[channel_index]
+                    if channel_index == -1:
+                        # special handling for channel == -1
+                        freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
+                        for tune_datum in freq_sorted_tune_data:
+                            yield tune_datum
+                    else:
+                        # these are a required have a single TuneDatum for side-band-channel combinations
+                        yield tune_datum_this_band_and_channel
 
     def __add__(self, other):
         """
@@ -297,15 +301,38 @@ class OperateTuneData:
                 self.tune_data_side_band_channel[is_north][smurf_band_this_datum][smurf_channel].add(tune_datum)
             elif channel_index in self.tune_data_side_band_channel[is_north][smurf_band_this_datum].keys():
                 # This is happens if there is already TuneDatum for this combination of side-smurf_band-channel
-                existing_tune_datum = self.tune_data_side_band_channel[is_north][channel_index]
+                existing_tune_datum = self.tune_data_side_band_channel[is_north][smurf_band_this_datum][channel_index]
                 raise KeyError(f'Only Unique side-band-channel combinations are allowed. ' +
                                f'For side: {is_north} smurf_band: {smurf_band_this_datum} ' +
-                               'and channel: {channel_this_tune_datum} ' +
+                               f'and channel: {channel_index} ' +
                                f'The existing datum: {existing_tune_datum} ' +
                                f'uses has the same band-channel data as the new: {tune_datum}')
             else:
                 # add the tune datum to this mapping
                 self.tune_data_side_band_channel[is_north][smurf_band_this_datum][channel_index] = tune_datum
+        if self.is_smurf:
+            # do a second mapping by smurf channel, used for mapping p-sat data, also from smurf
+            self.tune_data_smurf_band_and_channel = {}
+            for tune_datum in list(self):
+                smurf_band = tune_datum.smurf_band
+                smurf_channel = tune_datum.smurf_channel
+                if smurf_band not in self.tune_data_smurf_band_and_channel.keys():
+                    self.tune_data_smurf_band_and_channel[smurf_band] = {}
+                if smurf_channel == -1:
+                    if smurf_channel not in self.tune_data_smurf_band_and_channel[smurf_band].keys():
+                        self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel] = set()
+                    self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel].add(tune_datum)
+                else:
+                    if smurf_channel in self.tune_data_smurf_band_and_channel[smurf_band].keys():
+                        # This is happens if there is already TuneDatum for this combination of side-smurf_band-channel
+                        existing_tune_datum = self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel]
+                        raise KeyError(f'Only Unique side-band-channel combinations are allowed. ' +
+                                       f'For smurf_band: {smurf_band} ' +
+                                       f'and channel: {smurf_channel} ' +
+                                       f'The existing datum: {existing_tune_datum} ' +
+                                       f'uses has the same band-channel data as the new: {tune_datum}')
+                    else:
+                        self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel] = tune_datum
 
     def from_dataframe(self, data_frame, is_highband=None, is_north=None):
         # initialize the data the variable that stores the data we are reading.
@@ -401,6 +428,7 @@ class OperateTuneData:
         self.tune_data_organization_and_validation()
 
     def read_tunefile(self):
+        self.is_smurf = True
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         # read the tune file
@@ -626,6 +654,26 @@ class OperateTuneData:
                                                                 north_is_highband=self.north_is_highband)
         self.tune_data_without_layout_data = self.from_tune_datums(tune_data=tune_data_without_layout_data,
                                                                    north_is_highband=self.north_is_highband)
+
+    def plot_with_psat(self, psat_data, psat_min=0.0, psat_max=3.0e-12):
+        det_x_data = []
+        det_y_data = []
+        det_psat_data = []
+        # get all the data to render a scatter plot
+        for tune_datum in list(self):
+            smurf_band = tune_datum.smurf_band
+            smurf_channel = tune_datum.smurf_channel
+            det_x = tune_datum.det_x
+            det_y = tune_datum.det_y
+            freq_obs_ghz = tune_datum.freq_obs_ghz
+            if all([smurf_channel != -1, det_x is not None, det_y is not None, smurf_band in psat_data.keys(),
+                    smurf_channel in psat_data[smurf_band].keys(), freq_obs_ghz == 90]):
+                det_x_data.append(det_x)
+                det_y_data.append(det_y)
+                det_psat_data.append(psat_data[smurf_band][smurf_channel])
+
+        plt.scatter(det_x_data, det_y_data, c=det_psat_data, vmin=psat_min, vmax=psat_max)
+        plt.show()
 
 
 def read_tunefile(tunefile, return_pandas_df=False):
