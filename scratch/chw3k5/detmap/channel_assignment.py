@@ -503,24 +503,6 @@ class OperateTuneData:
         # get the smurf band data to classify the design data.
         real_band_bounds_mhz, _all_data_band_bounds_mhz, _all_data_lower_band_bounds_mhz, \
             _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None)
-        # get positional layout data for the mux chips if it is available
-        if self.layout_position_path is not None:
-            mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=self.layout_position_path)
-
-            """
-            There is a mistake here, mux_pos_num 0-27 must go into  mux band 0-14
-            
-            """
-
-
-
-            mux_band_to_mux_pos_dict = {mux_band: mux_pos for mux_band, mux_pos
-                                        in zip(mux_layout_position_by_column['mux_band_num'],
-                                               mux_layout_position_by_column['mux_pos_num'])}
-
-        else:
-            mux_band_to_mux_pos_dict = None
-
         # counter for the smurf channel, initialize a counter used to determine channel number
         channel_count_by_band = {smurf_band: 0 for smurf_band in real_band_bounds_mhz.keys()}
         # set the data in the standard format for this class
@@ -538,11 +520,6 @@ class OperateTuneData:
                         row_dict['is_highband'] = None
                         # set the smurf channel
                         row_dict['channel_index'] = channel_count_by_band[smurf_band]
-                        # set the mux_layout_position is available
-                        if mux_band_to_mux_pos_dict is not None:
-                            mux_band = row_dict['mux_band']
-                            if mux_band in mux_band_to_mux_pos_dict.keys():
-                                row_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[mux_band]
                         # iterate the counter
                         channel_count_by_band[smurf_band] += 1
                         # add this datum
@@ -570,7 +547,21 @@ class OperateTuneData:
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
-    def map_design_data(self, design_data):
+    def map_design_data(self, design_data, layout_position_path=None):
+        # the layout_position_path can be set in this method or the __init__() method
+        if layout_position_path is not None:
+            self.layout_position_path = layout_position_path
+        # get positional layout data for the mux chips if it is available
+        if self.layout_position_path is not None:
+            mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=self.layout_position_path)
+            # initialize the mux_band_to_mux_pos_dict, True and False keys denote the is_north
+            mux_band_to_mux_pos_dict = {True: {}, False: {}}
+            for mux_band, mux_pos, is_north in zip(mux_layout_position_by_column['mux_band_num'],
+                                                   mux_layout_position_by_column['mux_pos_num'],
+                                                   mux_layout_position_by_column['is_north']):
+                mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
+        else:
+            mux_band_to_mux_pos_dict = None
         # make a new set to hold the tune data that is updated with design data
         tune_data_new = set()
         # track TuneDatums that are mapped to a design record
@@ -582,6 +573,7 @@ class OperateTuneData:
         # loop overall the data
         for tune_datum in list(self):
             # pull these properties out to access the design data
+            is_north = tune_datum.is_north
             is_highband = tune_datum.is_highband
             smurf_band = tune_datum.smurf_band
             channel_index = tune_datum.channel_index
@@ -597,6 +589,11 @@ class OperateTuneData:
                 # we can extract specific parameters from the design_datum and build a dictionary
                 design_dict = {design_key: design_datum.__getattribute__(design_key)
                                for design_key in self.design_attributes}
+                # set the mux_layout_position is available
+                if mux_band_to_mux_pos_dict is not None:
+                    mux_band = design_dict['mux_band']
+                    if mux_band in mux_band_to_mux_pos_dict[is_north].keys():
+                        design_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[is_north][mux_band]
                 # move the design frequency to the appropriate attribute
                 design_dict['design_freq_mhz'] = design_datum.freq_mhz
                 # get a mutable dictionary for the tune datum

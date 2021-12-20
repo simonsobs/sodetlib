@@ -51,9 +51,11 @@ def assign_channel_from_vna(south_raw_files, north_raw_files, north_is_highband,
     return upper_res_tune_data + lower_res_tune_data
 
 
-def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_data=None, csv_filename=None):
+def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_position_path=None,
+                   layout_data=None, csv_filename=None):
     # get the tune file data from smurf
-    tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband)
+    tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband,
+                                      layout_position_path=layout_position_path)
     # update the tune_data collections to include design data.
     if design_data is not None:
         tune_data_smurf.map_design_data(design_data=design_data)
@@ -68,11 +70,13 @@ def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_da
 
 def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
                  north_raw_files=None, south_raw_files=None, north_is_highband=None, shift_mhz=10.0,
-                 design_data=None, layout_data=None, redo_vna_tune=False, csv_filename=None):
+                 design_data=None, layout_position_path=None, layout_data=None,
+                 redo_vna_tune=False, csv_filename=None):
 
     # parse/get date from a Vector Network Analyzer
     if os.path.exists(tune_data_vna_output_filename) and not redo_vna_tune:
-        tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename)
+        tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
+                                        layout_position_path=layout_position_path)
     else:
         if north_raw_files is None:
             north_raw_files = []
@@ -104,53 +108,38 @@ if __name__ == '__main__':
         waferfile, output_filename, output_filename_vna, tune_data_vna_output_filename, redo_vna_tune
     # # Metadata
     # get the design file for the resonators
-    design_data_example = OperateTuneData(design_file_path=design_file,
-                                          layout_position_path=mux_pos_num_to_mux_band_num_path)
+    design_data_example = OperateTuneData(design_file_path=design_file)
     # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
     layout_data_example = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
 
     # # Smurf Tune File
     # read the tunefile and initialize the data instance
     tune_data_smurf = make_map_smurf(tunefile=tunefile, north_is_highband=north_is_highband,
-                                     design_data=design_data_example, layout_data=layout_data_example,
+                                     design_data=design_data_example,
+                                     layout_position_path=mux_pos_num_to_mux_band_num_path,
+                                     layout_data=layout_data_example,
                                      csv_filename=output_filename)
 
     # # VNA scans
     tune_data_vna = make_map_vna(tune_data_vna_output_filename=tune_data_vna_output_filename,
                                  north_raw_files=N_files, south_raw_files=S_files,
                                  north_is_highband=north_is_highband, shift_mhz=vna_shift_mhz,
-                                 design_data=design_data_example, layout_data=layout_data_example,
+                                 design_data=design_data_example,
+                                 layout_position_path=mux_pos_num_to_mux_band_num_path,
+                                 layout_data=layout_data_example,
                                  redo_vna_tune=redo_vna_tune, csv_filename=output_filename_vna)
 
     # Optical power data from validation of dark bias lines.
     _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
     coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
 
-    # not refactored below
+    # read in the sample psat data. 
     _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
+    # example plots
     tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=90, temp_k=9.0,
                                    psat_min=0.0, psat_max=3.0e-12)
 
-    T = 9.0
-    mi = 0
-    ma = 3e-12
+    tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=150, temp_k=9.0,
+                                   psat_min=0.0, psat_max=6.0e-12)
 
-    for key in pixel_info.keys():
-        if pixel_info[key]['det'][0]['freq'] == '90':
-            plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
-                        c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
-
-
-    plt.show()
-
-    T = 9.0
-    mi = 0
-    ma = 6e-12
-    for key in pixel_info.keys():
-        if pixel_info[key]['det'][0]['freq'] == '150':
-            plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
-                        c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
-
-    plt.title("150 GHz Psat at 100mK CL=9K, range=0-6 pW")
-    plt.show()
