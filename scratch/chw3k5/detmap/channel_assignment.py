@@ -503,9 +503,17 @@ class OperateTuneData:
         # get the smurf band data to classify the design data.
         real_band_bounds_mhz, _all_data_band_bounds_mhz, _all_data_lower_band_bounds_mhz, \
             _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None)
-        # get positional layout dat for the mux chips if it is available
+        # get positional layout data for the mux chips if it is available
         if self.layout_position_path is not None:
             mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=self.layout_position_path)
+
+            """
+            There is a mistake here, mux_pos_num 0-27 must go into  mux band 0-14
+            
+            """
+
+
+
             mux_band_to_mux_pos_dict = {mux_band: mux_pos for mux_band, mux_pos
                                         in zip(mux_layout_position_by_column['mux_band_num'],
                                                mux_layout_position_by_column['mux_pos_num'])}
@@ -655,7 +663,13 @@ class OperateTuneData:
         self.tune_data_without_layout_data = self.from_tune_datums(tune_data=tune_data_without_layout_data,
                                                                    north_is_highband=self.north_is_highband)
 
-    def plot_with_psat(self, psat_data, psat_min=0.0, psat_max=3.0e-12):
+    def plot_with_psat(self, psat_by_temp, freq_obs_ghz_target, temp_k, psat_min=0.0, psat_max=3.0e-12):
+        smurf_bands_used = set()
+        freq_obs_ghz_found = set()
+        mux_layout_positions = set()
+
+        psat_data_at_temp = psat_by_temp[temp_k]
+
         det_x_data = []
         det_y_data = []
         det_psat_data = []
@@ -666,14 +680,23 @@ class OperateTuneData:
             det_x = tune_datum.det_x
             det_y = tune_datum.det_y
             freq_obs_ghz = tune_datum.freq_obs_ghz
-            if all([smurf_channel != -1, det_x is not None, det_y is not None, smurf_band in psat_data.keys(),
-                    smurf_channel in psat_data[smurf_band].keys(), freq_obs_ghz == 90]):
+
+            mux_layout_positions.add(tune_datum.mux_layout_position)
+            if all([smurf_channel != -1, det_x is not None, det_y is not None, smurf_band in psat_data_at_temp.keys(),
+                    smurf_channel in psat_data_at_temp[smurf_band].keys(), freq_obs_ghz == freq_obs_ghz_target]):
+                smurf_bands_used.add(smurf_band)
+                freq_obs_ghz_found.add(freq_obs_ghz)
                 det_x_data.append(det_x)
                 det_y_data.append(det_y)
-                det_psat_data.append(psat_data[smurf_band][smurf_channel])
+                det_psat_data.append(psat_data_at_temp[smurf_band][smurf_channel])
 
         plt.scatter(det_x_data, det_y_data, c=det_psat_data, vmin=psat_min, vmax=psat_max)
+        plt.title(f"{freq_obs_ghz_target} GHz Psat at 100mK CL={temp_k}K, " +
+                  f"range={psat_min / 1.0e-12}-{psat_max / 1.0e-12} pW")
         plt.show()
+        print(f"smurf bands {smurf_bands_used}")
+        print(f"freq_obs_ghz_found {freq_obs_ghz_found}")
+        print("")
 
 
 def read_tunefile(tunefile, return_pandas_df=False):

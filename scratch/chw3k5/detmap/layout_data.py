@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from simple_csv import read_csv
 
 
@@ -57,7 +59,7 @@ def bond_pad_to_wafer_row_parse(single_row, dark_bias_lines=None):
     return layout_dict_this_row
 
 
-def get_layout_data(filename, dark_bias_lines=None):
+def get_layout_data(filename, dark_bias_lines=None, plot=False):
     """
     Extracts routing wafer to detector wafer map
     Based on code originally writen by Zach Atkin.
@@ -96,4 +98,57 @@ def get_layout_data(filename, dark_bias_lines=None):
                            f'with at least two rows of data in the file: {filename}')
         else:
             wafer_info[mux_layout_position][bond_pad] = wafer_datum
+    if plot:
+        alpha = 1.0
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(10, 10))
+        layer_one_coord = set()
+        layer_two_coord = set()
+        layer_three_coord = set()
+        layer_four_coord = set()
+        for mux_layout_position in sorted(wafer_info.keys()):
+            for bond_pad in sorted(wafer_info[mux_layout_position].keys()):
+                layout_datum = wafer_info[mux_layout_position][bond_pad]
+                det_x = layout_datum['det_x']
+                det_y = layout_datum['det_y']
+                det_coord = (det_x, det_y)
+                if det_coord in layer_one_coord:
+                    if det_coord in layer_two_coord:
+                        if det_coord in layer_three_coord:
+                            if det_coord in layer_four_coord:
+                                raise ValueError(f'Too many layers')
+                            else:
+                                marker = 's'
+                                layer_four_coord.add(det_coord)
+                                ax = ax4
+                        else:
+                            marker = '^'
+                            layer_three_coord.add(det_coord)
+                            ax = ax3
+                    else:
+                        marker = 'x'
+                        layer_two_coord.add(det_coord)
+                        ax = ax2
+                else:
+                    marker = 'o'
+                    layer_one_coord.add(det_coord)
+                    ax = ax1
+
+                freq_obs_ghz = layout_datum['freq_obs_ghz']
+                if freq_obs_ghz == 90:
+                    color = 'firebrick'
+                elif freq_obs_ghz == 150:
+                    color = 'dodgerblue'
+                elif freq_obs_ghz == 'NC':
+                    color = 'black'
+                else:
+                    raise KeyError(f'freq_obs_ghz value: {freq_obs_ghz} is not a recognized value.')
+                ax.plot(det_x, det_y, c=color, marker=marker, ls='None', alpha=alpha)
+        marker = 'o'
+        fig.legend([plt.Line2D(range(12), range(12), color='firebrick', ls='None',
+                               marker=marker, markerfacecolor='firebrick', alpha=alpha),
+                    plt.Line2D(range(12), range(12), color='dodgerblue', ls='None',
+                               marker=marker, markerfacecolor='dodgerblue', alpha=alpha),
+                    plt.Line2D(range(12), range(12), color='black', ls='None',
+                               marker=marker, markerfacecolor='black', alpha=alpha)], ['90 GHz', '150 GHz', 'NC'])
+        plt.show()
     return wafer_info

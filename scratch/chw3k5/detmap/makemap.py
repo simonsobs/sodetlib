@@ -107,7 +107,7 @@ if __name__ == '__main__':
     design_data_example = OperateTuneData(design_file_path=design_file,
                                           layout_position_path=mux_pos_num_to_mux_band_num_path)
     # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
-    layout_data_example = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines)
+    layout_data_example = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
 
     # # Smurf Tune File
     # read the tunefile and initialize the data instance
@@ -129,7 +129,8 @@ if __name__ == '__main__':
     # not refactored below
     _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
-    tune_data_smurf.plot_with_psat(psat_data=psat_by_temp[9.0], psat_min=0.0, psat_max=3.0e-12)
+    tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=90, temp_k=9.0,
+                                   psat_min=0.0, psat_max=3.0e-12)
 
     T = 9.0
     mi = 0
@@ -140,7 +141,7 @@ if __name__ == '__main__':
             plt.scatter(pixel_info[key]['det'][0]['det_x'], pixel_info[key]['det'][0]['det_y'],
                         c=pixel_info[key]['psat'][0], vmin=mi, vmax=ma)
 
-    plt.title("90 GHz Psat at 100mK CL=9K, range=0-3 pW")
+
     plt.show()
 
     T = 9.0
