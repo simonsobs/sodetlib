@@ -10,10 +10,7 @@ from typing import NamedTuple, Optional, Union
 
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
-mpl.use(backend='TkAgg')
 import matplotlib.pyplot as plt
-import matplotlib.transforms as mtransforms
 import matplotlib.colors as colors
 import matplotlib.cm as cm
 
@@ -28,7 +25,7 @@ For the a single Tune datum (unique smurf_band and channel)
 
 class TuneDatum(NamedTuple):
     smurf_band: int
-    channel_index: int
+    res_index: int
     freq_mhz: float
     is_north: Optional[bool] = None
     is_highband: Optional[bool] = None
@@ -42,7 +39,7 @@ class TuneDatum(NamedTuple):
     design_freq_mhz: Optional[float] = None
     bias_line: Optional[int] = None
     pol: Optional[str] = None
-    freq_obs_ghz: Optional[Union[int, str]] = None
+    bandpass: Optional[Union[int, str]] = None
     det_row: Optional[int] = None
     det_col: Optional[int] = None
     rhomb: Optional[str] = None
@@ -153,7 +150,7 @@ class OperateTuneData:
     # the attributes of design data that are mapped into TuneDatum, not freq_mhz is handled differently
     design_attributes = {'bond_pad', 'mux_band', 'mux_channel', 'mux_subband', 'mux_layout_position'}
     # the attributes of layout data that are mapper into TuneDatum
-    layout_attributes = {"bias_line", "pol", "freq_obs_ghz", "det_row", "det_col", "rhomb", "is_optical",
+    layout_attributes = {"bias_line", "pol", "bandpass", "det_row", "det_col", "rhomb", "is_optical",
                          "det_x", "det_y"}
 
     # interation order for values that are allowed for TuneDatum.is_north
@@ -177,12 +174,16 @@ class OperateTuneData:
         self.layout_position_path = layout_position_path
         # True is the north side the high band, False if not, None if not applicable or unknown
         self.north_is_highband = north_is_highband
+        # we make additional data structures when we have SMuRF data
+        self.is_smurf = False
+        # we can make additional data structures when we have the design data imported into measured tunes
+        self.imported_design_data = False
 
         # initial values for variables that are populated in this class's methods.
-        self.is_smurf = False
         self.tune_data = None
         self.tune_data_side_band_channel = None
         self.tune_data_smurf_band_and_channel = None
+        self.tune_data_muxpos_bondpad = None
         self.pandas_data_frame = None
         self.tune_data_with_design_data = None
         self.tune_data_without_design_data = None
@@ -219,10 +220,10 @@ class OperateTuneData:
             smurf_bands = sorted(tune_data_this_side.keys())
             for smurf_band in smurf_bands:
                 tune_data_this_band = tune_data_this_side[smurf_band]
-                channels_indexes = sorted(tune_data_this_band.keys())
-                for channel_index in channels_indexes:
-                    tune_datum_this_band_and_channel = tune_data_this_band[channel_index]
-                    if channel_index == -1:
+                res_indexes = sorted(tune_data_this_band.keys())
+                for res_index in res_indexes:
+                    tune_datum_this_band_and_channel = tune_data_this_band[res_index]
+                    if res_index == -1:
                         # special handling for channel == -1
                         freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
                         for tune_datum in freq_sorted_tune_data:
@@ -278,10 +279,10 @@ class OperateTuneData:
 
 
         Returns: self.tune_data_side_band_channel a three level dictionary tree that uses a unique set of keys to lead
-                 to a single TuneDatum. These keys are is_north, smurf_band, channel (smurf_channel). The allowed
+                 to a single TuneDatum. These keys are is_north, smurf_band, res_index. The allowed
                  values for these keys are: 1) is_north {True, False, None}
                                             2) smurf_band ints {-1, 0, 1, 2, 3, 4, 5, 6, 7}
-                                            3) channels {-1, 0, 1, 2, ... , ~280}.
+                                            3) res_index {-1, 0, 1, 2, ... , ~280}.
 
                 There is special handling channel -1, with is denotes a found but untracked/unused resonator
                 by the SMuRF. First, when channel == -1, then smurf_band is always also -1. Many unused resonatotors
@@ -292,9 +293,9 @@ class OperateTuneData:
 
         self.tune_data_side_band_channel = {}
         # loop over all the TuneDatum(s), here we sort the data to get consistent results for debugging
-        for tune_datum in sorted(self.tune_data, key=attrgetter('smurf_band', 'channel_index', 'freq_mhz')):
+        for tune_datum in sorted(self.tune_data, key=attrgetter('smurf_band', 'res_index', 'freq_mhz')):
             smurf_band_this_datum = tune_datum.smurf_band
-            channel_index = tune_datum.channel_index
+            res_index = tune_datum.res_index
             smurf_channel = tune_datum.smurf_channel
             is_north = tune_datum.is_north
             # make a new dictionary instance if this is the first resonance found for this side.
@@ -309,17 +310,17 @@ class OperateTuneData:
                 if -1 not in self.tune_data_side_band_channel[is_north][smurf_band_this_datum].keys():
                     self.tune_data_side_band_channel[is_north][smurf_band_this_datum][-1] = set()
                 self.tune_data_side_band_channel[is_north][smurf_band_this_datum][smurf_channel].add(tune_datum)
-            elif channel_index in self.tune_data_side_band_channel[is_north][smurf_band_this_datum].keys():
-                # This is happens if there is already TuneDatum for this combination of side-smurf_band-channel
-                existing_tune_datum = self.tune_data_side_band_channel[is_north][smurf_band_this_datum][channel_index]
-                raise KeyError(f'Only Unique side-band-channel combinations are allowed. ' +
+            elif res_index in self.tune_data_side_band_channel[is_north][smurf_band_this_datum].keys():
+                # This is happens if there is already TuneDatum for this combination of side-smurf_band-res_index
+                existing_tune_datum = self.tune_data_side_band_channel[is_north][smurf_band_this_datum][res_index]
+                raise KeyError(f'Only Unique side-band-res_index combinations are allowed. ' +
                                f'For side: {is_north} smurf_band: {smurf_band_this_datum} ' +
-                               f'and channel: {channel_index} ' +
+                               f'and res_index: {res_index} ' +
                                f'The existing datum: {existing_tune_datum} ' +
                                f'uses has the same band-channel data as the new: {tune_datum}')
             else:
                 # add the tune datum to this mapping
-                self.tune_data_side_band_channel[is_north][smurf_band_this_datum][channel_index] = tune_datum
+                self.tune_data_side_band_channel[is_north][smurf_band_this_datum][res_index] = tune_datum
         if self.is_smurf:
             # do a second mapping by smurf channel, used for mapping p-sat data, also from smurf
             self.tune_data_smurf_band_and_channel = {}
@@ -334,15 +335,37 @@ class OperateTuneData:
                     self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel].add(tune_datum)
                 else:
                     if smurf_channel in self.tune_data_smurf_band_and_channel[smurf_band].keys():
-                        # This is happens if there is already TuneDatum for this combination of side-smurf_band-channel
+                        # This is happens if there is already TuneDatum for this pair of smurf_band-smurf_channel
                         existing_tune_datum = self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel]
-                        raise KeyError(f'Only Unique side-band-channel combinations are allowed. ' +
+                        raise KeyError(f'Only Unique pairs of smurf_band-smurf_channel are allowed. ' +
                                        f'For smurf_band: {smurf_band} ' +
-                                       f'and channel: {smurf_channel} ' +
+                                       f'and smurf_channel: {smurf_channel} ' +
                                        f'The existing datum: {existing_tune_datum} ' +
                                        f'uses has the same band-channel data as the new: {tune_datum}')
                     else:
                         self.tune_data_smurf_band_and_channel[smurf_band][smurf_channel] = tune_datum
+        if self.imported_design_data:
+            # with design data imported we can do a mapping useful for hardware data linking/organization
+            self.tune_data_muxpos_bondpad = {}
+            for tune_datum in list(self):
+                mux_layout_position = tune_datum.mux_layout_position
+                bond_pad = tune_datum.bond_pad
+                if mux_layout_position not in self.tune_data_muxpos_bondpad.keys():
+                    self.tune_data_muxpos_bondpad[mux_layout_position] = {}
+                if bond_pad not in self.tune_data_muxpos_bondpad[mux_layout_position].keys():
+                    if bond_pad is None:
+                        self.tune_data_muxpos_bondpad[mux_layout_position][None] = set()
+                elif bond_pad is not None:
+                    existing_tune_datum = self.tune_data_smurf_band_and_channel[mux_layout_position][bond_pad]
+                    raise KeyError(f'Only Unique mux_layout_position-bond_pad combinations are allowed. ' +
+                                   f'For mux_layout_position: {mux_layout_position} ' +
+                                   f'and bond_pad: {bond_pad} ' +
+                                   f'The existing datum: {existing_tune_datum} ' +
+                                   f'uses has the same band-channel data as the new: {tune_datum}')
+                if bond_pad is None:
+                    self.tune_data_muxpos_bondpad[mux_layout_position][None].add(tune_datum)
+                else:
+                    self.tune_data_muxpos_bondpad[mux_layout_position][bond_pad] = tune_datum
 
     def from_dataframe(self, data_frame, is_highband=None, is_north=None):
         # initialize the data the variable that stores the data we are reading.
@@ -371,7 +394,7 @@ class OperateTuneData:
             for smurf_band in band_bounds_mhz.keys():
                 lower_bound_mhz, upper_bound_mhz = band_bounds_mhz[smurf_band]
                 if lower_bound_mhz <= res_freq_mhz < upper_bound_mhz:
-                    channel_index = channel_count_by_band[smurf_band]
+                    res_index = channel_count_by_band[smurf_band]
                     # this is how the SMuRF reports the Highband designation
                     if is_highband:
                         smurf_band_emulated = smurf_band + 4
@@ -379,7 +402,7 @@ class OperateTuneData:
                         smurf_band_emulated = smurf_band
                     # record the tune data
                     tune_datum_this_res = TuneDatum(freq_mhz=res_freq_mhz, smurf_band=smurf_band_emulated,
-                                                    channel_index=channel_index, is_north=is_north, is_highband=is_highband)
+                                                    res_index=res_index, is_north=is_north, is_highband=is_highband)
                     # assign the tune datum to the storage variable
                     self.tune_data.add(tune_datum_this_res)
                     # iterate the channel counter
@@ -390,9 +413,15 @@ class OperateTuneData:
         self.tune_data_organization_and_validation()
 
     @staticmethod
-    def from_tune_datums(tune_data, north_is_highband):
+    def from_tune_datums(tune_data, north_is_highband, is_smurf, imported_design_data):
         new_operate_tune_data = OperateTuneData(north_is_highband=north_is_highband)
+        # we make additional data structures when we have SMuRF data
+        new_operate_tune_data.is_smurf = is_smurf
+        # we can make additional data structures when we have the design data imported into measured tunes
+        new_operate_tune_data.imported_design_data = imported_design_data
+        # add in the tune data
         new_operate_tune_data.tune_data = tune_data
+        # run the data validation and make the data structures
         new_operate_tune_data.tune_data_organization_and_validation()
         return new_operate_tune_data
 
@@ -475,9 +504,9 @@ class OperateTuneData:
             if 'resonances' in data_this_band.keys():
                 # loop over the tune data in this band
                 resonator_data_this_band = data_this_band['resonances']
-                available_channel_indexes = sorted(resonator_data_this_band.keys())
-                for channel_index in available_channel_indexes:
-                    single_res = resonator_data_this_band[channel_index]
+                available_res_indexes = sorted(resonator_data_this_band.keys())
+                for res_index in available_res_indexes:
+                    single_res = resonator_data_this_band[res_index]
                     if is_highband:
                         # the real frequency is 2000.0 less than what is reported for high band data
                         freq_mhz = single_res['freq'] - 2000.0
@@ -485,7 +514,7 @@ class OperateTuneData:
                         freq_mhz = single_res['freq']
                     smurf_channel = single_res['channel']
                     smurf_subband = single_res['subband']
-                    tune_datum_this_res = TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band, channel_index=channel_index,
+                    tune_datum_this_res = TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band, res_index=res_index,
                                                     smurf_channel=smurf_channel, smurf_subband=smurf_subband,
                                                     is_north=is_north, is_highband=is_highband)
                     self.tune_data.add(tune_datum_this_res)
@@ -529,7 +558,7 @@ class OperateTuneData:
                         # but we are explicitly stating here "that is_highband has no meaning for design data"
                         row_dict['is_highband'] = None
                         # set the smurf channel
-                        row_dict['channel_index'] = channel_count_by_band[smurf_band]
+                        row_dict['res_index'] = channel_count_by_band[smurf_band]
                         # iterate the counter
                         channel_count_by_band[smurf_band] += 1
                         # add this datum
@@ -586,7 +615,7 @@ class OperateTuneData:
             is_north = tune_datum.is_north
             is_highband = tune_datum.is_highband
             smurf_band = tune_datum.smurf_band
-            channel_index = tune_datum.channel_index
+            res_index = tune_datum.res_index
             # the high-band resonators were never fabricated, highband is really a positional designation for SMuRF
             if is_highband:
                 design_band = smurf_band - 4
@@ -594,8 +623,8 @@ class OperateTuneData:
                 design_band = smurf_band
             # see if there is design data available for this band-channel pair
             if design_band in design_tune_data_by_band_channel.keys() and \
-                    channel_index in design_tune_data_by_band_channel[design_band].keys():
-                design_datum = design_tune_data_by_band_channel[design_band][channel_index]
+                    res_index in design_tune_data_by_band_channel[design_band].keys():
+                design_datum = design_tune_data_by_band_channel[design_band][res_index]
                 # we can extract specific parameters from the design_datum and build a dictionary
                 design_dict = {design_key: design_datum.__getattribute__(design_key)
                                for design_key in self.design_attributes}
@@ -621,15 +650,21 @@ class OperateTuneData:
                 tune_data_new.add(tune_datum)
                 # we also track what datums were not able to matched with design data.
                 tune_data_without_design_data.add(tune_datum)
+        # we can make additional data structures when we have the design data imported into measured tunes
+        self.imported_design_data = True
         # if everything was successful, assign the combined mapping to this instances self.tune_data
         self.tune_data = tune_data_new
         # do a data organization and validation
         self.tune_data_organization_and_validation()
         # make new instances of this class with the design found and the design not found data
         self.tune_data_with_design_data = self.from_tune_datums(tune_data=tune_data_with_design_data,
-                                                                north_is_highband=self.north_is_highband)
+                                                                north_is_highband=self.north_is_highband,
+                                                                is_smurf=self.is_smurf,
+                                                                imported_design_data=self.imported_design_data)
         self.tune_data_without_design_data = self.from_tune_datums(tune_data=tune_data_without_design_data,
-                                                                   north_is_highband=self.north_is_highband)
+                                                                   north_is_highband=self.north_is_highband,
+                                                                   is_smurf=self.is_smurf,
+                                                                   imported_design_data=self.imported_design_data)
 
     def map_layout_data(self, layout_data):
         # make a new set to hold the tune data that is updated with design data
@@ -666,11 +701,15 @@ class OperateTuneData:
         # do a validation on this new set of data with added map layout data
         self.tune_data_organization_and_validation()
         self.tune_data_with_layout_data = self.from_tune_datums(tune_data=tune_data_with_layout_data,
-                                                                north_is_highband=self.north_is_highband)
+                                                                north_is_highband=self.north_is_highband,
+                                                                is_smurf=self.is_smurf,
+                                                                imported_design_data=self.imported_design_data)
         self.tune_data_without_layout_data = self.from_tune_datums(tune_data=tune_data_without_layout_data,
-                                                                   north_is_highband=self.north_is_highband)
+                                                                   north_is_highband=self.north_is_highband,
+                                                                   is_smurf=self.is_smurf,
+                                                                   imported_design_data=self.imported_design_data)
 
-    def plot_with_psat(self, psat_by_temp, freq_obs_ghz_target, temp_k, psat_min=0.0, psat_max=3.0e-12,
+    def plot_with_psat(self, psat_by_temp, bandpass_target, temp_k, psat_min=0.0, psat_max=3.0e-12,
                        show_plot=False, save_plot=False):
         # # Plot layout initialization
         # colorbar across the bottom, key/legend on the top, A B and D polarization maps across the middle
@@ -766,9 +805,9 @@ class OperateTuneData:
             det_x = tune_datum.det_x
             det_y = tune_datum.det_y
             pol = tune_datum.pol
-            freq_obs_ghz = tune_datum.freq_obs_ghz
+            bandpass = tune_datum.bandpass
             if all([smurf_channel != -1, det_x is not None, det_y is not None, smurf_band in psat_data_at_temp.keys(),
-                    smurf_channel in psat_data_at_temp[smurf_band].keys(), freq_obs_ghz == freq_obs_ghz_target]):
+                    smurf_channel in psat_data_at_temp[smurf_band].keys(), bandpass == bandpass_target]):
                 det_x_data[pol].append(det_x)
                 det_y_data[pol].append(det_y)
                 det_psat_data[pol].append(psat_data_at_temp[smurf_band][smurf_channel])
@@ -778,7 +817,7 @@ class OperateTuneData:
             ax[pol].scatter(det_x_data[pol], det_y_data[pol], c=color_vals, vmin=psat_min, vmax=psat_max)
             ax[pol].set_title(f"Polarization '{pol}'")
         # Plot components for whole plot
-        title_str = f"{freq_obs_ghz_target} GHz Psat at 100mK CL={temp_k}K, " + \
+        title_str = f"{bandpass_target} GHz Psat at 100mK CL={temp_k}K, " + \
                     f"range={psat_min / 1.0e-12}-{psat_max / 1.0e-12} pW"
         fig.suptitle(title_str)
         # Display and saving

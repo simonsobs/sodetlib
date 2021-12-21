@@ -41,19 +41,19 @@ def bond_pad_to_wafer_row_parse(single_row, dark_bias_lines=None):
     else:
         is_optical = True
 
-    freq_obs_ghz_str = single_row['dtsignaldescription']
-    if freq_obs_ghz_str == 'NC':
+    bandpass_str = single_row['dtsignaldescription']
+    if bandpass_str == 'NC':
         if pol == 'D':
-            freq_obs_ghz = 'D'
+            bandpass = 'D'
         else:
-            freq_obs_ghz = 'NC'
-    elif 'ghz' == freq_obs_ghz_str[-3:]:
-        freq_obs_ghz = int(freq_obs_ghz_str[:-3])
+            bandpass = 'NC'
+    elif 'ghz' == bandpass_str[-3:]:
+        bandpass = int(bandpass_str[:-3])
     else:
-        raise ValueError(f'Frequency string: {freq_obs_ghz_str}, cannot be parsed.')
+        raise ValueError(f'Frequency string: {bandpass_str}, cannot be parsed.')
 
     layout_dict_this_row = {"mux_layout_position": mux_layout_position, "bond_pad": int(bond_pad),
-                            "bias_line": bias_line, "pol": pol, "freq_obs_ghz": freq_obs_ghz, "det_row": det_row,
+                            "bias_line": bias_line, "pol": pol, "bandpass": bandpass, "det_row": det_row,
                             "det_col": det_col, "rhomb": rhomb, "is_optical": is_optical,
                             "det_x": det_x, "det_y": det_y}
     return layout_dict_this_row
@@ -76,7 +76,7 @@ def get_layout_data(filename, dark_bias_lines=None, plot=False):
     wafer_info
         A two level dictionary with a primary key of mux_layout_position and a
         secondary key of bond_pad to access a dictionary of detector
-        information. In particular, freq_obs_ghz column indicates 90ghz, 150ghz,
+        information. In particular, bandpass column indicates 90ghz, 150ghz,
         D for dark detectors which is 90ghz but has different property as optical
         ones, and NC for no-coupled resonators.
     """
@@ -133,15 +133,15 @@ def get_layout_data(filename, dark_bias_lines=None, plot=False):
                     layer_one_coord.add(det_coord)
                     ax = ax1
 
-                freq_obs_ghz = layout_datum['freq_obs_ghz']
-                if freq_obs_ghz == 90:
+                bandpass = layout_datum['bandpass']
+                if bandpass == 90:
                     color = 'firebrick'
-                elif freq_obs_ghz == 150:
+                elif bandpass == 150:
                     color = 'dodgerblue'
-                elif freq_obs_ghz == 'NC':
+                elif bandpass == 'NC':
                     color = 'black'
                 else:
-                    raise KeyError(f'freq_obs_ghz value: {freq_obs_ghz} is not a recognized value.')
+                    raise KeyError(f'bandpass value: {bandpass} is not a recognized value.')
                 ax.plot(det_x, det_y, c=color, marker=marker, ls='None', alpha=alpha)
         marker = 'o'
         fig.legend([plt.Line2D(range(12), range(12), color='firebrick', ls='None',
