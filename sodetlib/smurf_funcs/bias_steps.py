@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import sodetlib.smurf_funcs.smurf_ops as so
-from sodetlib.util import make_filename
+from sodetlib.util import make_filename, set_current_mode
 import matplotlib.pyplot as plt
 import scipy.optimize
 from pysmurf.client.util.pub import set_action
@@ -557,7 +557,8 @@ class BiasStepAnalysis:
 
 @set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
-                    nsteps=20, run_analysis=True, analysis_kwargs=None):
+                    nsteps=20, hcm_wait_time=3, run_analysis=True,
+                    analysis_kwargs=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -587,6 +588,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Duration in seconds of each step
         nsteps: int
             Number of steps to run
+        hcm_wait_time: float
+            Time to wait after switching to high-current-mode.
         run_analysis: bool
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -611,9 +614,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     dc_biases = initial_dc_biases / S.high_low_current_ratio
     step_voltage /= S.high_low_current_ratio
 
-    for bg in bgs:
-        S.set_tes_bias_high_current(bg)
-        S.set_tes_bias_bipolar(bg, dc_biases[bg])
+    set_current_mode(S, bgs, 1)
+    S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
+    time.sleep(hcm_wait_time)
 
     bsa.sid = so.stream_g3_on(S)
     try:
@@ -628,9 +631,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa.stop = time.time()
     finally:
         so.stream_g3_off(S)
-        for bg in bgs:
-            S.set_tes_bias_bipolar(bg, initial_dc_biases[bg])
-            S.set_tes_bias_low_current(bg)
+        set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)

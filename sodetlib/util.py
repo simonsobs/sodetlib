@@ -381,11 +381,11 @@ def set_current_mode(S, bgs, mode, const_current=True):
 
         # Index of bg's DAC pair
         pair_idx = np.where(S._bias_group_to_pair[:, 0] == bg)[0][0]
-        pos_idx = S._bias_group_to_pair[pair_idx, 1]
-        neg_idx = S._bias_group_to_pair[pair_idx, 2]
+        pos_idx = S._bias_group_to_pair[pair_idx, 1] - 1
+        neg_idx = S._bias_group_to_pair[pair_idx, 2] - 1
         if mode:
             # sets relay bit to 1
-            new_relay = new_relay & (1 << r)
+            new_relay = new_relay | (1 << r)
 
             # if const_current and the old_relay bit was zero, divide bias
             # voltage by high_low_ratio
@@ -415,4 +415,6 @@ def set_current_mode(S, bgs, mode, const_current=True):
     # Writes PV's simultaneously
     epics.caput_many([S.C.writepv, dac_data_reg], [relay_data, dac_data],
                      wait=True)
+
+    time.sleep(0.1)  # Just to be safe
 
