@@ -156,6 +156,9 @@ class OperateTuneData:
     # interation order for values that are allowed for TuneDatum.is_north
     is_north_iter_order = [True, False, None]
 
+    # the directory for output plots
+    plot_dir = os.path.join('plots')
+
     def __init__(self, tune_path=None, design_file_path=None, layout_position_path=None, north_is_highband=None):
         # read-in path for tune files
         self.tune_path = tune_path
@@ -182,6 +185,10 @@ class OperateTuneData:
         self.tune_data_without_design_data = None
         self.tune_data_with_layout_data = None
         self.tune_data_without_layout_data = None
+
+        # make the plot directory if it does not exist
+        if not os.path.exists(self.plot_dir):
+            os.mkdir(self.plot_dir)
 
         # auto read in known file types
         if tune_path is not None:
@@ -660,7 +667,8 @@ class OperateTuneData:
         self.tune_data_without_layout_data = self.from_tune_datums(tune_data=tune_data_without_layout_data,
                                                                    north_is_highband=self.north_is_highband)
 
-    def plot_with_psat(self, psat_by_temp, freq_obs_ghz_target, temp_k, psat_min=0.0, psat_max=3.0e-12):
+    def plot_with_psat(self, psat_by_temp, freq_obs_ghz_target, temp_k, psat_min=0.0, psat_max=3.0e-12,
+                       show_plot=False, save_plot=False):
         smurf_bands_used = set()
         freq_obs_ghz_found = set()
         mux_layout_positions = set()
@@ -688,12 +696,14 @@ class OperateTuneData:
                 det_psat_data.append(psat_data_at_temp[smurf_band][smurf_channel])
 
         plt.scatter(det_x_data, det_y_data, c=det_psat_data, vmin=psat_min, vmax=psat_max)
-        plt.title(f"{freq_obs_ghz_target} GHz Psat at 100mK CL={temp_k}K, " +
-                  f"range={psat_min / 1.0e-12}-{psat_max / 1.0e-12} pW")
-        plt.show()
-        print(f"smurf bands {smurf_bands_used}")
-        print(f"freq_obs_ghz_found {freq_obs_ghz_found}")
-        print("")
+        title_str = f"{freq_obs_ghz_target} GHz Psat at 100mK CL={temp_k}K, " + \
+                    f"range={psat_min / 1.0e-12}-{psat_max / 1.0e-12} pW"
+        plt.title(title_str)
+        if save_plot:
+            plot_filename = os.path.join(self.plot_dir, title_str.replace(' ', '_') + '.png')
+            plt.savefig(plot_filename)
+        if show_plot:
+            plt.show()
 
 
 def read_tunefile(tunefile, return_pandas_df=False):

@@ -133,13 +133,16 @@ if __name__ == '__main__':
     _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
     coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
 
-    # read in the sample psat data. 
+    # read in the sample psat data.
     _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
+    # Plot variable
+    temp_k = 9.0
+    show_plot = True
+    save_plot = True
+
     # example plots
-    tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=90, temp_k=9.0,
-                                   psat_min=0.0, psat_max=3.0e-12)
-
-    tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=150, temp_k=9.0,
-                                   psat_min=0.0, psat_max=6.0e-12)
-
+    for freq_obs_ghz_target, psat_min, psat_max in [(90, 0.0, 3.0e-12), (150, 0.0, 6.0e-12)]:
+        tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=freq_obs_ghz_target,
+                                       temp_k=temp_k, psat_min=psat_min, psat_max=psat_max,
+                                       show_plot=show_plot, save_plot=save_plot)
