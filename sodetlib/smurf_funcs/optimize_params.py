@@ -12,7 +12,7 @@ import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
 import sodetlib.util as su
-import sodetlib.smurf_funcs as sf
+from sodetlib.smurf_funcs import smurf_ops as so
 from pysmurf.client.util.pub import set_action
 from tqdm.auto import tqdm
 
@@ -66,7 +66,7 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
                 reset_rate_khz = tk['reset_rate_khz']
 
             # Runs first tracking quality to do initial cut of bad chans
-            rs, f, df, sync = sf.smurf_ops.tracking_quality(
+            rs, f, df, sync = so.tracking_quality(
                 S, cfg, band, tracking_kwargs=tk, nphi0=1,
             )
 
@@ -87,7 +87,7 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
                     S.channel_off(band, c)
 
             # Reruns to get re-estimate of tracking freq
-            rs, f, df, sync = sf.smurf_ops.tracking_quality(
+            rs, f, df, sync = so.tracking_quality(
                 S, cfg, band, tracking_kwargs=tk, nphi0=1,
             )
 
@@ -107,7 +107,7 @@ def optimize_tracking(S, cfg, bands, init_fracpp=None, phi0_number=5,
             S.run_serial_eta_scan(band)
 
             chans = S.which_on(band)
-            rs, f, df, sync = sf.smurf_ops.tracking_quality(
+            rs, f, df, sync = so.tracking_quality(
                 S, cfg, band, tracking_kwargs=tk, show_plots=show_plot
             )
 
@@ -532,11 +532,11 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
             # Take data
             atten_grid.append([uc_atten, dc_atten])
             start_times.append(time.time())
-            sid = sf.smurf_ops.take_g3_data(S, meas_time)
+            sid = so.take_g3_data(S, meas_time)
             sids.append(sid)
             stop_times.append(time.time())
 
-            am = sf.smurf_ops.load_session(cfg, sid)
+            am = so.load_session(cfg, sid)
             wls, band_meds = su.get_wls_from_am(am)
             for k, b in enumerate(bands):
                 wl_medians[k, i, j] = band_meds[b]
