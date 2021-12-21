@@ -76,6 +76,9 @@ pygments_style = 'sphinx'
 autoclass_content = "both"
 autosummary_generate=True
 
+# Mock imports that we don't want to install for builds
+autodoc_mock_imports = ['pysmurf']
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
