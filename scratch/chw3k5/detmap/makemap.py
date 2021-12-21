@@ -8,18 +8,14 @@ Data goes in, Maps come out.
 
 import os
 
-import matplotlib.pyplot as plt
-
 # custom packages
-from read_iv import match_chan_map, read_psat
+from read_iv import read_psat
 
 from vna_func import get_peaks_from_vna
 
 from simple_csv import read_csv
 from channel_assignment import OperateTuneData
 from layout_data import get_layout_data
-
-allowed_highbands = {'N', 'S'}
 
 
 def assign_channel_from_vna(south_raw_files, north_raw_files, north_is_highband, shift_mhz=10.0):
@@ -142,7 +138,8 @@ if __name__ == '__main__':
     save_plot = True
 
     # example plots
-    for freq_obs_ghz_target, psat_min, psat_max in [(90, 0.0, 3.0e-12), (150, 0.0, 6.0e-12)]:
+    for freq_obs_ghz_target, psat_min, psat_max in [(90, 0.0, 3.0e-12),
+                                                    (150, 0.0, 6.0e-12)]:
         tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, freq_obs_ghz_target=freq_obs_ghz_target,
                                        temp_k=temp_k, psat_min=psat_min, psat_max=psat_max,
                                        show_plot=show_plot, save_plot=save_plot)

@@ -13,6 +13,9 @@ import pandas as pd
 import matplotlib as mpl
 mpl.use(backend='TkAgg')
 import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
+import matplotlib.colors as colors
+import matplotlib.cm as cm
 
 from simple_csv import read_csv
 from vna_to_smurf import emulate_smurf_bands
@@ -669,39 +672,120 @@ class OperateTuneData:
 
     def plot_with_psat(self, psat_by_temp, freq_obs_ghz_target, temp_k, psat_min=0.0, psat_max=3.0e-12,
                        show_plot=False, save_plot=False):
-        smurf_bands_used = set()
-        freq_obs_ghz_found = set()
-        mux_layout_positions = set()
+        # # Plot layout initialization
+        # colorbar across the bottom, key/legend on the top, A B and D polarization maps across the middle
+        left = 0.05
+        bottom = 0.08
+        right = 0.99
+        top = 0.85
+        x_total = right - left
+        y_total = top - bottom
 
+        x_between_plots = 0.00
+        y_between_plots = 0.00
+
+        x_polar = (x_total - 2.0 * x_between_plots) / 3.0
+
+        y_colorbar = 0.12
+        y_legend = 0.0
+        y_polar = y_total - y_colorbar - y_legend - 2.0 * y_between_plots
+
+        bottom_colorbar = bottom
+        top_colorbar = bottom_colorbar + y_colorbar
+        bottom_polar = top_colorbar + y_between_plots
+
+        bottom_legend = top - y_legend
+        coord_legend = [left, bottom_legend, x_total, y_legend]
+        coord_colorbar = [left, bottom_colorbar, x_total, y_colorbar]
+
+        polar_coords = {}
+        left_polar = left
+
+        for polar_letter in ['A', 'B', 'D']:
+            right_polar = left_polar + x_polar
+            polar_coords[polar_letter] = [left_polar, bottom_polar, x_polar, y_polar]
+            left_polar = right_polar + x_between_plots
+
+        # initialize the plot
+        fig = plt.figure(figsize=(16, 6))
+
+        # ax_legend = fig.add_axes(coord_legend, frameon=False)
+        # ax_legend.tick_params(axis='x',  # changes apply to the x-axis
+        #                       which='both',  # both major and minor ticks are affected
+        #                       bottom=False,  # ticks along the bottom edge are off
+        #                       top=False,  # ticks along the top edge are off
+        #                       labelbottom=False)
+        # ax_legend.tick_params(axis='y',  # changes apply to the x-axis
+        #                       which='both',  # both major and minor ticks are affected
+        #                       left=False,  # ticks along the bottom edge are off
+        #                       right=False,  # ticks along the top edge are off
+        #                       labelleft=False)
+
+        ax_colorbar = fig.add_axes(coord_colorbar, frameon=False)
+        ax_colorbar.tick_params(axis='x',  # changes apply to the x-axis
+                                which='both',  # both major and minor ticks are affected
+                                bottom=False,  # ticks along the bottom edge are off
+                                top=False,  # ticks along the top edge are off
+                                labelbottom=False)
+        ax_colorbar.tick_params(axis='y',  # changes apply to the x-axis
+                                which='both',  # both major and minor ticks are affected
+                                left=False,  # ticks along the bottom edge are off
+                                right=False,  # ticks along the top edge are off
+                                labelleft=False)
+
+        ax = {}
+        for polar_letter in ['A', 'B', 'D']:
+            ax[polar_letter] = fig.add_axes(polar_coords[polar_letter], frameon=False)
+            ax[polar_letter].tick_params(axis='x',  # changes apply to the x-axis
+                                         which='both',  # both major and minor ticks are affected
+                                         bottom=False,  # ticks along the bottom edge are off
+                                         top=False,  # ticks along the top edge are off
+                                         labelbottom=False)
+            ax[polar_letter].tick_params(axis='y',  # changes apply to the x-axis
+                                         which='both',  # both major and minor ticks are affected
+                                         left=False,  # ticks along the bottom edge are off
+                                         right=False,  # ticks along the top edge are off
+                                         labelleft=False)
+
+        # # Data mapping and handling
+        # select the data to be plot at a single temperature
         psat_data_at_temp = psat_by_temp[temp_k]
-
-        det_x_data = []
-        det_y_data = []
-        det_psat_data = []
+        # initialize the scatter plot data arrays per-pole
+        det_x_data = {'A': [], 'B': [], 'D': []}
+        det_y_data = {'A': [], 'B': [], 'D': []}
+        det_psat_data = {'A': [], 'B': [], 'D': []}
+        # set the color scale
+        norm = colors.Normalize(vmin=psat_min, vmax=psat_max)
+        cmap = plt.get_cmap('gist_rainbow_r')
+        scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap)
+        fig.colorbar(scalar_map, ax=ax_colorbar, orientation='horizontal', fraction=1.0)
         # get all the data to render a scatter plot
         for tune_datum in list(self):
             smurf_band = tune_datum.smurf_band
             smurf_channel = tune_datum.smurf_channel
             det_x = tune_datum.det_x
             det_y = tune_datum.det_y
+            pol = tune_datum.pol
             freq_obs_ghz = tune_datum.freq_obs_ghz
-
-            mux_layout_positions.add(tune_datum.mux_layout_position)
             if all([smurf_channel != -1, det_x is not None, det_y is not None, smurf_band in psat_data_at_temp.keys(),
                     smurf_channel in psat_data_at_temp[smurf_band].keys(), freq_obs_ghz == freq_obs_ghz_target]):
-                smurf_bands_used.add(smurf_band)
-                freq_obs_ghz_found.add(freq_obs_ghz)
-                det_x_data.append(det_x)
-                det_y_data.append(det_y)
-                det_psat_data.append(psat_data_at_temp[smurf_band][smurf_channel])
-
-        plt.scatter(det_x_data, det_y_data, c=det_psat_data, vmin=psat_min, vmax=psat_max)
+                det_x_data[pol].append(det_x)
+                det_y_data[pol].append(det_y)
+                det_psat_data[pol].append(psat_data_at_temp[smurf_band][smurf_channel])
+        # Rendering the plot data
+        for pol in ['A', 'B', 'D']:
+            color_vals = [scalar_map.to_rgba(det_psat) for det_psat in det_psat_data[pol]]
+            ax[pol].scatter(det_x_data[pol], det_y_data[pol], c=color_vals, vmin=psat_min, vmax=psat_max)
+            ax[pol].set_title(f"Polarization '{pol}'")
+        # Plot components for whole plot
         title_str = f"{freq_obs_ghz_target} GHz Psat at 100mK CL={temp_k}K, " + \
                     f"range={psat_min / 1.0e-12}-{psat_max / 1.0e-12} pW"
-        plt.title(title_str)
+        fig.suptitle(title_str)
+        # Display and saving
         if save_plot:
             plot_filename = os.path.join(self.plot_dir, title_str.replace(' ', '_') + '.png')
             plt.savefig(plot_filename)
+            print(f'Plot saved at: {plot_filename}')
         if show_plot:
             plt.show()
 
