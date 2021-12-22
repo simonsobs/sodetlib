@@ -53,7 +53,7 @@ def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_po
                                       layout_position_path=layout_position_path)
     # update the tune_data collections to include design data.
     if design_data is not None:
-        tune_data_smurf.map_design_data(design_data=design_data)
+        tune_data_smurf.map_design_data(design_data=design_data, mapping_strategy='map_by_res_index')  # 'map_by_freq')
         # update the tune data to include the layout data.
         if layout_data is not None:
             tune_data_smurf.map_layout_data(layout_data=layout_data)
