@@ -7,7 +7,7 @@ import os
 import glob
 import pathlib
 
-from scratch.chw3k5.detmap.download_example_data import sample_data_init
+from download_example_data import sample_data_init
 
 # Check to see if the example data is available, if not it downloads it from a GoogleDrive host.
 sample_data_init()

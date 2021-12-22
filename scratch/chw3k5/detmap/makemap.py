@@ -69,10 +69,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
                  redo_vna_tune=False, csv_filename=None):
 
     # parse/get date from a Vector Network Analyzer
-    if os.path.exists(tune_data_vna_output_filename) and not redo_vna_tune:
-        tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
-                                        layout_position_path=layout_position_path)
-    else:
+    if redo_vna_tune or not os.path.exists(tune_data_vna_output_filename):
         if north_raw_files is None:
             north_raw_files = []
         if south_raw_files is None:
@@ -80,10 +77,14 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
         if north_raw_files == [] and south_raw_files == []:
             raise FileNotFoundError("Both North and South VNA files were empty lists)")
         # Run Kaiwen's peak finder and return a data structure that relates frequency to smurf band and channel number.
-        tune_data_vna = assign_channel_from_vna(south_raw_files=south_raw_files, north_raw_files=north_raw_files,
-                                                north_is_highband=north_is_highband, shift_mhz=shift_mhz)
+        tune_data_raw_vna = assign_channel_from_vna(south_raw_files=south_raw_files, north_raw_files=north_raw_files,
+                                                    north_is_highband=north_is_highband, shift_mhz=shift_mhz)
         # write this data to skip this step next time and simply read in these results
-        tune_data_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
+        tune_data_raw_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
+    # reload the tune data from the csv file, for constant behavior on a with first time
+    tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
+                                    layout_position_path=layout_position_path)
+
     if design_data is not None:
         # update the tune_data collections to include design data.
         tune_data_vna.map_design_data(design_data=design_data)
@@ -98,7 +99,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
 
 if __name__ == '__main__':
     # get a sample configuration to use with this example
-    from scratch.chw3k5.detmap.config_files.detmap_conifg_example import N_files, S_files, cold_ramp_file, \
+    from config_files.detmap_conifg_example import N_files, S_files, cold_ramp_file, \
         north_is_highband, vna_shift_mhz, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
         waferfile, output_filename, output_filename_vna, tune_data_vna_output_filename, redo_vna_tune
     # # Metadata
