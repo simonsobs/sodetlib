@@ -93,6 +93,8 @@ class BiasStepAnalysis:
             Conversion between bias dac bit and volt
         bias_line_resistance: float
             Bias line resistance loaded in pysmurf at time of creation
+        high_current_mode: bool
+            If high-current-mode was used
         stream_id: string
             stream_id of the streamer this was run on.
         sid: int
@@ -163,6 +165,7 @@ class BiasStepAnalysis:
         'sid', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
         'edge_idxs', 'edge_signs', 'bg_corr', 'bgmap',
         'resp_times', 'mean_resp', 'step_resp', 'abs_chans',
+        'high_current_mode',
 
         'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
         'R0', 'I0', 'Pj', 'Si',
@@ -434,8 +437,9 @@ class BiasStepAnalysis:
         dIbias = np.full(nbgs, 0.0, dtype=float)
 
         # Compute Ibias and dIbias
-        amp_per_bit = self.high_low_current_ratio * 2 * self.rtm_bit_to_volt \
-            / self.bias_line_resistance
+        amp_per_bit = 2 * self.rtm_bit_to_volt / self.bias_line_resistance
+        if self.high_current_mode:
+            amp_per_bit *= self.high_low_current_ratio
         for bg in range(nbgs):
             if len(self.edge_idxs[bg]) == 0:
                 continue
@@ -571,8 +575,8 @@ class BiasStepAnalysis:
 
 @set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
-                    nsteps=20, hcm_wait_time=3, nsweep_steps=5,
-                    run_analysis=True, analysis_kwargs=None):
+                    nsteps=20, nsweep_steps=5, high_current_mode=True,
+                    hcm_wait_time=3, run_analysis=True, analysis_kwargs=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -602,10 +606,14 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Duration in seconds of each step
         nsteps: int
             Number of steps to run
-        hcm_wait_time: float
-            Time to wait after switching to high-current-mode.
         nsweep_steps: int
             Number of steps to run per bg in the bg mapping sweep
+        high_current_mode: bool
+            If true, switches to high-current-mode. If False, leaves in LCM
+            which runs through the bias-line filter, so make sure you
+            extend the step duration to be like >2 sec or something
+        hcm_wait_time: float
+            Time to wait after switching to high-current-mode.
         run_analysis: bool
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -619,6 +627,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     bgs = np.atleast_1d(bgs)
 
     bsa = BiasStepAnalysis(S, cfg, bgs)
+    bsa.high_current_mode = high_current_mode
 
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
@@ -627,12 +636,14 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     S.set_downsample_factor(1)
     S.set_filter_disable(1)
 
-    dc_biases = initial_dc_biases / S.high_low_current_ratio
-    step_voltage /= S.high_low_current_ratio
+    dc_biases = initial_dc_biases
+    if high_current_mode:
+        dc_biases = dc_biases / S.high_low_current_ratio
+        step_voltage /= S.high_low_current_ratio
 
-    set_current_mode(S, bgs, 1)
-    S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
-    time.sleep(hcm_wait_time)
+        set_current_mode(S, bgs, 1)
+        S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
+        time.sleep(hcm_wait_time)
 
     bsa.sid = so.stream_g3_on(S)
     try:
@@ -647,7 +658,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa.stop = time.time()
     finally:
         so.stream_g3_off(S)
-        set_current_mode(S, bgs, 0)
+        if high_current_mode:
+            set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
