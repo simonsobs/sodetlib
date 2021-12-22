@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import scipy.optimize
 from pysmurf.client.util.pub import set_action
 
+np.seterr(all='ignore')
+
+
 def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
                        num_steps=5):
     """
@@ -211,7 +214,7 @@ class BiasStepAnalysis:
         self.filepath = filepath
         return self
 
-    def run_analysis(self, assignment_thresh=0.95, arc=None, step_window=0.01,
+    def run_analysis(self, assignment_thresh=0.3, arc=None, step_window=0.03,
                      fit_tmin=1.5e-3, save=False):
         self._load_am(arc=arc)
         self._find_bias_edges()
@@ -270,7 +273,7 @@ class BiasStepAnalysis:
 
         return edge_idxs, edge_signs
 
-    def _create_bg_map(self, step_window=0.01, assignment_thresh=0.95):
+    def _create_bg_map(self, step_window=0.03, assignment_thresh=0.3):
         """
         Creates a bias group mapping from the bg step sweep. The step sweep
         goes down and steps each bias group one-by-one up and down twice. A
@@ -314,13 +317,14 @@ class BiasStepAnalysis:
                 bg_corr[:, bg] += np.sum(np.diff(sig), axis=1)
         bg_corr = np.abs(bg_corr)
         normalized_bg_corr = (bg_corr.T / np.sum(bg_corr, axis=1)).T
-        assignments = np.where(normalized_bg_corr > assignment_thresh)
+        bgmap = np.argmax(normalized_bg_corr, axis=1)
+        m = np.max(normalized_bg_corr, axis=1) < assignment_thresh
+        bgmap[m] = -1
         self.bg_corr = normalized_bg_corr
-        self.bgmap = np.full(nchans, -1, dtype=int)
-        self.bgmap[assignments[0]] = assignments[1]
+        self.bgmap = bgmap
         return self.bgmap
 
-    def _get_step_response(self, step_window=0.01, pts_before_step=20,
+    def _get_step_response(self, step_window=0.03, pts_before_step=20,
                            restrict_to_bg_sweep=False, am=None):
         """
         Finds each channel's response to the bias step by looking at the signal
@@ -375,6 +379,8 @@ class BiasStepAnalysis:
         Ib = self.Ibias[self.bgmap]
         dIb = self.dIbias[self.bgmap]
         dItes = self.dItes
+        Ib[self.bgmap == -1] = np.nan
+        dIb[self.bgmap == -1] = np.nan
 
         if not transition:
             # Assume R is constant with dI and  Ites is in the same dir as Ib
@@ -385,14 +391,14 @@ class BiasStepAnalysis:
         else:
             # Asuume dItes is in opposite direction of dIb
             dIrat = -np.abs(dItes / dIb)
-            Pj = self.R_sh * (1./dIrat - 1)
+            Pj = (Ib**2 * self.R_sh * ((dIrat)**2 - (dIrat))/(1 - 2*(dIrat))**2) #W
             temp = Ib**2 - 4 * Pj / self.R_sh
             R0 = self.R_sh * (Ib + np.sqrt(temp)) / (Ib - np.sqrt(temp))
             I0 = 0.5 * (Ib - np.sqrt(temp))
 
         return R0, I0, Pj
 
-    def _compute_dc_params(self, transition=(1, 8)):
+    def _compute_dc_params(self, transition=(1, 8), R0_thresh=30e-3):
         """
         Calculates Ibias, dIbias, and dItes from axis manager, and then
         runs the DC param calc to estimate R0, I0, Pj, etc. Here you must
@@ -403,6 +409,10 @@ class BiasStepAnalysis:
                 "in-transition" resistance calculation should be used. If True,
                 or False, will use in-transition or normal calc for all
                 channels.
+            R0_thresh: (float)
+                Any channel with resistance greater than R0_thresh will be
+                unassigned from its bias group under the assumption that it's
+                crosstalk
 
         Saves:
             Ibias:
@@ -439,12 +449,6 @@ class BiasStepAnalysis:
         i1 = np.mean(self.mean_resp[:, -10:], axis=1)
         dItes = i1 - i0
 
-        # Creates bias arrays that have size nchans
-        Ib = Ibias[self.bgmap]
-        dIb = dIbias[self.bgmap]
-        Ib[self.bgmap == -1] = np.nan
-        dIb[self.bgmap == -1] = np.nan
-
         self.Ibias = Ibias
         self.Vbias = Ibias * self.bias_line_resistance
         self.dIbias = dIbias
@@ -459,7 +463,8 @@ class BiasStepAnalysis:
             # range
             tr0, tr1 = transition
             vb = self.Vbias[self.bgmap]
-            tmask = (vb < tr0) & (vb < tr1)
+            tmask = (tr0 < vb) & (vb < tr1)
+
         R0, I0, Pj = self._compute_R0_I0_Pj(transition=False)
         R0_trans, I0_trans, Pj_trans = self._compute_R0_I0_Pj(transition=True)
 
@@ -469,10 +474,19 @@ class BiasStepAnalysis:
 
         Si = -1./(I0 * (R0 - self.R_sh))
 
+        # If resistance is too high, most likely crosstalk so just reset
+        # bg mapping and det params
+        if R0_thresh is not None:
+            m = R0 > R0_thresh
+            self.bgmap[m] = -1
+            for arr in [R0, I0, Pj, Si]:
+                arr[m] = np.nan
+
         self.R0 = R0
         self.I0 = I0
         self.Pj = Pj
         self.Si = Si
+
         return R0, I0, Pj, Si
 
     def _fit_tau_effs(self, tmin=1.5e-3, weight_exp=0.3):
@@ -541,9 +555,9 @@ class BiasStepAnalysis:
         m = ts > self.step_fit_tmin
         if plot_all_steps:
             for sig in self.step_resp[rc]:
-                plt.plot(ts*1000, sig, alpha=0.1, color='grey')
-        plt.plot(ts*1000, self.mean_resp[rc], '.', label='avg step')
-        plt.plot(ts[m]*1000, exp_fit(ts[m], *self.step_fit_popts[rc]), label='fit')
+                ax.plot(ts*1000, sig, alpha=0.1, color='grey')
+        ax.plot(ts*1000, self.mean_resp[rc], '.', label='avg step')
+        ax.plot(ts[m]*1000, exp_fit(ts[m], *self.step_fit_popts[rc]), label='fit')
 
         text = r'$\tau_\mathrm{eff}$=' + f'{self.tau_eff[rc]*1000:0.2f} ms'
         ax.text(0.7, 0.1, text, transform=ax.transAxes,
@@ -557,8 +571,8 @@ class BiasStepAnalysis:
 
 @set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
-                    nsteps=20, hcm_wait_time=3, run_analysis=True,
-                    analysis_kwargs=None):
+                    nsteps=20, hcm_wait_time=3, nsweep_steps=5,
+                    run_analysis=True, analysis_kwargs=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -590,6 +604,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Number of steps to run
         hcm_wait_time: float
             Time to wait after switching to high-current-mode.
+        nsweep_steps: int
+            Number of steps to run per bg in the bg mapping sweep
         run_analysis: bool
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -624,7 +640,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa.bg_sweep_start = time.time()
         for bg in bgs:
-            play_bias_steps_dc(S, cfg, bg, step_duration, step_voltage, 2)
+            play_bias_steps_dc(S, cfg, bg, step_duration, step_voltage, nsweep_steps)
         bsa.bg_sweep_stop = time.time()
 
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
