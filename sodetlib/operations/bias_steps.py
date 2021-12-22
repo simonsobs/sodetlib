@@ -645,7 +645,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
         time.sleep(hcm_wait_time)
 
-    bsa.sid = so.stream_g3_on(S)
+    bsa.sid = so.stream_g3_on(S, tag='bias_steps')
     try:
         bsa.start = time.time()
 
