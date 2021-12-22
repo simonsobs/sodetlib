@@ -412,9 +412,18 @@ def set_current_mode(S, bgs, mode, const_current=True):
 
     dac_data_reg = S.rtm_spi_max_root + S._rtm_slow_dac_data_array_reg
 
-    # Writes PV's simultaneously
-    epics.caput_many([S.C.writepv, dac_data_reg], [relay_data, dac_data],
-                     wait=True)
+
+    # It takes longer for DC voltages to settle than it does to toggle the
+    # high-current relay, so we can set them at the same time when switchign
+    # to hcm, but when switching to lcm we need a sleep statement to prevent
+    # dets from latching.
+    if mode:
+        epics.caput_many([S.C.writepv, dac_data_reg], [relay_data, dac_data],
+                         wait=True)
+    else:
+        S._caput(dac_data_reg, dac_data)
+        time.sleep(0.04)
+        S._caput(S.C.writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
 
