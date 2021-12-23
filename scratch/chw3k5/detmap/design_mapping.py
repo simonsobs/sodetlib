@@ -1,9 +1,12 @@
 import os
 from operator import attrgetter
+from itertools import zip_longest
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.signal import correlate, correlation_lags
+from scipy.optimize import curve_fit, minimize_scalar, minimize
 
 from single_tune import TuneDatum
 
@@ -124,32 +127,49 @@ def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_
     return tune_data_new, tune_data_with_design_data, tune_data_without_design_data
 
 
-def order_smurf_band_res_index(tune_data_band_index):
-    smurf_bands = sorted(tune_data_band_index.keys())
-    for smurf_band in smurf_bands:
-        tune_data_this_band = tune_data_band_index[smurf_band]
-        res_indexes = sorted(tune_data_this_band.keys())
-        for res_index in res_indexes:
-            tune_datum_this_band_and_channel = tune_data_this_band[res_index]
-            if res_index == -1:
+def order_res_index(tune_data_by_res_index, ignore_neg_one=False):
+    res_indexes = sorted(tune_data_by_res_index.keys())
+    for res_index in res_indexes:
+        tune_datum_this_band_and_channel = tune_data_by_res_index[res_index]
+        if res_index == -1:
+            if not ignore_neg_one:
                 # special handling for channel == -1
                 freq_sorted_tune_data = sorted(tune_datum_this_band_and_channel, key=attrgetter('freq_mhz'))
                 for tune_datum in freq_sorted_tune_data:
                     yield tune_datum
-            else:
-                # these are a required have a single TuneDatum for side-band-channel combinations
-                yield tune_datum_this_band_and_channel
+        else:
+            # these are a required have a single TuneDatum for side-band-channel combinations
+            yield tune_datum_this_band_and_channel
 
 
-def smurf_band_res_index_to_freq(tune_data_band_index):
-    tune_data_freq_ordered = sorted([tune_datum for tune_datum in order_smurf_band_res_index(tune_data_band_index)],
+def order_smurf_band_res_index(tune_data_band_index, ignore_neg_one=False):
+    smurf_bands = sorted(tune_data_band_index.keys())
+    for smurf_band in smurf_bands:
+        tune_data_this_band = tune_data_band_index[smurf_band]
+        for tune_datum in order_res_index(tune_data_by_res_index=tune_data_this_band, ignore_neg_one=ignore_neg_one):
+            yield tune_datum
+
+
+def smurf_band_res_index_to_freq(tune_data_band_index, ignore_neg_one=False):
+    tune_data_freq_ordered = sorted([tune_datum for tune_datum in
+                                     order_smurf_band_res_index(tune_data_band_index=tune_data_band_index,
+                                                                ignore_neg_one=ignore_neg_one)],
                                      key=attrgetter('freq_mhz'))
     freq_array = np.array([tune_datum.freq_mhz for tune_datum in tune_data_freq_ordered])
     tune_data_by_freq = {tune_datum.freq_mhz: tune_datum for tune_datum in tune_data_freq_ordered}
     return freq_array, tune_data_by_freq
 
 
-def freq_rug_plot(freq_array_smurf, freq_array_design):
+def f_array_and_tune_dict(tune_data_dict):
+    tune_data_this_band_f_ordered = sorted([tune_data_dict[a_key] for a_key in tune_data_dict.keys()],
+                                           key=attrgetter('freq_mhz'))
+    freq_array = np.array([tune_datum.freq_mhz for tune_datum in tune_data_this_band_f_ordered])
+    freq_to_datums = {freq_mhz: tune_datum for freq_mhz, tune_datum
+                               in zip(freq_array, tune_data_this_band_f_ordered)}
+    return freq_array, freq_to_datums
+
+
+def freq_rug_plot(freq_array_smurf, freq_array_design, freq_array_smurf_shifted=None):
     fig = plt.figure(figsize=(16, 6))
     left = 0.05
     bottom = 0.08
@@ -161,9 +181,18 @@ def freq_rug_plot(freq_array_smurf, freq_array_design):
     # 'threads' of the rug plot
     ax.tick_params(axis="y", labelleft=False)
     for xdata, color, y_min, y_max in [(freq_array_smurf, 'dodgerblue', 0.0, 0.6),
-                                       (freq_array_design, 'firebrick', 0.4, 1.0)]:
-        for f_center in xdata:
-            ax.plot((f_center, f_center), (y_min, y_max), ls='solid', linewidth=0.3, color=color, alpha=0.7)
+                                       (freq_array_design, 'firebrick', 0.4, 1.0),
+                                       (freq_array_smurf_shifted, 'darkgoldenrod', 0.2, 0.8)]:
+        if xdata is not None:
+            if len(xdata) < 400:
+                linewidth = 1.0
+                alpha = 0.5
+            else:
+                linewidth = 0.3
+                alpha = 0.7
+            for f_center in xdata:
+                ax.plot((f_center, f_center), (y_min, y_max), ls='solid', linewidth=linewidth, color=color,
+                        alpha=alpha)
     ax.set_ylim(bottom=0.0, top=1.0)
     ax.tick_params(axis='y',  # changes apply to the x-axis
                    which='both',  # both major and minor ticks are affected
@@ -183,7 +212,45 @@ def freq_rug_plot(freq_array_smurf, freq_array_design):
     plt.show()
 
 
-def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict):
+def find_nearest_index(array, value):
+    idx = np.searchsorted(array, value, side="left")
+    if idx > 0 and (idx == len(array) or np.fabs(value - array[idx-1]) < np.fabs(value - array[idx])):
+        return idx - 1
+    else:
+        return idx
+
+
+def find_nearest(array, value):
+    return array[find_nearest_index(array=array, value=value)]
+
+
+def nearest_diff(freq_array_smurf, freq_array_design):
+    nearest_diff_values = np.fabs([find_nearest(array=freq_array_design, value=freq_smurf) - freq_smurf
+                                   for freq_smurf in freq_array_smurf])
+    return nearest_diff_values
+
+
+def goal(freq_array_smurf, freq_array_design):
+    nearest_diff_values = nearest_diff(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design)
+    sum_scaler = np.sum(nearest_diff_values ** 2.0)
+    return sum_scaler
+
+
+def transform(measure, b, m=1.0):
+    return (m * measure) + b
+
+
+def make_opt_func(freq_array_smurf, freq_array_design):
+    def opt_func(tuple_like):
+        b, m = tuple_like
+        shifted_smurf = transform(measure=freq_array_smurf, b=b, m=m)
+        sum_scaler = goal(freq_array_smurf=shifted_smurf, freq_array_design=freq_array_design)
+        return sum_scaler
+    return opt_func
+
+
+def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
+                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
     # track TuneDatums that are mapped to a design record
@@ -191,14 +258,242 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
     # track TuneDatums that are *not* mapped to a design record
     tune_data_without_design_data = set()
     # one set of design frequencies is all that is needed for both sides of the UFM
+    design_tune_data_band_res_index = design_data.tune_data_side_band_res_index[None]
     freq_array_design, tune_data_by_freq_design = \
-        smurf_band_res_index_to_freq(tune_data_band_index=design_data.tune_data_side_band_res_index[None])
+        smurf_band_res_index_to_freq(tune_data_band_index=design_tune_data_band_res_index)
     # loop over both sides of the UFM
     for is_north in tune_data_side_band_res_index.keys():
+        # only consider the tune data this side of the UFM
         tune_data_this_side = tune_data_side_band_res_index[is_north]
+        # get the tunes as a frequency array, and a dictionary with freq_mhz as a key to the tune_datums
         freq_array_smurf, tune_data_by_freq_smurf = \
-            smurf_band_res_index_to_freq(tune_data_band_index=tune_data_this_side)
-        freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design)
+            smurf_band_res_index_to_freq(tune_data_band_index=tune_data_this_side, ignore_neg_one=ignore_smurf_neg_one)
+        # optimize the resonator to match across the entire side of a single UFM
+        opt_func = make_opt_func(freq_array_smurf, freq_array_design)
+        opt_result = minimize(fun=opt_func, x0=np.array([0.0, 1.0]), method='Nelder-Mead')
+        if opt_result.success:
+            b_opt, m_opt = opt_result.x
+            shifted_smurf_optimal = transform(measure=freq_array_smurf, b=b_opt, m=m_opt)
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design,
+                              freq_array_smurf_shifted=shifted_smurf_optimal)
+        else:
+            if is_north:
+                side_str = 'North Side UFM'
+            elif is_north is None:
+                side_str = ''
+            else:
+                side_str = 'South Side UFM'
+            raise ValueError(f'No convergent Result in the {side_str} resonator mapping.')
+
+        # With the resonators remapped to fit the design frequencies, now we will apply a mapping strategy
+        # independently for each smurf band.
+        for smurf_band in sorted(tune_data_this_side.keys()):
+            tune_data_this_band = tune_data_this_side[smurf_band]
+            # get the tune_datums ordered by frequency, built as a generator statement for speed, not clarity
+            tune_data_this_band_f_ordered = sorted([tune_datum for tune_datum
+                                                    in order_res_index(tune_data_by_res_index=tune_data_this_band,
+                                                                       ignore_neg_one=ignore_smurf_neg_one)],
+                                                   key=attrgetter('freq_mhz'))
+            # get a frequency array
+            freq_array_smurf = np.array([tune_datum.freq_mhz for tune_datum in tune_data_this_band_f_ordered])
+            # apply the initial optimization
+            freq_array_smurf_shifted = transform(measure=freq_array_smurf, b=b_opt, m=m_opt)
+            # make a look-up dict for the shifted frequencies to the original tune datums
+            shifted_to_tune_datums = {freq_shifted: tune_datum for freq_shifted, tune_datum
+                                      in zip(freq_array_smurf_shifted, tune_data_this_band_f_ordered)}
+            # get the design and look up dict
+            freq_array_design, design_to_design_datums = \
+                f_array_and_tune_dict(tune_data_dict=design_tune_data_band_res_index[smurf_band])
+
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design,
+                              freq_array_smurf_shifted=freq_array_smurf_shifted)
+            # trim any outliers
+            nearest_diff_values = nearest_diff(freq_array_smurf=freq_array_smurf_shifted,
+                                               freq_array_design=freq_array_design)
+            trimmed_tune_datums = {shifted_freq_mhz: shifted_to_tune_datums[shifted_freq_mhz]
+                                   for shifted_freq_mhz, nearest_value_mhz
+                                   in zip(freq_array_smurf_shifted, nearest_diff_values)
+                                   if nearest_value_mhz < trim_at_mhz}
+            # reset to the original frequencies use the trimmed data set
+            freq_array_trimmed, trimmed_to_tune_datum = \
+                f_array_and_tune_dict(tune_data_dict=trimmed_tune_datums)
+            opt_func2 = make_opt_func(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design)
+            opt_result = minimize(fun=opt_func2, x0=np.array([b_opt, m_opt]), method='Nelder-Mead')
+            if opt_result.success:
+                b_opt_this_band, m_opt_this_band = opt_result.x
+            else:
+                raise ValueError(f'No convergent Result for smurf band {smurf_band} resonator mapping.')
+            # shift the values based on the optimization
+            smurf_trimmed_and_shifted = transform(measure=freq_array_trimmed, b=b_opt_this_band, m=m_opt_this_band)
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design,
+                              freq_array_smurf_shifted=smurf_trimmed_and_shifted)
+
+            # map the shifted values to the original tune_datums
+            trimmed_and_shifted_to_tune_datum = {freq_trim_shifted: trimmed_to_tune_datum[freq_trimmed]
+                                                 for freq_trim_shifted, freq_trimmed
+                                                 in zip(smurf_trimmed_and_shifted, freq_array_trimmed)}
+            # find the closest indexes for the trimmed
+            trimmed_and_shifted_to_design = {freq_trim_shifted: find_nearest_index(array=freq_array_design, value=freq_trim_shifted)
+                                             for freq_trim_shifted in smurf_trimmed_and_shifted}
+
+            closest_design_index = np.array(sorted(trimmed_and_shifted_to_design.keys()), dtype=int)
+            #
+            design_indexes_available = [an_index for an_index in range(len(freq_array_design))]
+            if len(design_indexes_available) % 2 == 0:
+                design_half_index = int(len(design_indexes_available) / 2)
+            else:
+                design_half_index = int((len(design_indexes_available) + 1) / 2)
+
+            """
+            Needs to be split by the frequencies to be mapped, to make dictionary's with frequencies keys.
+            
+            the mappings are monotonic, so left design indexes will be strictly greater then the right side
+            """
+
+
+            closest_design_indexes_left = closest_design_index[design_half_index < closest_design_index]
+            smurf_trimmed_and_shifted_left = set(smurf_trimmed_and_shifted[design_half_index < closest_design_index])
+            design_indexes_available_left = set(design_indexes_available[design_half_index:])
+            mapping_per_index_counter = {}
+            trimmed_and_shifted_one_to_one_design_left = {}
+            for closest_design_index in closest_design_indexes_left:
+                if closest_design_index in mapping_per_index_counter.keys():
+                    mapping_per_index_counter[closest_design_index] += 1
+                else:
+                    mapping_per_index_counter[closest_design_index] = 1
+
+            design_indexes_unmapped = design_indexes_available_left - set(mapping_per_index_counter.keys())
+            freq_to_design_indexes_one_to_one = {design_index for design_index in mapping_per_index_counter.keys()
+                                         if mapping_per_index_counter[design_index] == 1}
+            design_indexes_one_multi = {design_index for design_index in mapping_per_index_counter.keys()
+                                        if mapping_per_index_counter[design_index] != 1}
+
+
+
+            """
+            start with this dict before entering the while loop that does the healing
+            """
+            trimmed_and_shifted_one_to_one_design_left = {freq: 'design_index_her' for freq in design_indexes_one_to_one}
+
+            trimmed_and_shifted_one_to_one_design = {}
+            while smurf_trimmed_and_shifted_left != set():
+                """
+                Needs to end when the multi are all gone
+                """
+                # keep doing this loop until if exits without reaching the break statement
+                design_indexes_unmapped_array = np.array(sorted(design_indexes_unmapped))
+                design_indexes_one_to_one_list = sorted(design_indexes_one_to_one)
+                design_indexes_one_multi_list = sorted(design_indexes_one_multi)
+                design_indexes_available_left_list = sorted(design_indexes_available_left)
+                smurf_trimmed_and_shifted_left_list = sorted(smurf_trimmed_and_shifted_left)
+
+
+                for design_index, smurf_freq in zip_longest(design_indexes_available_left_list,
+                                                            smurf_trimmed_and_shifted_left_list):
+                    """
+                    This loop should only be over the remaining multi_desing indexes.
+                    """
+                    if design_index is None:
+                        raise IndexError('write this part of the algorithm')
+                    elif design_index in design_indexes_one_to_one:
+                        trimmed_and_shifted_one_to_one_design[smurf_freq] = design_index
+                        smurf_trimmed_and_shifted_left.remove(smurf_freq)
+                        design_indexes_available_left.remove(design_index)
+                        design_indexes_one_to_one.remove(design_index)
+                    elif design_index in design_indexes_one_multi:
+                        closest_unmapped = find_nearest(array=design_indexes_unmapped_array, value=design_index)
+                        # here is the healing algorithm
+                        if closest_unmapped < design_index:
+                            # back the mapping up on value to fill in the unmapped index
+                            for set_design_index in trimmed_and_shifted_one_to_one_design.keys():
+                                if closest_unmapped < set_design_index < design_index:
+                                    smurf_freq = trimmed_and_shifted_one_to_one_design[set_design_index]
+                                    smurf_trimmed_and_shifted_left.add(smurf_freq)
+                                    design_indexes_available_left.add(set_design_index)
+                                    del trimmed_and_shifted_one_to_one_design[set_design_index]
+
+
+                            print('test point 2')
+                        else:
+                            # move the mapping forward on index to fill in the unmapped index
+                            design_indexes_unmapped.remove(closest_unmapped)
+                        mapping_per_index_counter[design_index] = mapping_per_index_counter[design_index] - 1
+                        if mapping_per_index_counter[design_index] == 1:
+                            del mapping_per_index_counter[design_index]
+                            design_indexes_one_multi.remove(design_index)
+
+                            print('test point 3')
+
+
+                else:
+                    finished = True
+
+
+
+
+
+
+
+
+            closest_design_indexes_right = closest_design_index[design_half_index >= closest_design_index]
+            smurf_trimmed_and_shifted_right = smurf_trimmed_and_shifted[design_half_index >= closest_design_index]
+            design_indexes_available_right = set(design_indexes_available[:design_half_index])
+
+
+
+            print('temp test point')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     return tune_data_new, tune_data_with_design_data, tune_data_without_design_data

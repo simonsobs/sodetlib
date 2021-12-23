@@ -480,7 +480,7 @@ class OperateTuneData:
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
-    def map_design_data(self, design_data, layout_position_path=None, mapping_strategy=0):
+    def map_design_data(self, design_data, layout_position_path=None, mapping_strategy='map_by_res_index'):
         # the layout_position_path can be set in this method or the __init__() method
         if layout_position_path is not None:
             self.layout_position_path = layout_position_path

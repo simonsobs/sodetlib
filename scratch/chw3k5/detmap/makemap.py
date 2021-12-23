@@ -81,7 +81,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
                                                     north_is_highband=north_is_highband, shift_mhz=shift_mhz)
         # write this data to skip this step next time and simply read in these results
         tune_data_raw_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
-    # reload the tune data from the csv file, for constant behavior on a with first time
+    # reload the tune data from the csv file, for constant behavior on first run or many runs
     tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
                                     layout_position_path=layout_position_path)
 
