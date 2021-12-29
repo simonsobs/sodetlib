@@ -7,9 +7,17 @@ Contents
 ========
 
 .. toctree::
+   :caption: User Guide
+
    configs
    det_config
    scripting_guide
    module_overview
    smurf_funcs
    analysis
+
+.. toctree::
+   :caption: Sodetlib Operations
+   :maxdepth: 2
+
+   operations/bias_steps
