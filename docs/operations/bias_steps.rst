@@ -19,7 +19,7 @@ one can simply run
 
     from sodetlib.operations.bias_steps import take_bias_steps
 
-    bsa = do.take_bias_steps(S, cfg)
+    bsa = take_bias_steps(S, cfg)
 
 If all goes well, the returned object ``bsa`` is a fully analyzed instance of
 the :ref:`BiasStepAnalysis` class. This means that all the detector parameter
@@ -44,15 +44,14 @@ Running in Low Current Mode
 It is possible to run this function in low-current-mode, which might be
 desirable if switching to high-current-mode is causing excess heating for
 whatever reason. Since the low-current-mode has a bias-line filter which
-increases the time-constant of the detector response, in order to get an
-accurate reading of the TES resistance / sensitivity you need to increase the
-step_duration to at least a couple of seconds. This will make the function take
-much longer (~2-3 minutes) so this mode of operation may not be as useful. For
-example, this should work:
+increases the signal decay time, in order to get an accurate reading of the TES
+resistance / responsivity you need to increase the step_duration to at least a
+couple of seconds. This will make the function take much longer (~2-3 minutes)
+so this mode of operation may not be as useful. For example, this should work:
 
 .. code-block:: python
 
-    bsa = bs.take_bias_steps(
+    bsa = take_bias_steps(
         S, cfg, high_current_mode=False, step_duration=2,
         nsteps=5, nsweep_steps=2, analysis_kwargs={'step_window': 2}
     )
@@ -90,6 +89,17 @@ smaller (like 0.3-0.9) but the maximum will usually still give you the correct
 bias group. If the maximum correlation factor is less than the
 ``assignment_thresh`` value, the channel is unassigned from all bias groups.
 
+.. note::
+
+   A channel that is perfectly uncorrelated to all bias groups will have a
+   correlation factor of 1/NBiasGroups for each bias-group. Though this is not
+   optimal for determining which bias groups are not connected to any
+   bias-line, an additional cut is made after calculating the TES resistance,
+   which is a better metric for determining which channels should be left
+   unassigned. Any channel that has an estimated resistance larger than the
+   ``R0_thresh`` parameter will be considered noise or crosstalk and unassigned
+   from all bias-groups.
+
 
 Estimating Detector Parameters
 ````````````````````````````````
@@ -115,8 +125,9 @@ In Transition
 
 In the transition, it is assumed that the ratio of :math:`dI_\mathrm{rat} =
 \frac{dI_\mathrm{TES}}{dI_\mathrm{bias}}` is negative due to the loop gain
-being larger than 1. See Emily Grace's thesis for the derivation, but the bias
-power, TES current, and TES resistance are then given by
+being larger than 1. See Michael Niemack's thesis (Section 4.3.1) and Emily
+Grace's thesis (Section 4.2.4) for the derivation. The bias power, TES current,
+and TES resistance are then given by
 
 .. math::
 
@@ -144,9 +155,8 @@ Outside of the transition, we assume that :math:`dI_\mathrm{rat} > 0`,
 and using the assumption that R is constant over the step, we have:
 
 .. math::
-    R_\mathrm{TES} = R_\mathrm{sh} * \left(
-        \frac{1}{dI_\mathrm{rat} - 1}    
-    \right)
+
+    R_\mathrm{TES} = \frac{R_\mathrm{sh}}{dI_\mathrm{rat} - 1}
 
 .. math::
    I_\mathrm{TES} = \frac{I_\mathrm{bias} R_\mathrm{sh}}
@@ -187,6 +197,7 @@ References
 -----------
 Below are some valuable references for information on bias steps and their
 uses:
+
  - `Daniel Becker's thesis <https://ui.adsabs.harvard.edu/abs/2014PhDT........57B/abstract>`_ (Chapter 6)
  - `Michael Niemack's thesis <https://ui.adsabs.harvard.edu/abs/2008PhDT.........1N/abstract>`_ (Section 4.3.1)
  - `Emily Grace's thesis <https://www.proquest.com/docview/1766117824/abstract/29190104DAB64533PQ/1>`_ (Section 4.2.4)

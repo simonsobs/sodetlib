@@ -164,7 +164,7 @@ class BiasStepAnalysis:
         'sid', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
         'edge_idxs', 'edge_signs', 'bg_corr', 'bgmap',
         'resp_times', 'mean_resp', 'step_resp', 'abs_chans',
-        'high_current_mode',
+        'high_current_mode', 'transition_range',
 
         'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
         'R0', 'I0', 'Pj', 'Si',
@@ -189,6 +189,7 @@ class BiasStepAnalysis:
         self.bgs = bgs
         self.am = None
         self.edge_idxs = None
+        self.transition_range = None
 
     def save(self, filepath=None):
         if filepath is None:
@@ -217,12 +218,13 @@ class BiasStepAnalysis:
         return self
 
     def run_analysis(self, assignment_thresh=0.3, arc=None, step_window=0.03,
-                     fit_tmin=1.5e-3, transition=(1, 8), save=False):
+                     fit_tmin=1.5e-3, transition=None, R0_thresh=30e-3,
+                     save=False):
         """
         Runs the bias step analysis.
 
-        Params
-        -------
+
+        Parameters:
             assignment_thresh (float):
                 Correlation threshold for which channels should be assigned to
                 particular bias groups.
@@ -233,11 +235,16 @@ class BiasStepAnalysis:
                 Time after the bias step (in seconds) to use for the analysis.
             fit_tmin (float):
                 tmin used for the fit
-            transition: (tuple)
+            transition: (tuple, bool, optional)
                 Range of voltage bias values (in low-cur units) where the
                 "in-transition" resistance calculation should be used. If True,
                 or False, will use in-transition or normal calc for all
-                channels.
+                channels. Will default to ``cfg.exp['transition_range']`` or
+                (1, 8) if that does not exist or if self._cfg is not set.
+            R0_thresh (float):
+                Any channel with resistance greater than R0_thresh will be
+                unassigned from its bias group under the assumption that it's
+                crosstalk
             save (bool):
                 If true will save the analysis to a npy file.
         """
@@ -245,7 +252,7 @@ class BiasStepAnalysis:
         self._find_bias_edges()
         self._create_bg_map(assignment_thresh=assignment_thresh)
         self._get_step_response(step_window=step_window)
-        self._compute_dc_params(transition=transition)
+        self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
         self._fit_tau_effs(tmin=fit_tmin)
         if save:
             self.save()
@@ -423,7 +430,7 @@ class BiasStepAnalysis:
 
         return R0, I0, Pj
 
-    def _compute_dc_params(self, transition=(1, 8), R0_thresh=30e-3):
+    def _compute_dc_params(self, transition=None, R0_thresh=30e-3):
         """
         Calculates Ibias, dIbias, and dItes from axis manager, and then
         runs the DC param calc to estimate R0, I0, Pj, etc. Here you must
@@ -433,7 +440,8 @@ class BiasStepAnalysis:
                 Range of voltage bias values (in low-cur units) where the
                 "in-transition" resistance calculation should be used. If True,
                 or False, will use in-transition or normal calc for all
-                channels.
+                channels. Will default to ``cfg.exp['transition_range']`` or
+                (1, 8) if that does not exist or if self._cfg is not set.
             R0_thresh: (float)
                 Any channel with resistance greater than R0_thresh will be
                 unassigned from its bias group under the assumption that it's
@@ -480,6 +488,14 @@ class BiasStepAnalysis:
         self.dIbias = dIbias
         self.dVbias = dIbias * self.bias_line_resistance
         self.dItes = dItes
+
+        default_transition = (1, 8)
+        if transition is None:
+            if self._cfg is None:
+                transition = default_transition
+            else:
+                transition = self._cfg.dev.exp.get('transition_range',
+                                                   default_transition)
 
         tmask = np.zeros(self.nchans, dtype=bool)
         if transition is True or transition is False:
@@ -610,8 +626,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     on each bias-line one at a time. This data is used to generate a bgmap.
     After, <nsteps> bias steps are played on all channels simultaneously.
 
-    Params
-    -----------
+    Parameters:
         S (SmurfControl):
             Pysmurf control instance
         cfg (DetConfig):
