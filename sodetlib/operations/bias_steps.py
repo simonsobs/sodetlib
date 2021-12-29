@@ -80,83 +80,82 @@ class BiasStepAnalysis:
 
         bsa = BiasStepAnalysis.load(<path>)
 
-    Saved Fields:
-        tunefile: path
-            Path of the tunefile loaded by the pysmurf instance
-        high_low_current_ratio: float
+    Attributes:
+        tunefile (path): Path of the tunefile loaded by the pysmurf instance
+        high_low_current_ratio (float):
             Ratio of high to low current
-        R_sh: float
+        R_sh (float):
             Shunt resistance loaded into pysmurf at time of creation
-        pA_per_phi0: float
+        pA_per_phi0 (float):
             pA_per_phi0, as loaded in pysmurf at time of creation
-        rtm_bit_to_volt: float
+        rtm_bit_to_volt (float):
             Conversion between bias dac bit and volt
-        bias_line_resistance: float
+        bias_line_resistance (float):
             Bias line resistance loaded in pysmurf at time of creation
-        high_current_mode: bool
+        high_current_mode (bool):
             If high-current-mode was used
-        stream_id: string
+        stream_id (string):
             stream_id of the streamer this was run on.
-        sid: int
+        sid (int):
             Session-id of streaming session
-        bg_sweep_start: float
+        bg_sweep_start (float):
             start time of isolated bg steps
-        bg_sweep_stop: float
+        bg_sweep_stop (float):
             stop time of isolated bg steps
-        start, stop: float
+        start, stop (float):
             start and stop time of all steps
-        edge_idxs: array(ints) of shape (nbgs, nsteps)
+        edge_idxs (array(ints) of shape (nbgs, nsteps)):
             Array containing indexes (wrt axis manager) of bias group steps
             for each bg
-        edge_signs: array(+/-1) of shape (nbgs, nsteps)
+        edge_signs (array(+/-1) of shape (nbgs, nsteps)):
             Array of signs of each step, denoting whether step is rising or
             falling
-        bg_corr: array (float) of shape (nchans, nbgs)
+        bg_corr (array (float) of shape (nchans, nbgs)):
             Bias group correlation array, stating likelihood that a given
             channel belongs on a given bias group determined from the isolated
             steps
-        bgmap: array (int) of shape (nchans)
+        bgmap (array (int) of shape (nchans)):
             Map from readout channel to assigned bias group. -1 means not
             assigned (that the assignment threshold was not met for any of the
             12 bgs)
-        abs_chans: array (int) of shape (nchans)
+        abs_chans (array (int) of shape (nchans)):
             Array of the absolute smurf channel number for each channel in the
             axis manager.
-        resp_times: array (float) shape (nbgs, npts)
+        resp_times (array (float) shape (nbgs, npts)):
             Shared timestamps for each of the step responses in <step_resp> and
             <mean_resp> with respect to the bg-step location, with the step
             occuring at t=0.
-        mean_resp: array (float) shape (nchans, npts)
+        mean_resp (array (float) shape (nchans, npts)):
             Step response averaged accross all bias steps for a given channel
             in Amps.
-        step_resp: array (float) shape (nchans, nsteps, npts)
+        step_resp (array (float) shape (nchans, nsteps, npts)):
             Each individual step response for a given channel in amps
-        Ibias: array (float) shape (nbgs)
+        Ibias (array (float) shape (nbgs)):
             DC bias current of each bias group (amps)
         Vbias:
             DC bias voltage of each bias group (volts in low-current mode)
-        dIbias: array (float) shape (nbgs)
+        dIbias (array (float) shape (nbgs)):
             Step current for each bias group (amps)
-        dVbias: array (float) shape (nbgs)
+        dVbias (array (float) shape (nbgs)):
             Step voltage for each bias group (volts in low-current mode)
-        dItes: array (float) shape (nchans)
+        dItes (array (float) shape (nchans)):
             Array of tes step heigh for each channel (amps)
-        R0: array (float) shape (nchans)
+        R0 (array (float) shape (nchans)):
             Computed TES resistances for each channel (ohms)
-        I0: array (float) shape (nchans)
+        I0 (array (float) shape (nchans)):
             Computed TES currents for each channel (amps)
-        Pj: array (float) shape (nchans)
+        Pj (array (float) shape (nchans)):
             Bias power computed for each channel
-        Si: array (float) shape (nchans)
+        Si (array (float) shape (nchans)):
             Responsivity computed for each channel
-        step_fit_tmin: float
+        step_fit_tmin (float):
             Time after bias step to start fitting exponential (sec)
-        step_fit_popts: array (float) of shape (nchans, 3)
+        step_fit_popts (array (float) of shape (nchans, 3)):
             Optimal fit parameters (A, tau, b) for the exponential fit of each
             channel
-        step_fit_pcovs: array (float) shape (nchans, 3, 3)
+        step_fit_pcovs (array (float) shape (nchans, 3, 3)):
             Fit covariances for each channel
-        tau_eff: array (float) shape (nchans)
+        tau_eff (array (float) shape (nchans)):
             Tau_eff for each channel (sec). Same as step_fit_popts[:, 1].
     """
     saved_fields = [
@@ -218,12 +217,35 @@ class BiasStepAnalysis:
         return self
 
     def run_analysis(self, assignment_thresh=0.3, arc=None, step_window=0.03,
-                     fit_tmin=1.5e-3, save=False):
+                     fit_tmin=1.5e-3, transition=(1, 8), save=False):
+        """
+        Runs the bias step analysis.
+
+        Params
+        -------
+            assignment_thresh (float):
+                Correlation threshold for which channels should be assigned to
+                particular bias groups.
+            arc (optional, G3tSmurf):
+                G3tSmurf archive. If specified, will attempt to load
+                axis-manager using archive instead of sid.
+            step_window (float):
+                Time after the bias step (in seconds) to use for the analysis.
+            fit_tmin (float):
+                tmin used for the fit
+            transition: (tuple)
+                Range of voltage bias values (in low-cur units) where the
+                "in-transition" resistance calculation should be used. If True,
+                or False, will use in-transition or normal calc for all
+                channels.
+            save (bool):
+                If true will save the analysis to a npy file.
+        """
         self._load_am(arc=arc)
         self._find_bias_edges()
         self._create_bg_map(assignment_thresh=assignment_thresh)
         self._get_step_response(step_window=step_window)
-        self._compute_dc_params()
+        self._compute_dc_params(transition=transition)
         self._fit_tau_effs(tmin=fit_tmin)
         if save:
             self.save()
@@ -392,7 +414,7 @@ class BiasStepAnalysis:
             I0 = Ib * (1 + R0 / self.R_sh)**(-1)
             Pj = I0**2 * R0
         else:
-            # Asuume dItes is in opposite direction of dIb
+            # Assume dItes is in opposite direction of dIb
             dIrat = -np.abs(dItes / dIb)
             Pj = (Ib**2 * self.R_sh * ((dIrat)**2 - (dIrat))/(1 - 2*(dIrat))**2) #W
             temp = Ib**2 - 4 * Pj / self.R_sh
@@ -588,37 +610,38 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     on each bias-line one at a time. This data is used to generate a bgmap.
     After, <nsteps> bias steps are played on all channels simultaneously.
 
-    Args:
-        S: SmurfControl
+    Params
+    -----------
+        S (SmurfControl):
             Pysmurf control instance
-        cfg: DetConfig
+        cfg (DetConfig):
             Detconfig instance
-        bgs:  int, list, optional
+        bgs ( int, list, optional):
             Bias groups to run steps on, defaulting to all 12. Note that the
             bias-group mapping generated by the bias step analysis will be
             restricted to the bgs set here so if you only run with a small
             subset of bias groups, the map might not be correct.
-        step_voltage: float
+        step_voltage (float):
             Step voltage in Low-current-mode units. (i.e. this will be divided
             by the high-low-ratio before running the steps in high-current
             mode)
-        step_duration: float
+        step_duration (float):
             Duration in seconds of each step
-        nsteps: int
+        nsteps (int):
             Number of steps to run
-        nsweep_steps: int
+        nsweep_steps (int):
             Number of steps to run per bg in the bg mapping sweep
-        high_current_mode: bool
+        high_current_mode (bool):
             If true, switches to high-current-mode. If False, leaves in LCM
             which runs through the bias-line filter, so make sure you
             extend the step duration to be like >2 sec or something
-        hcm_wait_time: float
+        hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
-        run_analysis: bool
+        run_analysis (bool):
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
             still be returned but will not contain all analysis results.
-        analysis_kwargs: dict, optional
+        analysis_kwargs (dict, optional):
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
     """
