@@ -132,7 +132,7 @@ if __name__ == '__main__':
     # read in the sample psat data.
     _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
-    # Plot variable
+    # Plot variables
     temp_k = 9.0
     show_plot = False
     save_plot = True
