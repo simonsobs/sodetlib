@@ -93,7 +93,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
             tune_data_vna.map_layout_data(layout_data=layout_data)
     if csv_filename is not None:
         # write a CSV file of this data
-        tune_data_smurf.write_csv(output_path_csv=csv_filename)
+        tune_data_vna.write_csv(output_path_csv=csv_filename)
     return tune_data_vna
 
 
