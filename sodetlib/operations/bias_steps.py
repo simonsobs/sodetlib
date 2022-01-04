@@ -239,7 +239,7 @@ class BiasStepAnalysis:
                 Range of voltage bias values (in low-cur units) where the
                 "in-transition" resistance calculation should be used. If True,
                 or False, will use in-transition or normal calc for all
-                channels. Will default to ``cfg.exp['transition_range']`` or
+                channels. Will default to ``cfg.dev.exp['transition_range']`` or
                 (1, 8) if that does not exist or if self._cfg is not set.
             R0_thresh (float):
                 Any channel with resistance greater than R0_thresh will be
@@ -440,7 +440,7 @@ class BiasStepAnalysis:
                 Range of voltage bias values (in low-cur units) where the
                 "in-transition" resistance calculation should be used. If True,
                 or False, will use in-transition or normal calc for all
-                channels. Will default to ``cfg.exp['transition_range']`` or
+                channels. Will default to ``cfg.dev.exp['transition_range']`` or
                 (1, 8) if that does not exist or if self._cfg is not set.
             R0_thresh: (float)
                 Any channel with resistance greater than R0_thresh will be
