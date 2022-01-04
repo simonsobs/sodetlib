@@ -57,7 +57,7 @@ def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_po
         # update the tune data to include the layout data.
         if layout_data is not None:
             tune_data_smurf.map_layout_data(layout_data=layout_data)
-    if csv_filename is None:
+    if csv_filename is not None:
         # write a CSV file of this data
         tune_data_smurf.write_csv(output_path_csv=csv_filename)
     return tune_data_smurf
@@ -91,7 +91,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
         if layout_data is not None:
             # update the tune data to include the layout data.
             tune_data_vna.map_layout_data(layout_data=layout_data)
-    if csv_filename is None:
+    if csv_filename is not None:
         # write a CSV file of this data
         tune_data_smurf.write_csv(output_path_csv=csv_filename)
     return tune_data_vna
