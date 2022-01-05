@@ -8,7 +8,10 @@ Collect tune data and metadata from a variety of sources, to make useful associa
 
 import os
 
+import numpy as np
+
 # custom packages
+from config_files.detmap_conifg_example import abs_path_sample_data
 from read_iv import read_psat
 from vna_func import get_peaks_from_vna
 
@@ -17,12 +20,28 @@ from channel_assignment import OperateTuneData
 from layout_data import get_layout_data
 
 
+def write_f_array_file(path, f_array):
+    with open(path, 'w') as f:
+        f.write('freq_mhz\n')
+        for freq_mhz in f_array:
+            f.write(f'{freq_mhz}\n')
+
+
 def assign_channel_from_vna(south_raw_files, north_raw_files, north_is_highband, shift_mhz=10.0):
     # Kaiwen peak finding algorithms
-    south_res_mhz = get_peaks_from_vna(south_raw_files) / 1.0e6
-    print("South Side fit completed.")
-    north_res_mhz = get_peaks_from_vna(north_raw_files) / 1.0e6
+    north_res_mhz_from_fit = get_peaks_from_vna(north_raw_files) / 1.0e6
     print("North Side fit completed.")
+    path_north_side_vna = os.path.join(abs_path_sample_data, 'north_side_vna_farray.csv')
+    write_f_array_file(path=path_north_side_vna, f_array=north_res_mhz_from_fit)
+    north_res_mhz_column, _north_res_mhz_by_row = read_csv(path=path_north_side_vna)
+    north_res_mhz = np.array(north_res_mhz_column['freq_mhz'])
+
+    south_res_mhz_from_fit = get_peaks_from_vna(south_raw_files) / 1.0e6
+    print("South Side fit completed.")
+    path_south_side_vna = os.path.join(abs_path_sample_data, 'south_side_vna_farray.csv')
+    write_f_array_file(path=path_south_side_vna, f_array=south_res_mhz_from_fit)
+    south_res_mhz_column, _south_res_mhz_by_row = read_csv(path=path_south_side_vna)
+    south_res_mhz = np.array(south_res_mhz_column['freq_mhz'])
 
     upper_res_tune_data = OperateTuneData()
     lower_res_tune_data = OperateTuneData()
