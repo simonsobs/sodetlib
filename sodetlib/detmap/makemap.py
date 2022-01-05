@@ -103,7 +103,7 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
 
 if __name__ == '__main__':
     # get a sample configuration to use with this example
-    from scratch.chw3k5.detmap.detmap_conifg_example import cold_ramp_file, path_north_side_vna, path_south_side_vna, \
+    from detmap_conifg_example import cold_ramp_file, path_north_side_vna, path_south_side_vna, \
         north_is_highband, vna_shift_mhz, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
         waferfile, output_filename, output_filename_vna, tune_data_vna_output_filename
     # # Metadata
