@@ -156,7 +156,9 @@ and using the assumption that R is constant over the step, we have:
 
 .. math::
 
-    R_\mathrm{TES} = \frac{R_\mathrm{sh}}{dI_\mathrm{rat} - 1}
+    R_\mathrm{TES} = R_\mathrm{sh}\left(
+        \frac{dI_\mathrm{bias}}{dI_\mathrm{TES}} - 1
+    \right)
 
 .. math::
    I_\mathrm{TES} = \frac{I_\mathrm{bias} R_\mathrm{sh}}
