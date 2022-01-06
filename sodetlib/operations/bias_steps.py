@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import sodetlib.smurf_funcs.smurf_ops as so
-from sodetlib.util import make_filename, set_current_mode
+from sodetlib.util import make_filename, set_current_mode, save_data
 import matplotlib.pyplot as plt
 import scipy.optimize
 from pysmurf.client.util.pub import set_action
@@ -158,19 +158,6 @@ class BiasStepAnalysis:
         tau_eff (array (float) shape (nchans)):
             Tau_eff for each channel (sec). Same as step_fit_popts[:, 1].
     """
-    saved_fields = [
-        'tunefile', 'high_low_current_ratio', 'R_sh', 'pA_per_phi0',
-        'rtm_bit_to_volt', 'bias_line_resistance', 'stream_id',
-        'sid', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
-        'edge_idxs', 'edge_signs', 'bg_corr', 'bgmap',
-        'resp_times', 'mean_resp', 'step_resp', 'abs_chans',
-        'high_current_mode', 'transition_range',
-
-        'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
-        'R0', 'I0', 'Pj', 'Si',
-
-        'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs', 'tau_eff',
-    ]
 
     def __init__(self, S=None, cfg=None, bgs=None):
         self._S = S
@@ -184,29 +171,36 @@ class BiasStepAnalysis:
 
         self._cfg = cfg
         if cfg is not None:
-            self.stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
+            self.stream_id = cfg.stream_id
 
         self.bgs = bgs
         self.am = None
         self.edge_idxs = None
         self.transition_range = None
 
-    def save(self, filepath=None):
-        if filepath is None:
-            filepath = make_filename(self._S, 'bias_step_analysis.npy')
-
+    def save(self):
+        filepath = make_filename(self._S, 'bias_step_analysis.npy')
         self.filepath = filepath
 
-        encoded = {}
-        for f in self.saved_fields:
+        data = {
+            'bands': self.bands,
+            'channels': self.channels,
+            'sid': self.sid,
+        }
+
+        saved_fields = [
+            'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop', 'edge_idxs',
+            'edge_signs', 'bg_corr', 'bgmap', 'resp_times', 'mean_resp',
+            'step_resp', 'high_current_mode', 'transition_range', 'Ibias',
+            'Vbias', 'dIbias', 'dVbias', 'dItes', 'R0', 'I0', 'Pj', 'Si',
+            'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs', 'tau_eff',
+        ]
+        for f in saved_fields:
             if not hasattr(self, f):
                 print(f"WARNING: field {f} does not exist... defaulting to None")
-            encoded[f] = getattr(self, f, None)
+            data[f] = getattr(self, f, None)
 
-        self.filepath = filepath
-        np.save(filepath, encoded, allow_pickle=True)
-        if self._S is not None:
-            self._S.pub.register_file(filepath, 'bias_step_analysis')
+        save_data(self._S, self._cfg, filepath, data)
 
     @classmethod
     def load(cls, filepath):
@@ -270,7 +264,9 @@ class BiasStepAnalysis:
                 self.am = arc.load_data(self.start, self.stop)
             else:
                 self.am = so.load_session(self._cfg, self.sid)
-            self.abs_chans = self.am.ch_info.band*512 + self.am.ch_info.channel
+            self.bands = self.am.ch_info.band
+            self.channels = self.am.ch_info.channel
+            self.abs_chans = self.bands*512 + self.channels
             self.nbgs = len(self.am.biases)
             self.nchans = len(self.am.signal)
         return self.am

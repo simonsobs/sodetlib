@@ -59,6 +59,40 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
+def save_data(S, cfg, path, data, register=True):
+    # Validate data
+    for k in ["channels", "bands", "sid"]:
+        if k not in data:
+            raise ValueError(f"Key '{k}' is required in data")
+
+    if 'meta' in data:
+        raise ValueError(f"Key 'meta' is not allowed to already exist in data")
+
+    now = time.time()
+    _data = {
+        **data,
+        'meta': {
+            'tunefile': S.tune_file,
+            'high_low_current_ratio': S.high_low_current_ratio,
+            'R_sh': S.R_sh,
+            'pA_per_phi0': S.pA_per_phi0,
+            'rtm_bit_to_volt': S.rtm_bit_to_volt,
+            'bias_line_resistance': S.bias_line_resistance,
+            'high_current_mode': get_current_mode_array(S),
+            'timestamp': time.time(),
+            'stream_id': cfg.stream_id,
+            'action': S.pub._action,
+            'action_timestamp': S.pub._action_ts,
+            'bgmap_file': cfg.dev.exp.get('bgmap_file'),
+            'iv_file': cfg.dev.exp.get('iv_file')
+        }
+    }
+
+    np.save(path, data, allow_pickle=True)
+    if register:
+        S.pub.register_file(path, 'sodetlib_data', format='npy')
+
+
 def get_tracking_kwargs(S, cfg, band, kwargs=None):
     band_cfg = cfg.dev.bands[band]
     tk = {
@@ -356,6 +390,21 @@ class Registers:
         self.S = S
         for name, reg in self._registers.items():
             setattr(self, name, _Register(S, reg))
+
+
+def get_current_mode_array(S)
+    """
+    Gets high-current-mode relay status for all bias groups
+    """
+    relay = S.get_cryo_card_relays()
+    relay = S.get_cryo_card_relays()  # querey twice to ensure update
+    bgs = np.arange(S._n_bias_groups)
+    hcms = np.zeros_like(bgs, dtype=bool)
+    for i, bg in enumerate(bgs):
+        r = np.ravel(S._pic_to_bias_group[np.where(
+            S._pic_to_bias_group[:, 1] == bg)])[0]
+        hcms[i] = (relay >> r) & 1
+    return hcms
 
 
 def set_current_mode(S, bgs, mode, const_current=True):
