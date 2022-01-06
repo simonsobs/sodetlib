@@ -7,3 +7,4 @@ PyYAML
 numpy
 scipy
 matplotlib
+lmfit
