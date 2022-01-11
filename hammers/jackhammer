@@ -402,10 +402,16 @@ def gui_func(args):
     if args.port is not None:
         server_port = args.port
     else:
+        available_slots = sys_config['slot_order']
         if args.slot is not None:
-            server_port = 9000 + 2 * args.slot
+            if args.slot not in available_slots:
+                print(f"Slot {args.slot} is not listed in the available "
+                      f"smurf_slots in {sys_config_file}")
+                raise ValueError
+            slot = args.slot
         else:
-            server_port = 9099
+            slot = available_slots[0]
+        server_port = 9000 + 2*slot
 
     sodetlib_root = os.environ.get('SODETLIB_ROOT', '/home/cryo/sodetlib')
     script_path = os.path.join(sodetlib_root, 'hammers', 'run_gui.sh')
