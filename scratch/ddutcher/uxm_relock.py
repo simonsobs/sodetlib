@@ -12,8 +12,8 @@ import os
 from sodetlib.det_config import DetConfig
 
 #cv6 fav_tune_files = '/data/smurf_data/tune/1626707421_tune.npy'
-fav_tune_files = '/data/smurf_data/tune/1628602522_tune.npy'
-bands = [0,1,2,3,4,5,6,7]
+fav_tune_files = '/data/smurf_data/tune/1634677891_tune.npy'
+bands = [3]
 slot_num = 3
 
 cfg = DetConfig()

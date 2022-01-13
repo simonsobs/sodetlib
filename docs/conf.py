@@ -43,7 +43,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.todo',
 ]
-extensions += ['sphinxarg.ext']
+extensions += ['sphinxarg.ext', 'sphinx.ext.autosummary']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -74,7 +74,10 @@ pygments_style = 'sphinx'
 
 # Have __init__ and class docstrings both show up
 autoclass_content = "both"
+autosummary_generate=True
 
+# Mock imports that we don't want to install for builds
+autodoc_mock_imports = ['pysmurf']
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -93,12 +96,9 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
-html_context = {
-    'css_files': [
-        '_static/theme_overrides.css',  # override wide tables in RTD theme
-        ],
-     }
+html_css_files = [
+    'theme_overrides.css'
+]
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -144,7 +144,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'OCS.tex', 'OCS Documentation',
+    (master_doc, 'sodetlib.tex', 'sodetlib Documentation',
      'Simons Observatory DAQ Group', 'manual'),
 ]
 
@@ -164,4 +164,3 @@ man_pages = [
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
-

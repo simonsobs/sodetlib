@@ -1,0 +1,19 @@
+name: Test Sphinx Build
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+   
+    - name: Sphinx Build
+      uses: ammaraskar/sphinx-action@0.4
+      with:
+        docs-folder: "docs/"
+        pre-build-command: "pip3 install -r requirements.txt ."
+        build-command: "make html"

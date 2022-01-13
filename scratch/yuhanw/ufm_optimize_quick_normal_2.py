@@ -23,8 +23,8 @@ import scipy.signal as signal
 
 
 
-band = 3
-slot_num = 2
+band = 0
+slot_num = 4
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -329,7 +329,7 @@ if wl_median > 150:
     )
 
 
-if wl_median < 60:
+if wl_median < 55:
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
     )
@@ -345,7 +345,7 @@ if wl_median < 60:
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
 
-if wl_median > 60 and wl_median < 120:
+if wl_median > 55 and wl_median < 120:
 
     print(
         "WL: {} with {} channels out of {}".format(wl_median, wl_length, channel_length)
@@ -412,7 +412,7 @@ if wl_median > 120 and wl_median < 150:
         current_uc_att, current_tune_power, band
     )
 
-    if wl_median < 60:
+    if wl_median < 55:
         print(
             "WL: {} with {} channels out of {}".format(
                 wl_median, wl_length, channel_length
@@ -434,7 +434,7 @@ if wl_median > 120 and wl_median < 150:
 
         print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
 
-    if wl_median > 60:
+    if wl_median > 55:
 
         print(
             "WL: {} with {} channels out of {}".format(

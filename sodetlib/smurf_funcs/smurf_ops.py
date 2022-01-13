@@ -2,15 +2,16 @@
 Module for general smurf operations.
 """
 from sodetlib.util import cprint, TermColors, make_filename, \
-                          get_tracking_kwargs
+                          get_tracking_kwargs, Registers
 
-import sodetlib.smurf_funcs.optimize_params as op
 import numpy as np
 import os
 import time
 import sys
 import matplotlib
 from scipy import signal
+
+from tqdm.auto import tqdm
 
 try:
     import matplotlib.pyplot as plt
@@ -66,7 +67,7 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
         shift at each bias value for each channel in each band.
     """
     cur_mode = S.get_cryo_card_ac_dc_mode()
-    if cur_mod == 'AC':
+    if cur_mode == 'AC':
         S.set_mode_dc()
     ctime = S.get_timestamp()
     fn_raw_data = f'{S.output_dir}/{ctime}_fr_sweep_data.npy'
@@ -204,7 +205,7 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
     S.set_lms_enable2(band, prev_lms_enable2)
     S.set_lms_enable3(band, prev_lms_enable3)
     S.set_lms_gain(band, lms_gain)
-    if cur_mod == 'AC':
+    if cur_mode == 'AC':
         S.set_mode_ac()
     return raw_data
 
@@ -400,14 +401,6 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
     return r, f, df, sync
 
 
-def get_stream_session_id(S):
-    """
-    Gets the current G3 stream session-id
-    """
-    reg = S.smurf_processor + "SOStream:SOFileWriter:session_id"
-    return S._caget(reg)
-
-
 def get_session_files(cfg, session_id, idx=None, stream_id=None):
     base_dir = cfg.sys['g3_dir']
     if stream_id is None:
@@ -487,27 +480,25 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     session_id : int
         Id used to read back streamed data
     """
-    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
-    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
-    reg_action = so_root + "pysmurf_action"
-    reg_action_ts = so_root + "pysmurf_action_timestamp"
-    reg_stream_tag = so_root + "stream_tag"
+    reg = Registers(S)
 
-    S._caput(reg_action, S.pub._action)
-    S._caput(reg_action_ts, S.pub._action_ts)
-    S._caput(reg_stream_tag, tag)
+    reg.pysmurf_action.set(S.pub._action)
+    reg.pysmurf_action_timestamp.set(S.pub._action_ts)
+    reg.stream_tag.set(tag)
 
     S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
                      filter_wait_time=filter_wait_time)
 
     if emulator:
-        S._caput(reg_em_enable, 1)
+        reg.source_enable.set(1)
         S.set_stream_enable(1)
+
+    reg.open_g3stream.set(1)
 
     # Sometimes it takes a bit for data to propogate through to the
     # streamer
     for _ in range(5):
-        sess_id = get_stream_session_id(S)
+        sess_id = reg.g3_session_id.get()
         if sess_id != 0:
             break
         time.sleep(0.3)
@@ -533,27 +524,23 @@ def stream_g3_off(S, emulator=False):
     session_id : int
         Id used to read back streamed data
     """
-    sess_id = get_stream_session_id(S)
-
-    so_root = S.epics_root + ":AMCc:SmurfProcessor:SOStream:"
-    reg_em_enable = S.epics_root + ":AMCc:StreamDataSource:SourceEnable"
-    reg_action = so_root + "pysmurf_action"
-    reg_action_ts = so_root + "pysmurf_action_timestamp"
-    reg_stream_tag = so_root + "stream_tag"
+    reg = Registers(S)
+    sess_id = reg.g3_session_id.get()
 
     if emulator:
-        S._caput(reg_em_enable, 0)
+        reg.source_enable.set(0)
 
     S.set_stream_enable(0)
     S.stream_data_off()
 
-    S._caput(reg_action, '')
-    S._caput(reg_action_ts, 0)
-    S._caput(reg_stream_tag, '')
+    reg.open_g3stream.set(0)
+    reg.pysmurf_action.set('')
+    reg.pysmurf_action_timestamp.set(0)
+    reg.stream_tag.set('')
 
     # Waits until file is closed out before returning
     S.log("Waiting for g3 file to close out")
-    while get_stream_session_id(S) != 0:
+    while reg.g3_session_id.get() != 0:
         time.sleep(0.5)
 
     return sess_id
@@ -562,178 +549,6 @@ def stream_g3_off(S, emulator=False):
 @set_action()
 def apply_dev_cfg(S, cfg, load_tune=True):
     cfg.dev.apply_to_pysmurf_instance(S, load_tune=load_tune)
-
-@set_action()
-def cryo_amp_check(S, cfg):
-    """
-    Performs a system health check. This includes checking/adjusting amplifier
-    biases, checking timing, checking the jesd connection, and checking that
-    noise can be seen through the system.
-
-    Parameters
-    ----------
-    S : pysmurf.client.SmurfControl
-        Smurf control object
-    cfg : DetConfig
-        sodetlib config object
-
-    Returns
-    -------
-    success: bool
-        Returns true if all of the following checks were successful:
-            - hemt and 50K are able to be biased
-            - Id is in range for hemt and 50K
-            - jesd_tx and jesd_rx connections are working on specified bays
-            - response check for band 0
-    """
-    amp_hemt_Id = cfg.dev.exp['amp_hemt_Id']
-    amp_50K_Id = cfg.dev.exp['amp_50k_Id']
-
-    bays = S.which_bays()
-    bay0 = 0 in bays
-    bay1 = 1 in bays
-
-    # Turns on both amplifiers and checks biasing.
-
-    cprint("Checking biases", TermColors.HEADER)
-    S.C.write_ps_en(11)
-    amp_biases = S.get_amplifier_biases()
-    biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
-    biased_50K = np.abs(amp_biases['50K_Id']) > 0.2
-    if not biased_hemt:
-        cprint("hemt amplifier could not be biased. Check for loose cable",
-               False)
-    if not biased_50K:
-        cprint("50K amplifier could not be biased. Check for loose cable",
-               False)
-
-    # Optimize bias voltages
-    if biased_hemt and biased_50K:
-        cprint("Scanning hemt bias voltage", TermColors.HEADER)
-        Id_hemt_in_range = op.optimize_bias(S, amp_hemt_Id, -1.2, -0.6, 'hemt')
-        cprint("Scanning 50K bias voltage", TermColors.HEADER)
-        Id_50K_in_range = op.optimize_bias(S, amp_50K_Id, -0.8, -0.3, '50K')
-        time.sleep(0.2)
-        amp_biases = S.get_amplifier_biases()
-        Vg_hemt, Vg_50K = amp_biases['hemt_Vg'], amp_biases['50K_Vg']
-        print(f"Final hemt current = {amp_biases['hemt_Id']}")
-        print(f"Desired hemt current = {amp_hemt_Id}")
-        cprint(f"hemt current within range of desired value: "
-                            f" {Id_hemt_in_range}",Id_hemt_in_range)
-        print(f"Final hemt gate voltage is {amp_biases['hemt_Vg']}")
-
-        print(f"Final 50K current = {amp_biases['50K_Id']}")
-        print(f"Desired 50K current = {amp_50K_Id}")
-        cprint(f"50K current within range of desired value:"
-                            f"{Id_50K_in_range}", Id_50K_in_range)
-        print(f"Final 50K gate voltage is {amp_biases['50K_Vg']}")
-    else:
-        cprint("Both amplifiers could not be biased... skipping bias voltage "
-               "scan", False)
-        Id_hemt_in_range = False
-        Id_50K_in_range = False
-
-    # Check timing is active.
-    # Waiting for smurf timing card to be defined
-    # Ask if there is a way to add 122.8 MHz external clock check
-
-    # Check JESD connection on bay 0 and bay 1
-    # Return connections for both bays, or passes if bays not active
-    cprint("Checking JESD Connections", TermColors.HEADER)
-    if bay0:
-        jesd_tx0, jesd_rx0, status = S.check_jesd(0)
-        if jesd_tx0:
-            cprint(f"bay 0 jesd_tx connection working", True)
-        else:
-            cprint(f"bay 0 jesd_tx connection NOT working. "
-                    "Rest of script may not function", False)
-        if jesd_rx0:
-            cprint(f"bay 0 jesd_rx connection working", True)
-        else:
-            cprint(f"bay 0 jesd_rx connection NOT working. "
-                    "Rest of script may not function", False)
-    else:
-        jesd_tx0, jesd_rx0 = False, False
-        print("Bay 0 not enabled. Skipping connection check")
-
-    if bay1:
-        jesd_tx1, jesd_rx1, status = S.check_jesd(1)
-        if jesd_tx1:
-            cprint(f"bay 1 jesd_tx connection working", True)
-        else:
-            cprint(f"bay 1 jesd_tx connection NOT working. Rest of script may "
-                   "not function", False)
-        if jesd_rx1:
-            cprint(f"bay 1 jesd_rx connection working", True)
-        else:
-            cprint(f"bay 1 jesd_rx connection NOT working. Rest of script may "
-                    "not function", False)
-    else:
-        jesd_tx1, jesd_rx1 = False, False
-        print("Bay 1 not enabled. Skipping connection check")
-
-    # Full band response. This is a binary test to determine that things are
-    # plugged in.  Typical in-band noise values are around ~2-7, so here check
-    # that average value of noise through band 0 is above 1.  
-
-    # Check limit makes sense when through system
-    cprint("Checking full-band response for band 0", TermColors.HEADER)
-    band_cfg = cfg.dev.bands[0]
-    S.set_att_uc(0, band_cfg['uc_att'])
-
-    freq, response = S.full_band_resp(band=0)
-    # Get the response in-band
-    resp_inband = []
-    band_width = 500e6  # Each band is 500 MHz wide
-    for f, r in zip(freq, np.abs(response)):
-        if -band_width/2 < f < band_width/2:
-            resp_inband.append(r)
-    # If the mean is > 1, say response received
-    if np.mean(resp_inband) > 1: #LESS THAN CHANGE
-        resp_check = True
-        cprint("Full band response check passed", True)
-    else:
-        resp_check = False
-        cprint("Full band response check failed - maybe something isn't "
-               "plugged in?", False)
-
-    # Check if ADC is clipping. Probably should be a different script, after
-    # characterizing system to know what peak data amplitude to simulate
-    # Should result in ADC_clipping = T/F
-    # Iterate through lowest to highest band, stop when no clipping.
-    # Find max value of output of S.read_adc_data(0), compare to pre-set threshold
-    # Probably should have a 'good' 'warning', and 'failed' output
-    # Above functions are 'startup_check", this is a seperate function
-
-    cfg.dev.update_experiment({
-        'amp_hemt_Vg': Vg_hemt,
-        'amp_50k_Vg': Vg_50K,
-    })
-
-    cprint("Health check finished! Final status", TermColors.HEADER)
-    cprint(f" - Hemt biased: \t{biased_hemt}", biased_hemt)
-    cprint(f" - Hemt Id in range: \t{Id_hemt_in_range}", Id_hemt_in_range)
-    print(f" - Hemt (Id, Vg): \t{(amp_biases['hemt_Id'], amp_biases['hemt_Vg'])}\n")
-    cprint(f" - 50K biased: \t\t{biased_50K}", biased_50K)
-    cprint(f" - 50K Id in range: \t{Id_50K_in_range}", Id_50K_in_range)
-    print(f" - 50K (Id, Vg): \t{(amp_biases['50K_Id'], amp_biases['50K_Vg'])}\n")
-    cprint(f" - Response check: \t{resp_check}", resp_check)
-
-    if bay0:
-        cprint(f" - JESD[0] TX, RX: \t{(jesd_tx0, jesd_rx0)}",
-               jesd_tx0 and jesd_rx0)
-    if bay1:
-        cprint(f" - JESD[1] TX, RX: \t{(jesd_tx1, jesd_rx1)}",
-               jesd_tx1 and jesd_rx1)
-
-    status_bools = [biased_hemt, biased_50K, Id_hemt_in_range, Id_50K_in_range,
-                    resp_check]
-    if bay0:
-        status_bools.extend([jesd_tx0, jesd_rx0])
-    if bay1:
-        status_bools.extend([jesd_tx1, jesd_rx1])
-
-    return all(status_bools)
 
 
 def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
@@ -808,3 +623,173 @@ def plot_band_noise(am, nbins=40):
             ax.set(ylim=(0, max_bins * 1.1))
 
     return fig, axes
+
+
+@set_action()
+def loopback_test(S, cfg, bands=None, attens=None, scans_per_band=1):
+    """
+    Runs loopback tests for smurf. For each of the specified bands loops
+    through uc and dc attens taking the full band response at each atten.
+    Can plot results for one AMC at a time using the plot_loopback_results
+    function.
+
+    Args:
+        S (pysmurf.SmurfControl):
+            Pysmurf instance
+        cfg (DetConfig):
+            config object
+        bands (int, list):
+            List of bands to take loopback over
+        attens (list):
+            List of attenuations to be looped over. This will be used for both
+            UC and DC attens.
+        scans_per_band (int):
+            Number of band-responses to average over
+
+    Returns:
+        out (dict):
+            Summary dictionary. Has structure::
+                ``out['uc_sweep/dc_sweep'][band][atten]``
+    """
+    if bands is None:
+        bands = S._bands
+    else:
+        bands = np.atleast_1d(bands)
+
+    if attens is None:
+        attens = [0, 1, 2, 4, 8, 16, 31]
+    else:
+        attens = np.atleast_1d(attens)
+
+    out = {
+        'uc_sweep': {b: {} for b in bands},
+        'dc_sweep': {b: {} for b in bands},
+        'band_center_mhz': {}
+    }
+
+    tot = 2*len(bands)*len(attens)
+    pb = tqdm(total=tot)
+    for b in bands:
+        out['band_center_mhz'][b] = S.get_band_center_mhz(b)
+        S.set_att_dc(b, 0)
+        for att in attens:
+            S.set_att_uc(b, att)
+            out['uc_sweep'][b][att] = S.full_band_resp(
+                band=b, make_plot=False, save_plot=False, show_plot=False,
+                save_data=True, n_scan=scans_per_band,
+                correct_att=False)
+            pb.update()
+
+        S.set_att_uc(b, 0)
+        for att in attens:
+            S.set_att_dc(b, att)
+            out['dc_sweep'][b][att] = S.full_band_resp(
+                band=b, make_plot=False, save_plot=False, show_plot=False,
+                save_data=True, n_scan=scans_per_band,
+                correct_att=False)
+            pb.update()
+    fname = make_filename(S, 'loopback_test.npy')
+    np.save(fname, out, allow_pickle=True)
+    S.pub.register_file(fname, 'loopback_test', format='npy')
+
+    return out
+
+def plot_loopback_results(summary, amc, band_width=200e6, S=None):
+    """
+    Plots loopback results for a single AMC.
+
+    Args:
+        summary (dict or str):
+            Summary dict returned from loopback_test function
+        amc (int):
+            AMC to plot.
+        band_width (float):
+            Width of each band (Hz) to include in the response plot.
+        S (SmurfControl, optional):
+            If specified, will save plot to the plots directory and register
+            with the smurf publisher.
+    """
+    if isinstance(summary, str):
+        summary = np.load(summary, allow_pickle=True).item()
+
+    fig, ax = plt.subplots(2, 2, figsize=(18, 10))
+    bands = list(summary['uc_sweep'].keys())
+
+    # Estimate attenuation for each band based on response
+    est_attens = {
+    'uc_sweep': {b: {} for b in bands},
+    'dc_sweep': {b: {} for b in bands},
+    }
+
+    # Bandwidth to use to estimate atten
+    est_bw = 200
+    for sweep in est_attens.keys():
+        x = summary[sweep]
+        for b in bands:
+            for i, (att, v) in enumerate(x[b].items()):
+                fs, resp = v
+                # Estimate attenuation
+                m = np.abs(fs) < est_bw
+                power = 20 * np.log10(np.mean(np.abs(resp[m])))
+                if att==0:
+                    p0 = power
+                else:
+                    est_attens[sweep][b][att] = -2*(power - p0)
+
+    labeled = False
+    for b in range(amc * 4, 4*amc + 4):
+        if b not in bands:
+            continue
+
+        for i, (att, v) in enumerate(summary['uc_sweep'][b].items()):
+            fs, resp = v
+            m = np.abs(fs) < band_width
+            if not labeled:
+                label = f'att={att}'
+            else:
+                label = None
+
+            bc = summary['band_center_mhz'][b] * 1e6
+            ax[0][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=label)
+            ax[0][0].set(title="UC Sweep Response")
+
+        for i, (att, v) in enumerate(summary['dc_sweep'][b].items()):
+            fs, resp = v
+            m = np.abs(fs) < band_width
+            if not labeled:
+                label = f'att={att}'
+            else:
+                label = None
+
+            bc = summary['band_center_mhz'][b] * 1e6
+            ax[1][0].plot(fs[m] + bc, np.abs(resp[m]), color=f'C{i}', alpha=0.8, label=label)
+            ax[1][0].set(title="DC Sweep Response")
+
+        labeled = True
+
+        xs = est_attens['uc_sweep'][b].keys()
+        ys = est_attens['uc_sweep'][b].values()
+        ax[0][1].plot(xs, ys, 'o-', label=f'Band {b}')
+
+        xs = est_attens['dc_sweep'][b].keys()
+        ys = est_attens['dc_sweep'][b].values()
+        ax[1][1].plot(xs, ys, 'o-', label=f'Band {b}')
+
+    ax[0][1].set(title="Estimated UC Atten")
+    ax[1][1].set(title="Estimated DC Atten")
+
+    ax[0][0].set(xlabel="Frequency (Hz)", ylabel="Response")
+    ax[1][0].set(xlabel="Frequency (Hz)", ylabel="Response")
+    ax[0][1].set(xlabel="Actual atten", ylabel="Estimated atten")
+    ax[1][1].set(xlabel="Actual atten", ylabel="Estimated atten")
+
+    for axis in ax.flatten():
+        axis.legend(fontsize='small', loc='upper left')
+
+    fig.suptitle(f"AMC {amc}", fontsize=20)
+    if S is not None:
+        plot_file = make_filename(S, f"amc_{amc}_loopback.png")
+        fig.savefig(plot_file)
+        S.pub.register_file(plot_file, 'loopback', plot=True)
+
+    return fig, ax

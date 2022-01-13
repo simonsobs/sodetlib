@@ -11,13 +11,13 @@ import glob
 from sodetlib.det_config  import DetConfig
 import numpy as np
 
-from sodetlib.smurf_funcs import tracking_quality
-import sodetlib.smurf_funcs.optimize_params as op
-import sodetlib.util as su
-from sodetlib.smurf_funcs.det_ops import take_iv
 
 from scipy.interpolate import interp1d
 
-out_fn = '/data/smurf_data/20210709/test_ready_2'
-out = open(out_fn,'a')
-print('hi')
+cfg = DetConfig()
+cfg.load_config_files(slot=5)
+S = cfg.get_smurf_control()
+
+
+print(S.high_low_current_ratio)
+print(S.bias_line_resistance)

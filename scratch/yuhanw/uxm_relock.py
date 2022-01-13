@@ -1,3 +1,9 @@
+'''
+Code written in Oct 2021 by Yuhan Wang
+relock UFM with a given tune file
+'''
+
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -12,7 +18,7 @@ import time
 
 from sodetlib.det_config import DetConfig
 
-fav_tune_files = '/data/smurf_data/tune/1633642838_tune.npy'
+fav_tune_files = '/data/smurf_data/tune/1634501972_tune.npy'
 bands = [0,1,2,3,4,5,6,7]
 slot_num = 2
 
@@ -58,13 +64,13 @@ for band in bands:
 	
 	print('running tracking setup')
 	S.set_feedback_enable(band,1) 
-	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=None, meas_lms_freq=True,feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	S.tracking_setup(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], make_plot=False, save_plot=False, show_plot=False, channel=S.which_on(band), nsamp=2**18, lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 	print('checking tracking')
-	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=None, feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
+	S.check_lock(band,reset_rate_khz=cfg.dev.bands[band]['flux_ramp_rate_khz'],fraction_full_scale=cfg.dev.bands[band]['frac_pp'], lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"], feedback_start_frac=cfg.dev.bands[band]['feedback_start_frac'],feedback_end_frac=cfg.dev.bands[band]['feedback_end_frac'],lms_gain=cfg.dev.bands[band]['lms_gain'])
 
 print('taking 20s timestream')
 
-start_time=S.get_timestamp()
+
 fs = S.get_sample_frequency()
 # hard coded (for now) variables
 stream_time = 20
@@ -75,6 +81,8 @@ dat_path = S.stream_data_on()
 time.sleep(stream_time)
 # end the time stream
 S.stream_data_off()
+
+start_time = dat_path[-14:-4]  
 
 timestamp, phase, mask, tes_bias = S.read_stream_data(dat_path, return_tes_bias=True)
 print(f'loaded the .dat file at: {dat_path}')
@@ -93,25 +101,85 @@ for band, channel in zip(bands, channels):
     ch_idx = mask[band, channel]
     stream_by_band_by_channel[band][channel] = phase[ch_idx]
 
+
+
+fmin=5
+fmax=50
+detrend='constant'
 # plot the band channel data
-fig, axs = plt.subplots(4, 2, figsize=(12, 24), gridspec_kw={'width_ratios': [2, 2]})
+fig, axs = plt.subplots(4, 2, figsize=(12, 24), gridspec_kw={'width_ratios': [2, 2]},dpi=50)
 for band in sorted(stream_by_band_by_channel.keys()):
+    wl_list_temp = []
     stream_single_band = stream_by_band_by_channel[band]
     ax_this_band = axs[band // 2, band % 2]
     for channel in sorted(stream_single_band.keys()):
         stream_single_channel = stream_single_band[channel]
+
+
+        f, Pxx = signal.welch(stream_single_channel, fs=fs, detrend=detrend,nperseg=2**12)
+        Pxx = np.sqrt(Pxx)
+        fmask = (fmin < f) & (f < fmax)
+        wl = np.median(Pxx[fmask])
+        wl_list_temp.append(wl)
         stream_single_channel_norm = stream_single_channel - np.mean(stream_single_channel)
         ax_this_band.plot(t_array, stream_single_channel_norm, color='C0', alpha=0.002)
+    wl_median = np.median(wl_list_temp)
     band_yield = len(stream_single_band)
     ax_this_band.set_xlabel('time [s]')
     ax_this_band.set_ylabel('Phase [pA]')
     ax_this_band.grid()
-    ax_this_band.set_title(f'band {band} yield {band_yield}')
+    ax_this_band.set_title(f'band {band} yield {band_yield} median noise {wl_median:.2f}')
     ax_this_band.set_ylim([-10000, 10000])
 
 save_name = f'{start_time}_band_noise_stack.png'
 print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}')
 plt.savefig(os.path.join(S.plot_dir, save_name))
+
+fig, axs = plt.subplots(4, 4, figsize=(24, 24), gridspec_kw={'width_ratios': [2, 2,2,2]},dpi=50)
+for band in sorted(stream_by_band_by_channel.keys()):
+    wl_list_temp = []
+    stream_single_band = stream_by_band_by_channel[band]
+    ax_this_band = axs[band // 2 , band % 2 * 2]
+    for channel in sorted(stream_single_band.keys()):
+        stream_single_channel = stream_single_band[channel]
+        f, Pxx = signal.welch(stream_single_channel,
+                fs=fs, detrend=detrend,nperseg=2**12)
+        Pxx = np.sqrt(Pxx)
+        fmask = (fmin < f) & (f < fmax)
+        wl = np.median(Pxx[fmask])
+        wl_list_temp.append(wl)
+        ax_this_band.loglog(f, Pxx, color='C0', alpha=0.2)
+
+    wl_median = np.median(wl_list_temp)
+
+
+    band_yield = len(stream_single_band)
+    ax_this_band.set_xlabel('Frequency [Hz]')
+    ax_this_band.set_ylabel('Amp [pA/rtHz]')
+    ax_this_band.grid()
+    ax_this_band.axvline(1.4,linestyle='--', alpha=0.6,label = '1.4 Hz',color = 'C1')
+    ax_this_band.axvline(60,linestyle='--', alpha=0.6,label = '60 Hz',color = 'C2')
+    ax_this_band.set_title(f'band {band} yield {band_yield}')
+    ax_this_band.set_ylim([1,5e3])
+
+
+
+    ax_this_band_2 = axs[band // 2  , band % 2 * 2+ 1]
+    ax_this_band_2.set_xlabel('Amp [pA/rtHz]')
+    ax_this_band_2.set_ylabel('count')
+    ax_this_band_2.hist(wl_list_temp, range=(0,300),bins=60)
+    ax_this_band_2.axvline(wl_median, linestyle='--', color='gray')
+    ax_this_band_2.grid()
+    ax_this_band_2.set_title(f'band {band} yield {band_yield} median noise {wl_median:.2f}')
+    ax_this_band_2.set_xlim([0,300])
+
+save_name = f'{start_time}_band_psd_stack.png'
+print(f'Saving plot to {os.path.join(S.plot_dir, save_name)}')
+plt.savefig(os.path.join(S.plot_dir, save_name))
+
+
+
+
 
 
 S.save_tune()    

@@ -23,8 +23,8 @@ import scipy.signal as signal
 
 
 
-band = 0
-slot_num = 2
+band = 4
+slot_num = 4
 
 cfg = DetConfig()
 cfg.load_config_files(slot=slot_num)
@@ -76,8 +76,8 @@ S.tracking_setup(
     show_plot=False,
     channel=S.which_on(band),
     nsamp=2 ** 18,
-    lms_freq_hz=None,
-    meas_lms_freq=True,
+    lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
+    meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
     feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
     feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
     lms_gain=cfg.dev.bands[band]["lms_gain"],
@@ -87,7 +87,7 @@ S.check_lock(
     band,
     reset_rate_khz=cfg.dev.bands[band]["flux_ramp_rate_khz"],
     fraction_full_scale=cfg.dev.bands[band]["frac_pp"],
-    lms_freq_hz=None,
+    lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
     feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
     feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
     lms_gain=cfg.dev.bands[band]["lms_gain"],
@@ -142,7 +142,11 @@ channel_length = len(noise_param)
 noise_floors = np.median(noise_param)
 
 
-def rough_tune(current_uc_att, current_tune_power, band):
+def rough_tune(current_uc_att, current_tune_power, band,slot_num):
+
+    cfg = DetConfig()
+    cfg.load_config_files(slot=slot_num)
+    S = cfg.get_smurf_control()
 
     attens = [
         current_uc_att - 10,
@@ -166,8 +170,8 @@ def rough_tune(current_uc_att, current_tune_power, band):
             show_plot=False,
             channel=S.which_on(band),
             nsamp=2 ** 18,
-            lms_freq_hz=None,
-            meas_lms_freq=True,
+            lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
+            meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
             feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
             feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
             lms_gain=cfg.dev.bands[band]["lms_gain"],
@@ -230,7 +234,12 @@ def rough_tune(current_uc_att, current_tune_power, band):
     return estimate_att, current_tune_power, lowest_wl_index, wl_median
 
 
-def fine_tune(current_uc_att, current_tune_power, band):
+def fine_tune(current_uc_att, current_tune_power, band,slot_num):
+
+    cfg = DetConfig()
+    cfg.load_config_files(slot=slot_num)
+    S = cfg.get_smurf_control()
+
     band = band
     attens = [
         current_uc_att - 4,
@@ -254,8 +263,8 @@ def fine_tune(current_uc_att, current_tune_power, band):
             show_plot=False,
             channel=S.which_on(band),
             nsamp=2 ** 18,
-            lms_freq_hz=None,
-            meas_lms_freq=True,
+            lms_freq_hz=cfg.dev.bands[band]["lms_freq_hz"],
+            meas_lms_freq=cfg.dev.bands[band]["meas_lms_freq"],
             feedback_start_frac=cfg.dev.bands[band]["feedback_start_frac"],
             feedback_end_frac=cfg.dev.bands[band]["feedback_end_frac"],
             lms_gain=cfg.dev.bands[band]["lms_gain"],
@@ -337,7 +346,7 @@ if wl_median < 120:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index, wl_median = fine_tune(
-        current_uc_att, current_tune_power, band
+        current_uc_att, current_tune_power, band,slot_num
     )
 
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
@@ -354,7 +363,7 @@ if wl_median > 120 and wl_median < 150:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-        current_uc_att, current_tune_power, band
+        current_uc_att, current_tune_power, band,slot_num
     )
 
     if estimate_att < 16:
@@ -382,7 +391,7 @@ if wl_median > 120 and wl_median < 150:
         current_tune_power = new_tune_power
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-        current_uc_att, current_tune_power, band
+        current_uc_att, current_tune_power, band,slot_num
     )
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
     step2_index = lowest_wl_index
@@ -390,7 +399,7 @@ if wl_median > 120 and wl_median < 150:
     if step2_index == 0:
         print("can be fine tuned")
         estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-            current_uc_att - 4, current_tune_power, band
+            current_uc_att - 4, current_tune_power, band,slot_num
         )
 
     print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
@@ -407,7 +416,7 @@ if wl_median > 150 and wl_median < 250:
     current_tune_power = S.amplitude_scale[band]
 
     estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-        current_uc_att, current_tune_power, band
+        current_uc_att, current_tune_power, band,slot_num
     )
 
     if wl_median < 120:
@@ -422,7 +431,7 @@ if wl_median > 150 and wl_median < 250:
         current_tune_power = S.amplitude_scale[band]
 
         estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-            current_uc_att, current_tune_power, band
+            current_uc_att, current_tune_power, band,slot_num
         )
 
         print("achieved at uc att {} drive {}".format(estimate_att, current_tune_power))
@@ -440,7 +449,7 @@ if wl_median > 150 and wl_median < 250:
         current_tune_power = S.amplitude_scale[band]
 
         estimate_att, current_tune_power, lowest_wl_index,wl_median = rough_tune(
-            current_uc_att, current_tune_power, band
+            current_uc_att, current_tune_power, band,slot_num
         )
         step1_index = lowest_wl_index
 
@@ -469,7 +478,7 @@ if wl_median > 150 and wl_median < 250:
             current_tune_power = new_tune_power
 
         estimate_att, current_tune_power, lowest_wl_index, wl_median= fine_tune(
-            current_uc_att, current_tune_power, band
+            current_uc_att, current_tune_power, band,slot_num
         )
         print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
         step2_index = lowest_wl_index
@@ -477,13 +486,13 @@ if wl_median > 150 and wl_median < 250:
         if step2_index == 0 and step1_index == 0:
             print("can be fine tuned")
             estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-                current_uc_att - 4, current_tune_power, band
+                current_uc_att - 4, current_tune_power, band,slot_num
             )
 
         if step2_index == 4 and step1_index == 4:
             print("can be fine tuned")
             estimate_att, current_tune_power, lowest_wl_index,wl_median = fine_tune(
-                current_uc_att + 4, current_tune_power, band
+                current_uc_att + 4, current_tune_power, band,slot_num
             )
 
         print("achived at uc att {} drive {}".format(estimate_att, current_tune_power))
