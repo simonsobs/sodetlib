@@ -1,17 +1,14 @@
 import os
 from operator import attrgetter
 from itertools import zip_longest
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.signal import correlate, correlation_lags
-from scipy.optimize import curve_fit, minimize_scalar, minimize
-
-from single_tune import TuneDatum
+from scipy.optimize import minimize
+from sodetlib.detmap.single_tune import TuneDatum
 
 """
-Some file naming functions
+File naming functions
 """
 
 

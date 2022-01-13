@@ -6,14 +6,13 @@ Additional Author(s): Caleb Wheeler
 Collect tune data and metadata from a variety of sources, to make useful associations, including detector maps.
 """
 import os
-
 import numpy as np
-
 # custom packages
-from read_iv import read_psat
-from simple_csv import read_csv
-from layout_data import get_layout_data
-from channel_assignment import OperateTuneData
+from sodetlib.detmap.simple_csv import read_csv
+from sodetlib.detmap.layout_data import get_layout_data
+from sodetlib.detmap.channel_assignment import OperateTuneData
+from sodetlib.detmap.example.read_iv import read_psat  # soon to be deprecated
+from sodetlib.detmap.detmap_conifg import design_file_path, waferfile_path, mux_pos_num_to_mux_band_num_path
 
 
 def assign_channel_from_vna(north_is_highband, path_north_side_vna=None, path_south_side_vna=None, shift_mhz=10.0):
@@ -101,11 +100,12 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
     return tune_data_vna
 
 
-if __name__ == '__main__':
-    # get a sample configuration to use with this example
-    from detmap_conifg_example import cold_ramp_file, path_north_side_vna, path_south_side_vna, \
-        north_is_highband, vna_shift_mhz, tunefile, dark_bias_lines, design_file, mux_pos_num_to_mux_band_num_path, \
-        waferfile, output_filename, output_filename_vna, tune_data_vna_output_filename
+def psat_map(tunefile, north_is_highband, output_filename_smurf=None,
+             cold_ramp_file=None,
+             design_file=design_file_path, waferfile=waferfile_path,
+             mux_pos_num_to_mux_band_num=mux_pos_num_to_mux_band_num_path,
+             dark_bias_lines=None,
+             psat_temp_k=9.0, psat_show_plot=False, psat_save_plot=True):
     # # Metadata
     # get the design file for the resonators
     design_data_example = OperateTuneData(design_file_path=design_file)
@@ -116,35 +116,20 @@ if __name__ == '__main__':
     # read the tunefile and initialize the data instance
     tune_data_smurf = make_map_smurf(tunefile=tunefile, north_is_highband=north_is_highband,
                                      design_data=design_data_example,
-                                     layout_position_path=mux_pos_num_to_mux_band_num_path,
+                                     layout_position_path=mux_pos_num_to_mux_band_num,
                                      layout_data=layout_data_example,
-                                     csv_filename=output_filename)
+                                     csv_filename=output_filename_smurf)
+    if cold_ramp_file is not None:
+        # Optical power data from validation of dark bias lines.
+        _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
+        coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
 
-    # # VNA scans
-    tune_data_vna = make_map_vna(tune_data_vna_output_filename=tune_data_vna_output_filename,
-                                 path_north_side_vna=path_north_side_vna,
-                                 path_south_side_vna=path_south_side_vna,
-                                 north_is_highband=north_is_highband, shift_mhz=vna_shift_mhz,
-                                 design_data=design_data_example,
-                                 layout_position_path=mux_pos_num_to_mux_band_num_path,
-                                 layout_data=layout_data_example,
-                                 csv_filename=output_filename_vna)
+        # read in the sample psat data.
+        _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
 
-    # Optical power data from validation of dark bias lines.
-    _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
-    coldload_ivs = [data_row for data_row in cold_ramp_data_by_row if data_row['note'].lower() == 'iv']
-
-    # read in the sample psat data.
-    _psat_by_band_chan, psat_by_temp = read_psat(coldload_ivs=coldload_ivs, make_plot=False)
-
-    # Plot variables
-    temp_k = 9.0
-    show_plot = False
-    save_plot = True
-
-    # example plots
-    for bandpass_target, psat_min, psat_max in [(90, 0.0, 3.0e-12),
-                                                (150, 0.0, 6.0e-12)]:
-        tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, bandpass_target=bandpass_target,
-                                       temp_k=temp_k, psat_min=psat_min, psat_max=psat_max,
-                                       show_plot=show_plot, save_plot=save_plot)
+        # example plots
+        for bandpass_target, psat_min, psat_max in [(90, 0.0, 3.0e-12),
+                                                    (150, 0.0, 6.0e-12)]:
+            tune_data_smurf.plot_with_psat(psat_by_temp=psat_by_temp, bandpass_target=bandpass_target,
+                                           temp_k=psat_temp_k, psat_min=psat_min, psat_max=psat_max,
+                                           show_plot=psat_show_plot, save_plot=psat_save_plot)

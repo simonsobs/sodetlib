@@ -31,7 +31,11 @@ def download_file_from_google_drive(id, destination):
 
 
 def sample_data_init(del_dir=False):
-    sample_data_dir = os.path.join('sample_data')
+    # get the absolute path fo the detector mapping code
+    real_path_this_file = os.path.dirname(os.path.realpath(__file__))
+    abs_path_sodetlib, _ = real_path_this_file.rsplit("sodetlib", 1)
+    abs_path_detmap = os.path.join(abs_path_sodetlib, "sodetlib", "detmap")
+    sample_data_dir = os.path.join(abs_path_detmap, 'sample_data')
     if os.path.exists(sample_data_dir):
         if del_dir:
             # Delete the data directory and downloaded again.
@@ -43,26 +47,26 @@ def sample_data_init(del_dir=False):
             return
     # Download the example time stream data.
     print('The Sample Data used for the default data not found, doing a one time download of the sample data data.')
-    os.mkdir(sample_data_dir)
     zip_file_id = '1G8eiJ85zVKu53GCzeVdjHEV8cWqrg6eH'
     zipfile_url = f'https://drive.google.com/file/d/{zip_file_id}/view?usp=sharing'
-    zipfile_path = os.path.join(sample_data_dir, 'sample_data.zip')
+    zipfile_path = os.path.join(abs_path_detmap, 'sample_data.zip')
     # start the download and tell the user what is happening
     print(f'  Beginning file download of at {zipfile_url}')
-    print(f'  This is ~500 Mb file so it make take a while depending on your connection speed...')
+    print(f'  This is ~350 Mb file so it make take a while depending on your connection speed...')
     download_file_from_google_drive(id=zip_file_id, destination=zipfile_path)
     print('Download Complete.\n')
 
     # unpack the zip file
     print("Extracting the zipfile...")
     with zipfile.ZipFile(zipfile_path, 'r') as zip_ref:
-        zip_ref.extractall('.')
+        zip_ref.extractall(abs_path_detmap)
     # delete the zip ile now that it is unpacked
     os.remove(zipfile_path)
     print("  The zipfile extracted and unpacked.")
     print("  A cleanup was done remove original zipfile\n")
+    print(f"Data unpacked at: {sample_data_dir}")
     return
 
 
 if __name__ == "__main__":
-    sample_data_init(del_dir=False)
+    sample_data_init(del_dir=True)

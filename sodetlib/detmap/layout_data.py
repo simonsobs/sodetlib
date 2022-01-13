@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
-
-from simple_csv import read_csv
+from sodetlib.detmap.simple_csv import read_csv
 
 
 a_pols = {'T', 'R'}

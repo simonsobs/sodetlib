@@ -1,9 +1,23 @@
+"""
+This file is soon to be deprecated.
+
+The goal is to read SMuRF level 2 data from Simons1. This is the result of not being able to finish
+a project because I had to push and merge an example for someone. Then I felt I needed to document a
+file I was hoping to trash. It is seems to be some sort of infinite recursion in which I can never
+do any real work. So do not look too hard into the code or documentation here. January 13, 2022 -Caleb
+
+The file originally (seems to) come from Zach Atkins and can be found in sodetlib at
+scratch/zatkins/deteff/modules/metadata.py
+
+Caleb Wheeler extracted this file an uncommitted build of sodetlib from Kaiwen Zheng at Princeton.
+"""
+import os
 from typing import NamedTuple
 from operator import attrgetter
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from sodetlib.detmap.detmap_conifg import abs_path_detmap
 
 
 class PsatBath(NamedTuple):
@@ -69,9 +83,10 @@ def read_psat(coldload_ivs, make_plot=False):
     psat_by_temp = {}
     psat_by_band_chan = {}
     for coldload_iv in coldload_ivs:
-        ivfile = coldload_iv['data_path']
+        ivfile = abs_path_detmap
+        for dir_or_file in coldload_iv['data_path'].split('/'):
+            ivfile = os.path.join(ivfile, dir_or_file)
         iv = np.load(ivfile, allow_pickle=True).item()
-
         if coldload_iv['band'] != 'all':
             print('Reading band ', int(coldload_iv['band']), ' in ', ivfile)
             band_list = [int(coldload_iv['band'])]
