@@ -21,7 +21,7 @@ import matplotlib.cm as cm
 
 from sodetlib.detmap.simple_csv import read_csv
 from sodetlib.detmap.vna_to_smurf import emulate_smurf_bands
-from sodetlib.detmap.detmap_conifg import abs_path_sample_data
+from sodetlib.detmap.detmap_conifg import abs_path_detmap
 from sodetlib.detmap.design_mapping import design_pickle_to_csv, operate_tune_data_csv_filename, get_filename, \
     map_by_res_index, map_by_freq, order_smurf_band_res_index
 from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_column_names
@@ -48,10 +48,8 @@ class OperateTuneData:
     # interation order for values that are allowed for TuneDatum.is_north
     is_north_iter_order = [True, False, None]
 
-    # the directory for output plots
-    plot_dir = os.path.join(abs_path_sample_data, 'plots')
 
-    def __init__(self, tune_path=None, design_file_path=None, layout_position_path=None, north_is_highband=None):
+    def __init__(self, tune_path=None, is_g3timestream=False, design_file_path=None, layout_position_path=None, north_is_highband=None):
         # read-in path for tune files
         self.tune_path = tune_path
         if self.tune_path is None:
@@ -66,7 +64,10 @@ class OperateTuneData:
         self.layout_position_path = layout_position_path
         # True is the north side the high band, False if not, None if not applicable or unknown
         self.north_is_highband = north_is_highband
-        # we make additional data structures when we have SMuRF data
+        # triggers a different read-in data in to account for a slightly different formant.
+        self.is_g3timestream = is_g3timestream
+
+        # we make additional data structures when we have SMuRF shaped data, triggered on data read-in
         self.is_smurf = False
         # we can make additional data structures when we have the design data imported into measured tunes
         self.imported_design_data = False
@@ -82,6 +83,11 @@ class OperateTuneData:
         self.tune_data_with_layout_data = None
         self.tune_data_without_layout_data = None
 
+        # the directory for output plots
+        if self.tune_path is None:
+            self.plot_dir = os.path.join(os.path.dirname(abs_path_detmap), 'plots')
+        else:
+            self.plot_dir = os.path.join(os.path.dirname(self.tune_path), 'plots')
         # make the plot directory if it does not exist
         if not os.path.exists(self.plot_dir):
             os.mkdir(self.plot_dir)
@@ -346,6 +352,7 @@ class OperateTuneData:
                 tune_datum_str = str(tune_datum_this_res)
                 tune_datum_str_pandas_null = tune_datum_str.replace('None', 'null')
                 f.write(f'{tune_datum_str_pandas_null}\n')
+        print(f'Output CSV written at: {output_path_csv}')
 
     def read_csv(self):
         if self.tune_path is None:
@@ -366,7 +373,22 @@ class OperateTuneData:
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         # read the tune file
-        tunefile_data = np.load(self.tune_path, allow_pickle=True).item()
+        if self.is_g3timestream:
+            raw_data = np.load(self.tune_path, allow_pickle=True)
+            tunefile_data = {}
+            for smurf_band in range(8):
+                res_index_dict_this_band = {}
+                res_index_counter = 0
+                for channel_num, possible_freq in list(enumerate(raw_data[smurf_band])):
+                    if not np.isnan(possible_freq):
+                        smurf_channel = {'freq': possible_freq, 'channel': channel_num, 'subband': None}
+                        res_index_dict_this_band[res_index_counter] = smurf_channel
+                        res_index_counter += 1
+                if res_index_dict_this_band:
+                    tunefile_data[smurf_band] = {'resonances': res_index_dict_this_band}
+        else:
+            tunefile_data = np.load(self.tune_path, allow_pickle=True).item()
+
         # loop of the bands in order
         for smurf_band in sorted(list(tunefile_data.keys())):
             if -1 < smurf_band < 4:

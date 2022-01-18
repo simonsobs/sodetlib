@@ -12,7 +12,8 @@ from sodetlib.detmap.simple_csv import read_csv
 from sodetlib.detmap.layout_data import get_layout_data
 from sodetlib.detmap.channel_assignment import OperateTuneData
 from sodetlib.detmap.example.read_iv import read_psat  # soon to be deprecated
-from sodetlib.detmap.detmap_conifg import design_file_path, waferfile_path, mux_pos_num_to_mux_band_num_path
+from sodetlib.detmap.detmap_conifg import designfile_default_path, waferfile_default_path, \
+    mux_pos_to_mux_band_file_default_path, output_csv_default_filename
 
 
 def assign_channel_from_vna(north_is_highband, path_north_side_vna=None, path_south_side_vna=None, shift_mhz=10.0):
@@ -53,31 +54,62 @@ def assign_channel_from_vna(north_is_highband, path_north_side_vna=None, path_so
     return upper_res_tune_data + lower_res_tune_data
 
 
-def make_map_smurf(tunefile, north_is_highband=None, design_data=None, layout_position_path=None,
-                   layout_data=None, csv_filename=None):
+def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferfile_default_path,
+                           dark_bias_lines=None):
+    # get the design file for the resonators
+    design_data = OperateTuneData(design_file_path=design_file)
+    # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
+    layout_data = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
+    return design_data, layout_data
+
+
+def add_metadata_and_get_output(tune_data, design_data, layout_data, output_path_csv, do_csv_output=True):
+    # update the tune_data collections to include design data.
+    if design_data is not None:
+        tune_data.map_design_data(design_data=design_data, mapping_strategy='map_by_res_index')  # 'map_by_freq')
+        # update the tune data to include the layout data.
+        if layout_data is not None:
+            tune_data.map_layout_data(layout_data=layout_data)
+    if do_csv_output:
+        # write a CSV file of this data
+        tune_data.write_csv(output_path_csv=output_path_csv)
+    return tune_data
+
+
+def make_map_smurf(tunefile, north_is_highband=None, design_file=designfile_default_path,
+                   waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
+                   dark_bias_lines=None, output_path_csv=None, do_csv_output=True):
+    design_data, layout_data = get_formatted_metadata(design_file=design_file, waferfile=waferfile,
+                                                      dark_bias_lines=dark_bias_lines)
+    if output_path_csv is None:
+        # put the output in the dame directory as the tune file.
+        output_path_csv = os.path.join(os.path.dirname(tunefile), f'smurf_{output_csv_default_filename}')
     # get the tune file data from smurf
     tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband,
                                       layout_position_path=layout_position_path)
-    # update the tune_data collections to include design data.
-    if design_data is not None:
-        tune_data_smurf.map_design_data(design_data=design_data, mapping_strategy='map_by_res_index')  # 'map_by_freq')
-        # update the tune data to include the layout data.
-        if layout_data is not None:
-            tune_data_smurf.map_layout_data(layout_data=layout_data)
-    if csv_filename is not None:
-        # write a CSV file of this data
-        tune_data_smurf.write_csv(output_path_csv=csv_filename)
-    return tune_data_smurf
+    return add_metadata_and_get_output(tune_data=tune_data_smurf, design_data=design_data, layout_data=layout_data,
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
 
 
 def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
-                 path_north_side_vna=None, path_south_side_vna=None,
-                 north_is_highband=None, shift_mhz=10.0,
-                 design_data=None, layout_position_path=None, layout_data=None, csv_filename=None):
+                 path_north_side_vna=None, path_south_side_vna=None, north_is_highband=None, shift_mhz=10.0,
+                 design_file=designfile_default_path, waferfile=waferfile_default_path,
+                 layout_position_path=mux_pos_to_mux_band_file_default_path, dark_bias_lines=None,
+                 output_path_csv=None, do_csv_output=True):
+
+    if output_path_csv is None:
+        # put the output in the dame directory as the tune file.
+        output_path_csv = os.path.join(os.path.dirname(tune_data_vna_output_filename),
+                                       f'vna_{output_csv_default_filename}')
+
+    # # Metadata
+    # get the design file for the resonators
+    design_data = OperateTuneData(design_file_path=design_file)
+    # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
+    layout_data = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
 
     # parse/get date from a Vector Network Analyzer
     if not os.path.exists(tune_data_vna_output_filename):
-
         # Run Kaiwen's peak finder and return a data structure that relates frequency to smurf band and channel number.
         tune_data_raw_vna = assign_channel_from_vna(path_north_side_vna=path_north_side_vna,
                                                     path_south_side_vna=path_south_side_vna,
@@ -88,37 +120,39 @@ def make_map_vna(tune_data_vna_output_filename='tune_data_vna.csv',
     tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
                                     layout_position_path=layout_position_path)
 
-    if design_data is not None:
-        # update the tune_data collections to include design data.
-        tune_data_vna.map_design_data(design_data=design_data)
-        if layout_data is not None:
-            # update the tune data to include the layout data.
-            tune_data_vna.map_layout_data(layout_data=layout_data)
-    if csv_filename is not None:
-        # write a CSV file of this data
-        tune_data_vna.write_csv(output_path_csv=csv_filename)
-    return tune_data_vna
+    return add_metadata_and_get_output(tune_data=tune_data_vna, design_data=design_data, layout_data=layout_data,
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
+
+
+def make_map_g3_timestream(timestream, north_is_highband=None, design_file=designfile_default_path,
+                           waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
+                           dark_bias_lines=None, output_path_csv=None, do_csv_output=True):
+    design_data, layout_data = get_formatted_metadata(design_file=design_file, waferfile=waferfile,
+                                                      dark_bias_lines=dark_bias_lines)
+    if output_path_csv is None:
+        # put the output in the dame directory as the tune file.
+        output_path_csv = os.path.join(os.path.dirname(timestream), f'g3ts_{output_csv_default_filename}')
+    # get the tune file data from smurf
+    tune_data_g3ts = OperateTuneData(tune_path=timestream, is_g3timestream=True,
+                                     north_is_highband=north_is_highband,
+                                     layout_position_path=layout_position_path)
+    return add_metadata_and_get_output(tune_data=tune_data_g3ts, design_data=design_data, layout_data=layout_data,
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
 
 
 def psat_map(tunefile, north_is_highband, output_filename_smurf=None,
              cold_ramp_file=None,
-             design_file=design_file_path, waferfile=waferfile_path,
-             mux_pos_num_to_mux_band_num=mux_pos_num_to_mux_band_num_path,
-             dark_bias_lines=None,
+             design_file=designfile_default_path, waferfile=waferfile_default_path,
+             mux_pos_num_to_mux_band_num=mux_pos_to_mux_band_file_default_path,
+             dark_bias_lines=None, do_csv_output=True,
              psat_temp_k=9.0, psat_show_plot=False, psat_save_plot=True):
-    # # Metadata
-    # get the design file for the resonators
-    design_data_example = OperateTuneData(design_file_path=design_file)
-    # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
-    layout_data_example = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
 
     # # Smurf Tune File
     # read the tunefile and initialize the data instance
     tune_data_smurf = make_map_smurf(tunefile=tunefile, north_is_highband=north_is_highband,
-                                     design_data=design_data_example,
-                                     layout_position_path=mux_pos_num_to_mux_band_num,
-                                     layout_data=layout_data_example,
-                                     csv_filename=output_filename_smurf)
+                                     design_file=design_file, waferfile=waferfile,
+                                     layout_position_path=mux_pos_num_to_mux_band_num, dark_bias_lines=dark_bias_lines,
+                                     output_path_csv=output_filename_smurf, do_csv_output=do_csv_output)
     if cold_ramp_file is not None:
         # Optical power data from validation of dark bias lines.
         _cold_ramp_data_by_column, cold_ramp_data_by_row = read_csv(path=cold_ramp_file)
