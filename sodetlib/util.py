@@ -59,38 +59,121 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
-def save_data(S, cfg, path, data, register=True):
-    # Validate data
-    for k in ["channels", "bands", "sid"]:
+def map_band_chans(b1, c1, b2, c2, chans_per_band=512):
+    """
+    Returns an index mapping of length nchans1 from one set of bands and
+    channels to another. Note that unmapped indices are returned as -1, so this
+    must be handled before (or after) indexing or else you'll get weird
+    results.
+
+    Args
+    ----
+        b1 (np.ndarray):
+            Array of length nchans1 containing the smurf band of each channel
+        c1 (np.ndarray):
+            Array of length nchans1 containing the smurf channel of each channel
+        b2 (np.ndarray):
+            Array of length nchans2 containing the smurf band of each channel
+        c2 (np.ndarray):
+            Array of length nchans2 containing the smurf channel of each channel
+        chans_per_band (int):
+            Lets just hope this never changes.
+    """
+    acs1 = b1 * chans_per_band + c1
+    acs2 = b2 * chans_per_band + c2
+
+    mapping = np.full_like(acs1, -1, dtype=int)
+    for i, ac in enumerate(acs1):
+        x = np.where(acs2 == ac)[0]
+        if len(x > 0):
+            mapping[i] = x[0]
+
+    return mapping
+
+
+def get_metadata(S, cfg):
+    """
+    Gets collection of metadata from smurf and detconfig instance that's
+    useful for pretty much everything. This should be included in all output
+    data files created by sodetlib.
+    """
+    return {
+        'tunefile': S.tune_file,
+        'high_low_current_ratio': S.high_low_current_ratio,
+        'R_sh': S.R_sh,
+        'pA_per_phi0': S.pA_per_phi0,
+        'rtm_bit_to_volt': S.rtm_bit_to_volt,
+        'bias_line_resistance': S.bias_line_resistance,
+        'chans_per_band': S.get_number_channels(),
+        'high_current_mode': get_current_mode_array(S),
+        'timestamp': time.time(),
+        'stream_id': cfg.stream_id,
+        'action': S.pub._action,
+        'action_timestamp': S.pub._action_ts,
+        'bgmap_file': cfg.dev.exp.get('bgmap_file'),
+        'iv_file': cfg.dev.exp.get('iv_file')
+    }
+
+
+def validate_and_save(fname, data, S=None, cfg=None, register=True,
+                      make_path=True):
+    """
+    Does some basic data validation for sodetlib data files to make sure
+    they are normalized based on the following  rules:
+        1. The 'meta' key exists storing metadata from smurf and cfg instances
+           such as the stream-id, pysmurf constants like high-low-current-ratio
+           etc., action and timestamp and more. See the get_metadata function
+           definition for more.
+        2. 'bands', and 'channels' arrays are defined, specifying the band/
+           channel combinations for data taking / analysis products.
+        3. 'sid' field exists to contain one or more session-ids for the
+           analysis.
+
+    Args
+    ----
+        fname (str):
+            Filename or full-path of datafile. If ``make_path`` is set to True,
+            this will be turned into a file-path using the ``make_filename``
+            function. If not, this will be treated as the save-file-path
+        data (dict):
+            Data to be written to disk. This should contain at least the keys
+            ``bands``, ``channels``, ``sid``, along with any other data
+            products. If the key ``meta`` does not already exist, metadata
+            will be populated using the smurf and det-config instances.
+        S (SmurfControl):
+            Pysmurf instance. This must be set if registering data file,
+            ``meta`` is not yet set, or ``make_path`` is True.
+        cfg (DetConfig):
+            det-config instance. This must be set if registering data file,
+            ``meta`` is not yet set, or ``make_path`` is True.
+        register (bool):
+            If True, will register the file with the pysmurf publisher
+        make_path (bool):
+            If true, will create a path by passing fname to the function
+            make_filename (putting it in the pysmurf output directory)
+    """
+    if register or make_path or 'meta' not in data:
+        if S is None or cfg is None:
+            raise ValueError("Pysmurf and cfg instances must be set")
+
+    _data = data.copy()
+    if 'meta' not in data:
+        meta = get_metadata(S, cfg)
+        _data['meta'] = meta
+
+    for k in ['channels', 'bands', 'sid']:
         if k not in data:
             raise ValueError(f"Key '{k}' is required in data")
 
-    if 'meta' in data:
-        raise ValueError(f"Key 'meta' is not allowed to already exist in data")
-
-    now = time.time()
-    _data = {
-        **data,
-        'meta': {
-            'tunefile': S.tune_file,
-            'high_low_current_ratio': S.high_low_current_ratio,
-            'R_sh': S.R_sh,
-            'pA_per_phi0': S.pA_per_phi0,
-            'rtm_bit_to_volt': S.rtm_bit_to_volt,
-            'bias_line_resistance': S.bias_line_resistance,
-            'high_current_mode': get_current_mode_array(S),
-            'timestamp': time.time(),
-            'stream_id': cfg.stream_id,
-            'action': S.pub._action,
-            'action_timestamp': S.pub._action_ts,
-            'bgmap_file': cfg.dev.exp.get('bgmap_file'),
-            'iv_file': cfg.dev.exp.get('iv_file')
-        }
-    }
+    if make_path and S is not None:
+        path = make_filename(S, fname)
+    else:
+        path = fname
 
     np.save(path, data, allow_pickle=True)
-    if register:
+    if S is not None and register:
         S.pub.register_file(path, 'sodetlib_data', format='npy')
+    return path
 
 
 def get_tracking_kwargs(S, cfg, band, kwargs=None):
