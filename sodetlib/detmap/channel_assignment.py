@@ -21,7 +21,7 @@ import matplotlib.cm as cm
 
 from sodetlib.detmap.simple_csv import read_csv
 from sodetlib.detmap.vna_to_smurf import emulate_smurf_bands
-from sodetlib.detmap.detmap_conifg import abs_path_detmap
+from sodetlib.detmap.detmap_config import abs_path_detmap
 from sodetlib.detmap.design_mapping import design_pickle_to_csv, operate_tune_data_csv_filename, get_filename, \
     map_by_res_index, map_by_freq, order_smurf_band_res_index
 from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_column_names
@@ -48,8 +48,8 @@ class OperateTuneData:
     # interation order for values that are allowed for TuneDatum.is_north
     is_north_iter_order = [True, False, None]
 
-
-    def __init__(self, tune_path=None, is_g3timestream=False, design_file_path=None, layout_position_path=None, north_is_highband=None):
+    def __init__(self, tune_path=None, is_g3timestream=False, design_file_path=None, layout_position_path=None,
+                 north_is_highband=None):
         # read-in path for tune files
         self.tune_path = tune_path
         if self.tune_path is None:
