@@ -28,28 +28,78 @@ from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_c
 
 
 class OperateTuneData:
-    """
-    For a measurement of tune data across a single UFM
-    """
+    """For storing and operating on measurements of resonator frequencies across a single focal plane module.
 
-    # hard coded variables that may need to be changed in the future
-    # the order of this list determines the order of csv file created from the design pickle
+    Mapping of metadata types requires one-to-one relationships of data and metadata. Incorrectly formatted and
+    ambiguous data will raise exceptions directly after read-in. Data Hygiene is the priority, as this is a critical
+    step in a long chain of contextualizing what was actually observed. See the method
+    tune_data_organization_and_validation().
+
+    Metadata is mapped to the design data in two steps first in the map_design_data() method and then in the
+    map_layout_data() method.
+
+    This class is fast because it uses dictionaries, dict, to store the data. Dictionaries use hash tables instead of
+    direct value comparison in addition to a hierarchical structure the reduces the scope for searching and comparison.
+    If you find this structure is new or confusing for direct access to the data, consider using some data output
+    methods described below.
+
+    This class supports casting from a number of data formats.
+        See methods with the `from_` prefix casting from Python objects like peak_array, pandas_dataframes, and
+        tune_datums.
+        See methods with the `read_` prefix file read in from tunefiles (.npy extentions), design_files, and CSV
+        files that are in the same format as the write_csv() method.
+
+    Output methods/formats include:
+        - Writing output in CSV, write_csv().
+        - Export as a Pandas dataframe, return_pandas_dataframe.
+        - Since this class defines an iterable method, __iter__(), and instance of the class can be cast into a list or
+        other iterable (duck-typing). For example given and instance of OperateTuneData called operate_tune_data
+        a list of the data can be obtained from list_of_tune_datums = list(operate_tune_data). This is used
+        extensively with in this class's method via list(self) to iterate over and operate on all the existing data.
+
+    Support of the `+` is available (see __add__()) which is good for adding two instances of OperateTuneData,
+    for example the North and South sides of a focal plane array, into a single instance of OperateTuneData.
+
+
+    Attributes
+    ----------
+    design_file_pickle_to_csv_header : list
+        List of header conversions as 2-element tuples. The first element of the tuple the column name in the pickle
+        file, and the second element is how the column is renamed in the subsequent CSV file. The order of this list
+        determines the order of columns in the CSV file created from the design pickle file.
+    output_prefix: str
+        A default filename prefix that is used when `output_path_csv=None` in the method write_csv()
+    design_attributes: set
+        The attributes of design data that are mapped into a TuneDatum, not freq_mhz which is handled differently.
+        Note: `set`s use hash tables, which are fast for comparison and sorting.
+    layout_attributes: set
+        The attributes of layout data that are mapped into a TuneDatum.
+        Note: `set`s use hash tables, which are fast for comparison and sorting.
+    is_north_iter_order: list
+        This controls the interation order in __iter__() for values that are allowed for TuneDatum.is_north, the
+        outermost loop of the __iter__() methods. This is done to cause consistent outputs when building lists and other
+        iterables.
+    """
     design_file_pickle_to_csv_header = [('Band', 'mux_band'), ('Freq-index', 'mux_channel'),
                                         ('Frequency(MHz)', 'freq_mhz'), ('Subband', 'mux_subband'), ('Pad', 'bond_pad')]
-    # a default that is used when output_path_csv=None in the method self.write_csv()
-    output_prefix = 'test_tune_data_vna'
-
-    # the attributes of design data that are mapped into TuneDatum, not freq_mhz is handled differently
+    output_prefix = 'test_operate_tune_data'
     design_attributes = {'bond_pad', 'mux_band', 'mux_channel', 'mux_subband', 'mux_layout_position'}
-    # the attributes of layout data that are mapper into TuneDatum
     layout_attributes = {"bias_line", "pol", "bandpass", "det_row", "det_col", "rhomb", "is_optical",
                          "det_x", "det_y"}
-
-    # interation order for values that are allowed for TuneDatum.is_north
     is_north_iter_order = [True, False, None]
 
     def __init__(self, tune_path=None, is_g3timestream=False, design_file_path=None, layout_position_path=None,
                  north_is_highband=None):
+        """Initialization that includes read-in for a few supported file formats of resonator frequencies.
+
+        Parameters
+        ----------
+        tune_path :
+        is_g3timestream :
+        design_file_path :
+        layout_position_path :
+        north_is_highband :
+        """
         # read-in path for tune files
         self.tune_path = tune_path
         if self.tune_path is None:
@@ -267,7 +317,7 @@ class OperateTuneData:
                          self.from_tune_datums(tune_data=tune_data_without, north_is_highband=self.north_is_highband,
                                                is_smurf=self.is_smurf, imported_design_data=self.imported_design_data))
 
-    def from_dataframe(self, data_frame, is_highband=None, is_north=None):
+    def from_pandas_dataframe(self, data_frame, is_highband=None, is_north=None):
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         # loop over the data frame. !Never do this for calculations, only for casting as done below!
@@ -326,7 +376,7 @@ class OperateTuneData:
         new_operate_tune_data.tune_data_organization_and_validation()
         return new_operate_tune_data
 
-    def return_pandas_df(self):
+    def return_pandas_dataframe(self):
         # make sure the tune data was load before this method was called.
         if self.tune_data_side_band_res_index is None:
             raise IOError(f'No tune data has been loaded.')

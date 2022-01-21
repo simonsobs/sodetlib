@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from sodetlib.detmap.makemap import make_map_smurf, make_map_vna, psat_map
 from sodetlib.detmap.detmap_config import get_config, abs_path_detmap, abs_path_metadata_files_default
 
@@ -30,3 +31,8 @@ if __name__ == '__main__':
     # make the psat color maps
     psat_map(tune_data=tune_data_smurf, cold_ramp_file=config['cold_ramp_file'],
              temp_k=9.0, show_plot=False, save_plot=True)
+
+    # if you like to work with rectangular data topologies, it is easy to cast the data into an iterable like a list
+    data_list = list(tune_data_smurf)
+    # and then into a numpy array
+    data_array = np.array(data_list)
