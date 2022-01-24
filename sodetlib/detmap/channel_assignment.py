@@ -9,6 +9,7 @@ from getpass import getuser
 from operator import attrgetter, itemgetter
 
 import numpy as np
+import pandas
 import pandas as pd
 if getuser() in {'chw3k5', 'cwheeler'}:
     # this only happens on Caleb's computers
@@ -61,8 +62,8 @@ class OperateTuneData:
     for example the North and South sides of a focal plane array, into a single instance of OperateTuneData.
 
 
-    Attributes
-    ----------
+    Class Variables
+    ---------------
     design_file_pickle_to_csv_header : list
         List of header conversions as 2-element tuples. The first element of the tuple the column name in the pickle
         file, and the second element is how the column is renamed in the subsequent CSV file. The order of this list
@@ -79,6 +80,91 @@ class OperateTuneData:
         This controls the interation order in __iter__() for values that are allowed for TuneDatum.is_north, the
         outermost loop of the __iter__() methods. This is done to cause consistent outputs when building lists and other
         iterables.
+    allowed_instance_vars: set
+        This controls what is allowed to be set as OperateTuneData attributes that are instances (subsets) of the
+        parent instance in the method update_tunes().
+
+
+    Attributes
+    ----------
+    tune_path : object: str, optional
+        The file path for a tunefile or g3stream file, with .npy extension, or for a CSV file that was writing with the
+        write_csv() method. This is specified on initialization, and triggers an automatic data read-in using the method
+        read_tunefile() or read_csv(), depending on the file's extension. None is also an expected value, which does not
+        trigger a data read-in.
+    is_g3timestream : bool
+        G3-timestream data has a slightly different format that needs a different read-in process. This bool variable
+        toggles that process in the read_tunefile() method. This is set via the __init__() method and is False by
+        default. This variable does nothing unless the tune_path value has an extension of .npy.
+    design_file_path : object: str, optional
+        The file path for resonator design data. Design data has a similar data topology to tunefiles, so this class
+        is also use to read-in and operate on resonator design data. When tune_path is None and design_file_path is
+        a path, auto read-in is triggered using the method read_design_file(). None is the default value.
+    layout_position_path : object: str, optional
+        The file path for a CSV file that sets the mapping of uMUX chip position on the focal plane array to the
+        uMUX-band (frequency band for the uMUX resonators design) for each uMUX chip. This can be specified in the
+        __init__() method or when calling the map_design_data() method where this data is read-in and applied.
+    north_is_highband : object : str, optional
+        Since 2 SMURF systems must be used to read a single focal plane array, we use this variable to distinguish
+        resonator data on the north side of the and the south side. This is done satirically with in a tunefile
+        by simply adding 2000 MHz to one side and calling it SMuRF band 4-7, the high bands, and 0-3 the low bands.
+        None is also an exceptable input, and is what is required for the design data, which does not participate in the
+        fiction of high and low bands.
+    is_smurf : bool
+        We make additional data structures when we have SMuRF shaped data. This attribute determines if additional data
+        structures can be made in the tune_data_organization_and_validation() method. It initializes as False and is
+        made True when SMuRF data is read-in read_tunefile().
+    imported_design_data : bool
+        Once the design data is imported and mapped, we can make additional data structures in the
+        tune_data_organization_and_validation() method. Initialized as False, it is turned to True in the
+        map_design_data() method.
+    tune_data : object : set
+        The fundamental data object for this class that collects the TuneDatum() objects when data is read-in or
+        otherwise cast into this class. Has an initial value of None, but is redefined as a set() when a 'read_' or
+        'from_' method is invoked.
+    tune_data_side_band_res_index : object : dict
+        A hierarchical dict (3-level) mapping of TuneDatum() objects. As the name suggests, the dictionary hierarchy is
+        by array side answering the question 'is north?' (False, True, None),
+        then SMuRF-band (0, 1, 2, 3, 4, 5, 6, 7, 8), and finally by resonator index (integers from 0 to ~280 and -1).
+        Each dictionary key triplicate of (side, band, index) uniquely maps to a single TuneDatum(), except for
+        res_index==-1, which has special handling.
+    tune_data_smurf_band_channel: object : dict
+        A hierarchical dict (2-level) mapping of TuneDatum() objects. As the name suggests, the dictionary hierarchy is
+        by SMuRF-band (0, 1, 2, 3, 4, 5, 6, 7, 8) and SMuRF channel (integers from 0 to ~500 and -1). Each dictionary
+        key pair of (band, channel) uniquely maps to a single TuneDatum(), except for channel==-1, which has special
+        handling.
+    tune_data_muxpos_bondpad : object : dict
+        A hierarchical dict (2-level) mapping of TuneDatum() objects. As the name suggests, the dictionary hierarchy is
+        by uMUX position on a focal plane array (integers 0-27 and None) and bond pad position on-chip (integers 0-65). Each
+        dictionary key pair of (muxpos, bondpad) uniquely maps to a single TuneDatum(), execpt for None, None which
+        has special handling.
+    pandas_data_frame : object : pandas.DataFrame
+        When data is exported using the method return_pandas_dataframe(), the dataframe is returned but also stored in
+        this attribute. This attribute is None until the return_pandas_dataframe() method is called.
+    tune_data_with_design_data:  object : OperateTuneData
+        When the method map_design_data() is called, we make another instance of this class with only the TuneDatum()
+        objects that were successfully mapped to design data. Since this is an instance of this class, it includes
+        all the same data exporting methods and analysis to answer the question of why was this mapping successful and
+        on what data? The attribute is None until map_design_data() is called.
+    tune_data_without_design_data:  object : OperateTuneData
+        When the method map_design_data() is called, we make another instance of this class with only the TuneDatum()
+        objects that were not-successfully mapped to design data. Since this is an instance of this class, it includes
+        all the same data exporting methods and analysis to answer the question of why was this mapping not-successful
+        and on what data? The attribute is None until map_design_data() is called.
+    tune_data_with_layout_data:  object : OperateTuneData
+        When the method map_layout_data() is called, we make another instance of this class with only the TuneDatum()
+        objects that were successfully mapped to layout data. Since this is an instance of this class, it includes
+        all the same data exporting methods and analysis to answer the question of why was this mapping successful and
+        on what data? The attribute is None until map_layout_data() is called.
+    tune_data_without_layout_data:  object : OperateTuneData
+        When the method map_layout_data() is called, we make another instance of this class with only the TuneDatum()
+        objects that were not-successfully mapped to layout data. Since this is an instance of this class, it includes
+        all the same data exporting methods and analysis to answer the question of why was this mapping not-successful
+        and on what data? The attribute is None until map_layout_data() is called.
+    plot_dir: str
+        The path to where the 'plot' directory is located. This is the directory where plots are saved. This is
+        determined automatically in the __init__() method from the parent directory of tune_path or it tune
+        path is None, it is defined as sodetlib/sodetlib/detmap/plots/.
     """
     design_file_pickle_to_csv_header = [('Band', 'mux_band'), ('Freq-index', 'mux_channel'),
                                         ('Frequency(MHz)', 'freq_mhz'), ('Subband', 'mux_subband'), ('Pad', 'bond_pad')]
@@ -87,20 +173,39 @@ class OperateTuneData:
     layout_attributes = {"bias_line", "pol", "bandpass", "det_row", "det_col", "rhomb", "is_optical",
                          "det_x", "det_y"}
     is_north_iter_order = [True, False, None]
+    allowed_instance_vars = {'design', 'layout'}
 
     def __init__(self, tune_path=None, is_g3timestream=False, design_file_path=None, layout_position_path=None,
                  north_is_highband=None):
-        """Initialization that includes read-in for a few supported file formats of resonator frequencies.
+        """Initialization that includes auto read-in for a few supported file formats of resonator frequencies.
 
         Parameters
         ----------
-        tune_path :
-        is_g3timestream :
-        design_file_path :
-        layout_position_path :
-        north_is_highband :
+        tune_path : object: str, optional
+            Sets the attribute by the same name. The file path for a tunefile or g3stream file, with .npy extension, or
+            for a CSV file that was writing with the write_csv() method. This is specified on initialization, and
+            triggers an automatic data read-in, using the method read_tunefile() or read_csv() depending on the file's
+            extension. None is also an expected value, which does not trigger a data read in.
+        is_g3timestream : bool, optional
+            Sets the attribute by the same name. G3-timestream data has a slightly different format that needs a
+            different read-in process. This bool variable toggles that process in the read_tunefile() method. This is
+            set to False by default. This variable does nothing unless the tune_path value has an extension of .npy.
+        design_file_path : object: str, optional
+            Sets the attribute by the same name. The file path for resonator design data. Design data has a similar data
+            topology to tunefiles, so this class is also use to read-in and operate on resonator design data. When
+            tune_path is None and design_file_path is a path, auto read-in is triggered using the method
+            read_design_file(). None is the default value.
+        layout_position_path : object: str, optional
+            Sets the attribute by the same name. The file path for a CSV file that sets the mapping of uMUX chip
+            position on the focal plane array to the uMUX-band (frequency band for the uMUX resonators design) for each
+            uMUX chip. This can be specified in method map_design_data() method where this data is read-in and applied.
+        north_is_highband : object : str, optional
+            Sets the attribute by the same name. Since 2 SMURF systems must be used to read a single focal plane array,
+            we use this variable to distinguish resonator data on the north side of the and the south side. This is done
+            artificially with in a tunefile by simply adding 2000 MHz to one side and calling it SMuRF band 4-7,
+            the high bands, whereas 0-3 are the low bands. None is also an exceptable input, and is what is required for
+             the design data, which does not participate in the fiction of high and low bands.
         """
-        # read-in path for tune files
         self.tune_path = tune_path
         if self.tune_path is None:
             extension = None
@@ -108,14 +213,10 @@ class OperateTuneData:
             basename = os.path.basename(self.tune_path)
             _prefix, extension = basename.rsplit('.', 1)
             extension = extension.lower()
-        # read-in path for the design files
-        self.design_file_path = design_file_path
-        # read-in path for the layout position csv file, how the mux wafers are layout on a UFM
-        self.layout_position_path = layout_position_path
-        # True is the north side the high band, False if not, None if not applicable or unknown
-        self.north_is_highband = north_is_highband
-        # triggers a different read-in data in to account for a slightly different formant.
         self.is_g3timestream = is_g3timestream
+        self.design_file_path = design_file_path
+        self.layout_position_path = layout_position_path
+        self.north_is_highband = north_is_highband
 
         # we make additional data structures when we have SMuRF shaped data, triggered on data read-in
         self.is_smurf = False
@@ -125,7 +226,7 @@ class OperateTuneData:
         # initial values for variables that are populated in this class's methods.
         self.tune_data = None
         self.tune_data_side_band_res_index = None
-        self.tune_data_smurf_band_res_index = None
+        self.tune_data_smurf_band_channel = None
         self.tune_data_muxpos_bondpad = None
         self.pandas_data_frame = None
         self.tune_data_with_design_data = None
@@ -259,27 +360,27 @@ class OperateTuneData:
                 self.tune_data_side_band_res_index[is_north][smurf_band_this_datum][res_index] = tune_datum
         if self.is_smurf:
             # do a second mapping by smurf channel, used for mapping p-sat data, also from smurf
-            self.tune_data_smurf_band_res_index = {}
+            self.tune_data_smurf_band_channel = {}
             for tune_datum in list(self):
                 smurf_band = tune_datum.smurf_band
                 smurf_channel = tune_datum.smurf_channel
-                if smurf_band not in self.tune_data_smurf_band_res_index.keys():
-                    self.tune_data_smurf_band_res_index[smurf_band] = {}
+                if smurf_band not in self.tune_data_smurf_band_channel.keys():
+                    self.tune_data_smurf_band_channel[smurf_band] = {}
                 if smurf_channel == -1:
-                    if smurf_channel not in self.tune_data_smurf_band_res_index[smurf_band].keys():
-                        self.tune_data_smurf_band_res_index[smurf_band][smurf_channel] = set()
-                    self.tune_data_smurf_band_res_index[smurf_band][smurf_channel].add(tune_datum)
+                    if smurf_channel not in self.tune_data_smurf_band_channel[smurf_band].keys():
+                        self.tune_data_smurf_band_channel[smurf_band][smurf_channel] = set()
+                    self.tune_data_smurf_band_channel[smurf_band][smurf_channel].add(tune_datum)
                 else:
-                    if smurf_channel in self.tune_data_smurf_band_res_index[smurf_band].keys():
+                    if smurf_channel in self.tune_data_smurf_band_channel[smurf_band].keys():
                         # This is happens if there is already TuneDatum for this pair of smurf_band-smurf_channel
-                        existing_tune_datum = self.tune_data_smurf_band_res_index[smurf_band][smurf_channel]
+                        existing_tune_datum = self.tune_data_smurf_band_channel[smurf_band][smurf_channel]
                         raise KeyError(f'Only Unique pairs of smurf_band-smurf_channel are allowed. ' +
                                        f'For smurf_band: {smurf_band} ' +
                                        f'and smurf_channel: {smurf_channel} ' +
                                        f'The existing datum: {existing_tune_datum} ' +
                                        f'uses has the same band-channel data as the new: {tune_datum}')
                     else:
-                        self.tune_data_smurf_band_res_index[smurf_band][smurf_channel] = tune_datum
+                        self.tune_data_smurf_band_channel[smurf_band][smurf_channel] = tune_datum
         if self.imported_design_data:
             # with design data imported we can do a mapping useful for hardware data linking/organization
             self.tune_data_muxpos_bondpad = {}
@@ -303,21 +404,65 @@ class OperateTuneData:
                 else:
                     self.tune_data_muxpos_bondpad[mux_layout_position][bond_pad] = tune_datum
 
-    def update_tunes(self, tune_data_new, var_str, tune_data_with, tune_data_without):
+    def update_tunes(self, tune_data_new: set, var_str: str, tune_data_with: set, tune_data_without: set):
+        """ A base method used by both map_design_data() and map_layout_data() methods.
+
+        This first updates this instance with TuneDatum Objects that have had new metadata added by the
+        map_design_data() and map_layout_data() methods.
+
+        This class then makes two new instances of OperateTuneData one with TuneDatums that had successfully had
+        metadata mapped to them and one that did not use the patterns 'tune_data_with_{var_str}_data' and
+        'tune_data_without_{var_str}_data' respectively. Since these are instances of OperateTuneData(), both instances
+        they have all the same access to data export and analysis tools.
+
+        Parameters
+        ----------
+        tune_data_new : set
+            A set of TuneDatum() objects to reset the attribute of self.tune_data in this class.
+        var_str : str
+            Needed to set the attribute name, must be in str in the class variable
+            OperateTuneData.allowed_instance_vars. This is used to digitising that data's source, i.e. layout or design
+            mappings.
+        tune_data_with : set
+            A set of TuneDatum() objects where mapping *was* successful.
+        tune_data_without : set
+            A set of TuneDatum() objects where mapping *was not* successful.
+        """
         # if everything was successful, assign the combined mapping to this instances self.tune_data
         self.tune_data = tune_data_new
         # do a data organization and validation
         self.tune_data_organization_and_validation()
         # make new instances of this class (within the variables of this class!)
-        # with the data found and the not found data associated with var_str
-        self.__setattr__(f'tune_data_with_{var_str}_data',
-                         self.from_tune_datums(tune_data=tune_data_with, north_is_highband=self.north_is_highband,
-                                               is_smurf=self.is_smurf, imported_design_data=self.imported_design_data))
-        self.__setattr__(f'tune_data_without_{var_str}_data',
-                         self.from_tune_datums(tune_data=tune_data_without, north_is_highband=self.north_is_highband,
-                                               is_smurf=self.is_smurf, imported_design_data=self.imported_design_data))
+        if var_str in self.allowed_instance_vars:
+            # with the data found and the not found data associated with var_str
+            self.__setattr__(f'tune_data_with_{var_str}_data',
+                             from_tune_datums(tune_data=tune_data_with, north_is_highband=self.north_is_highband,
+                                              is_smurf=self.is_smurf, imported_design_data=self.imported_design_data))
+            self.__setattr__(f'tune_data_without_{var_str}_data',
+                             from_tune_datums(tune_data=tune_data_without, north_is_highband=self.north_is_highband,
+                                              is_smurf=self.is_smurf, imported_design_data=self.imported_design_data))
+        else:
+            raise KeyError(f'var_str: {var_str} is not one of the values allowed in ' +
+                           f'OperateTuneData.allowed_instance_vars: {self.allowed_instance_vars}.')
 
-    def from_pandas_dataframe(self, data_frame, is_highband=None, is_north=None):
+    def from_pandas_dataframe(self, data_frame: pandas.DataFrame, is_highband=None, is_north=None):
+        """ Import data into this class from a Pandas.DataFrame() instance.
+
+        Parameters
+        ----------
+        data_frame : pandas.DataFrame
+            https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
+        is_highband : object : bool, optional
+            Bool or None, answers the question 'is this data equivalent to the SMuRF highband?' If you need to import
+            both high and low band data, create two instances of OperateTuneData, one for highband (is_highband=True)
+            and one for lowband (is_highband=False), then combine them using the + operator, see the __add__() method in
+            this class.
+        is_north : object : bool, optional
+            Bool or None, answers the question 'is this data from resonators on the North side of a focal plane array?'
+            If you need to import both is_north=False data and is_north=True data, create two instances of
+            OperateTuneData, one for False and one for True and then combine them using the + operator, see the
+            __add__() method in this class.
+        """
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
         # loop over the data frame. !Never do this for calculations, only for casting as done below!
@@ -332,7 +477,34 @@ class OperateTuneData:
         self.tune_data_organization_and_validation()
 
     def from_peak_array(self, peak_array_mhz, is_north=None, is_highband=None,
-                        shift_mhz=10, smurf_bands=None):
+                        shift_mhz=10.0, smurf_bands=None):
+        """Import data into this class from an iterable of resonator values in MHz.
+
+        Parameters
+        ----------
+        peak_array_mhz : iterable
+            Resonator values in MHz, objects can be anything handled be the sorted function that returns a list of
+            float values in MHz i.e. sorted(peak_array_mhz)
+        is_north : object : bool, optional
+            is_north : object : bool, optional
+            Bool or None, answers the question 'is this data from resonators on the North side of a focal plane array?'
+            If you need to import both is_north=False data and is_north=True data, create two instances of
+            OperateTuneData, one for False and one for True and then combine them using the + operator, see the
+            __add__() method in this class.
+        is_highband : object : bool, optional
+            Bool or None, answers the question 'is this data equivalent to the SMuRF highband?' If you need to import
+            both high and low band data, create two instances of OperateTuneData, one for highband (is_highband=True)
+            and one for lowband (is_highband=False), then combine them using the + operator, see the __add__() method in
+            this class.
+        shift_mhz : float, optional
+            It is known that the measured frequencies of the SMuRF system are shifted compared to VNA measurements by
+            approximately 10.0 MHz. This applies a shift to the VNA data to deliver projection of  the measured VNA
+            frequencies into the reference frame of SMuRF data. The default shift is + 10.0 MHz added to the VNA data.
+        smurf_bands : object : iterable, optional
+            Default of None set the SMuRF bands to be range(8) -> [0, 1, 2, 3, 4, 5, 6, 7]. But if your data
+            is only a subset of the smurf bands -> [4, 5, 6, 7], or a single SMuRF band -> [7] you cna indicate that
+            here.
+        """
         self.tune_data = set()
         _real_band_bounds_mhz, _all_data_band_bounds_mhz, all_data_lower_band_bounds_mhz, \
             _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=shift_mhz, smurf_bands=smurf_bands)
@@ -363,20 +535,14 @@ class OperateTuneData:
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
-    @staticmethod
-    def from_tune_datums(tune_data, north_is_highband, is_smurf, imported_design_data):
-        new_operate_tune_data = OperateTuneData(north_is_highband=north_is_highband)
-        # we make additional data structures when we have SMuRF data
-        new_operate_tune_data.is_smurf = is_smurf
-        # we can make additional data structures when we have the design data imported into measured tunes
-        new_operate_tune_data.imported_design_data = imported_design_data
-        # add in the tune data
-        new_operate_tune_data.tune_data = tune_data
-        # run the data validation and make the data structures
-        new_operate_tune_data.tune_data_organization_and_validation()
-        return new_operate_tune_data
-
     def return_pandas_dataframe(self):
+        """ Get a pandas.DataFrame from the tune_data.
+
+        Returns
+        -------
+        data_frame : pandas.DataFrame
+            https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
+        """
         # make sure the tune data was load before this method was called.
         if self.tune_data_side_band_res_index is None:
             raise IOError(f'No tune data has been loaded.')
@@ -389,6 +555,14 @@ class OperateTuneData:
         return self.pandas_data_frame
 
     def write_csv(self, output_path_csv=None):
+        """ Write a CSV file from the tune_data.
+
+        Parameters
+        ----------
+        output_path_csv : object : str, optional
+            The path string for a CSV file created from the current data state in this instance. None will auto
+            generate an output filename.
+        """
         # if no file name is specified make a new unique output file name
         if output_path_csv is None:
             _last_filename, new_filename = get_filename(filename_func=operate_tune_data_csv_filename,
@@ -405,6 +579,10 @@ class OperateTuneData:
         print(f'Output CSV written at: {output_path_csv}')
 
     def read_csv(self):
+        """ Read a CSV file writen by an instance of this class that called the write_csv() method.
+
+        self.tune_path is set via the __init__() method and this method is called automatically in __init__().
+        """
         if self.tune_path is None:
             last_filename, _new_filename = get_filename(filename_func=operate_tune_data_csv_filename,
                                                         prefix=self.output_prefix)
@@ -419,6 +597,10 @@ class OperateTuneData:
         self.tune_data_organization_and_validation()
 
     def read_tunefile(self):
+        """ Read a .npy file that has tune_data, either a tunefile or g3timestream.
+
+        self.tune_path is set via the __init__() method and this method is called automatically in __init__().
+        """
         self.is_smurf = True
         # initialize the data the variable that stores the data we are reading.
         self.tune_data = set()
@@ -489,6 +671,13 @@ class OperateTuneData:
         self.tune_data_organization_and_validation()
 
     def read_design_file(self):
+        """ Read a design file (pickle, or CSV) that has designed resonator frequency data.
+
+        If available, a CSV file is used. If only a pickle file is available, a human-readable CSV file is created,
+        than that file is read in and used on subsequent read-in calls.
+
+        self.design_file_path is set via the __init__() method and this method is called automatically in __init__().
+        """
         if self.design_file_path is None:
             raise ValueError(f'Design file not specified, i.e. self.design_file_path is None')
         # determine if this is a pickle file from the file's extension
@@ -738,3 +927,41 @@ class OperateTuneData:
             print(f'Plot saved at: {plot_filename}')
         if show_plot:
             plt.show()
+
+
+def from_tune_datums(tune_data, north_is_highband, is_smurf: bool, imported_design_data: bool) -> OperateTuneData:
+    """ Make a new instance of OperateTuneData from an iterable of TuneDatum() objects, usually a set or a list.
+
+    Parameters
+    ----------
+    tune_data
+        The fundamental data interable for OperateTuneData() that contains the TuneDatum() objects.
+    north_is_highband : object : bool
+        Since 2 SMURF systems must be used to read a single focal plane array, we use this variable to distinguish
+        resonator data on the north side of the and the south side.
+    is_smurf : bool
+        We make additional data structures when we have SMuRF shaped data. This attribute determines if additional data
+        structures can be made in the tune_data_organization_and_validation() method. It initializes as False and is
+        made True when SMuRF data is read-in read_tunefile().
+    imported_design_data : bool
+        Once the design data is imported and mapped, we can make additional data structures in the
+        tune_data_organization_and_validation() method. Initialized as False, it is turned to True in the
+        map_design_data() method.
+
+    Returns
+    -------
+    OperateTuneData
+        An instance of the OperateTuneData data class for measurements of resonate frequencies on a single
+        detector focal plane module.
+
+    """
+    new_operate_tune_data = OperateTuneData(north_is_highband=north_is_highband)
+    # we make additional data structures when we have SMuRF data
+    new_operate_tune_data.is_smurf = is_smurf
+    # we can make additional data structures when we have the design data imported into measured tunes
+    new_operate_tune_data.imported_design_data = imported_design_data
+    # add in the tune data
+    new_operate_tune_data.tune_data = set(tune_data)
+    # run the data validation and make the data structures
+    new_operate_tune_data.tune_data_organization_and_validation()
+    return new_operate_tune_data
