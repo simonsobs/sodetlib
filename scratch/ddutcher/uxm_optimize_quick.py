@@ -83,6 +83,9 @@ def uxm_optimize(
         logger.info(f"estimating phase delay")
         try:
             S.estimate_phase_delay(opt_band)
+        except ValueError:
+            # Intended to catch ADC saturation but not PV timeout
+            raise
         except Exception:
             logger.warning("Estimate phase delay failed due to PV timeout.")
         logger.info(f"setting synthesis scale")

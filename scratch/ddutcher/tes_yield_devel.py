@@ -7,22 +7,20 @@ Display quality in biasability, 50% RN target V bias, Psat and Rn.
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import pysmurf.client
 import argparse
 import numpy as np
 import os
 import time
 import glob
-from sodetlib.det_config  import DetConfig
-import numpy as np
-from scipy.interpolate import interp1d
-import argparse
-import time
 import csv
+import pysmurf.client
+from sodetlib.det_config  import DetConfig
 from sodetlib.smurf_funcs import det_ops
 from sodetlib.analysis import det_analysis
 from pysmurf.client.util.pub import set_action
+import logging
 
+logger = logging.getLogger(__name__)
 
 def tickle_and_iv(
         S, target_bg, bias_high, bias_low, bias_step, bath_temp, start_time, current_mode
@@ -31,7 +29,7 @@ def tickle_and_iv(
     target_bg = np.array(target_bg)
     save_name = '{}_tes_yield.csv'.format(start_time)
     tes_yield_data = os.path.join(S.output_dir, save_name)
-    print(f'Saving data to {tes_yield_data}')
+    logger.info(f'Saving data to {tes_yield_data}')
     out_fn = os.path.join(S.output_dir, tes_yield_data) 
 
     fieldnames = ['bath_temp', 'bias_line', 'band', 'data_path','notes']
@@ -39,7 +37,7 @@ def tickle_and_iv(
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-    print(f'Taking tickle on bias line all band')
+    logger.info(f'Taking tickle on bias line all band')
 
     if current_mode.lower() in ['high, hi']:
         high_current_mode = True
@@ -70,7 +68,7 @@ def tickle_and_iv(
         row['bias_line'] = bg
         row['band'] = 'all'
 
-        print(f'Taking IV on bias line {bg}, all smurf bands.')
+        logger.info(f'Taking IV on bias line {bg}, all smurf bands.')
 
         iv_data = det_ops.take_iv(
             S, cfg,
@@ -196,7 +194,7 @@ def tes_yield(S, target_bg, out_fn, start_time):
         )
 
     save_name = os.path.join(S.plot_dir, f'{start_time}_IV_yield.png')
-    print(f'Saving plot to {save_name}')
+    logger.info(f'Saving plot to {save_name}')
     plt.savefig(save_name)
 
     S.pub.register_file(save_name, "tes_yield", plot=True)
@@ -227,7 +225,7 @@ def tes_yield(S, target_bg, out_fn, start_time):
         axs[bl//2,bl%2*2+1].set_title('bl {}, median Rn {:.4f} Ohm'.format(bl,np.median(Rn)))
 
     save_name = os.path.join(S.plot_dir, f'{start_time}_IV_psat.png')
-    print(f'Saving plot to {save_name}')
+    logger.info(f'Saving plot to {save_name}')
     plt.savefig(save_name)
 
     S.pub.register_file(save_name, "tes_yield", plot=True)
@@ -242,7 +240,7 @@ def run(S, cfg, bias_high=20, bias_low=0, bias_step=0.025, bath_temp=100, curren
     out_fn = tickle_and_iv(
         S, target_bg, bias_high, bias_low, bias_step, bath_temp, start_time, current_mode)
     target_vbias = tes_yield(S, target_bg, out_fn, start_time)
-    print(f'Saving data to {out_fn}')
+    logger.info(f'Saving data to {out_fn}')
     return target_vbias
 
 
@@ -256,10 +254,25 @@ if __name__ == "__main__":
     parser.add_argument('--bias-low', type=float, default=0)
     parser.add_argument('--bias-step', type=float, default=0.025)
     parser.add_argument('--current-mode', type=str, default='low')
+    parser.add_argument(
+        "--loglevel",
+        type=str.upper,
+        default=None,
+        choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'],
+        help="Set the log level for printed messages. The default is pulled from "
+        +"$LOGLEVEL, defaulting to INFO if not set.",
+    )
 
     cfg = DetConfig()
     args = cfg.parse_args(parser)
-    S = cfg.get_smurf_control()
+    if args.loglevel is None:
+        args.loglevel = os.environ.get("LOGLEVEL","INFO")
+    numeric_level = getattr(logging, args.loglevel)
+    logging.basicConfig(
+        format="%(levelname)s: %(funcName)s: %(message)s", level=numeric_level
+    )
+
+    S = cfg.get_smurf_control(make_logfile=(numeric_level != 10))
 
     S.load_tune(cfg.dev.exp['tunefile'])
 
