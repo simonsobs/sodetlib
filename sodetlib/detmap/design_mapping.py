@@ -221,6 +221,10 @@ def find_nearest(array, value):
     return array[find_nearest_index(array=array, value=value)]
 
 
+def find_nearest_design_for_measured(design, measured):
+    return np.array(find_nearest(array=design, value=meas) for meas in measured)
+
+
 def nearest_diff(freq_array_smurf, freq_array_design):
     nearest_diff_values = np.fabs([find_nearest(array=freq_array_design, value=freq_smurf) - freq_smurf
                                    for freq_smurf in freq_array_smurf])
@@ -244,6 +248,52 @@ def make_opt_func(freq_array_smurf, freq_array_design):
         sum_scaler = goal(freq_array_smurf=shifted_smurf, freq_array_design=freq_array_design)
         return sum_scaler
     return opt_func
+
+
+def heal_mapping_right(design, measured):
+    if len(measured) >= len(design):
+        # There are more (or exactly equal number of) measured frequencies then available design frequencies
+        design_to_measured_one_to_one = {des: meas for des, meas in zip(design, measured)}
+        # if len(measured) == len(design) then this is an empty list
+        measured_overrun = list(measured[len(design):])
+        design_unmapped = []
+    else:
+        # There are less measured frequencies than available design frequencies, so some design frequencies are skipped.
+        number_of_skips_available = len(design) - len(measured)
+        # This is the mapping that would allow each meas to the closest design, but this is not one-to-one
+        nearest_design_for_each_measured = find_nearest_design_for_measured(design=design, measured=measured)
+        # pair each measured values with the nearest design value
+        measured_to_nearest_design = [(meas, nearest_des) for meas, nearest_des in
+                                      zip(measured, nearest_design_for_each_measured)]
+        # initialize the data variables
+        design_index_delta = 0
+        design_to_measured_one_to_one = {}
+        design_unmapped = []
+        for meas_counter, (meas, nearest_des) in list(enumerate(measured_to_nearest_design)):
+            design_to_possibly_skip = design = design[meas_counter + design_index_delta]
+
+            if design_to_possibly_skip < nearest_des and number_of_skips_available != design_index_delta:
+                # a skip is only allowed if the nearest_des is bigger then the design_to_possibly_skip
+                # and the skips wer not already used.
+                design_index_delta += 1
+                design_unmapped.append(design_to_possibly_skip)
+            else:
+                design_to_measured_one_to_one[design_to_possibly_skip] = meas
+        measured_overrun = []
+    return design_to_measured_one_to_one, measured_overrun, design_unmapped
+
+
+def heal_mapping_left(design, measured):
+    design_right_transform = np.flip(design) * -1.0
+    measured_right_transform = np.flip(measured) * -1.0
+    design_to_measured_one_to_one_right_transform, measured_overrun_right_transform, design_unmapped_right_transform = \
+        heal_mapping_right(design=design_right_transform, measured=measured_right_transform)
+    design_to_measured_one_to_one = {design_right_key * -1.0:
+                                         design_to_measured_one_to_one_right_transform[design_right_key] * -1.0
+                                     for design_right_key in design_to_measured_one_to_one_right_transform.keys()}
+    measured_overrun = [meas * -1.0 for meas in reversed(measured_overrun_right_transform)]
+    design_unmapped = [des * -1.0 for des in reversed(design_unmapped_right_transform)]
+    return design_to_measured_one_to_one, measured_overrun, design_unmapped
 
 
 def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
@@ -364,7 +414,7 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
 
             design_indexes_unmapped = design_indexes_available_left - set(mapping_per_index_counter.keys())
             freq_to_design_indexes_one_to_one = {design_index for design_index in mapping_per_index_counter.keys()
-                                         if mapping_per_index_counter[design_index] == 1}
+                                                 if mapping_per_index_counter[design_index] == 1}
             design_indexes_one_multi = {design_index for design_index in mapping_per_index_counter.keys()
                                         if mapping_per_index_counter[design_index] != 1}
 

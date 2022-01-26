@@ -19,9 +19,9 @@ abs_path_metadata_files_default = os.path.join(abs_path_detmap, 'meta')
 # where the sample data dir is located on the local machine
 abs_path_sample_data_default = os.path.join(abs_path_detmap, 'sample_data')
 # keys that that hold filename data for a given configuration.
-possible_file_names_in_config = {'tunefile', 'cold_ramp_file', 'output_filename_smurf',
+possible_file_names_in_config = {'tunefile', 'timestream', 'cold_ramp_file', 'output_filename_smurf',
                                  'path_north_side_vna', 'path_south_side_vna',
-                                 'tune_data_vna_output_filename', 'output_filename_vna'}
+                                 'tune_data_vna_output_filename', 'output_filename_vna', 'output_filename_g3'}
 
 metadata_waferfile_default = "copper_map_corrected.csv"
 metadata_designfile_default = "umux_32_map.pkl"
@@ -70,3 +70,7 @@ def get_config(config_ymal_path=os.path.join(abs_path_detmap, 'example', 'exampl
         config[key] = var_name
 
     return config
+
+
+if __name__ == '__main__':
+    config = get_config()

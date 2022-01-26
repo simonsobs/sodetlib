@@ -130,7 +130,8 @@ def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferf
 
 
 def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: OperateTuneData, layout_data: dict,
-                                output_path_csv, do_csv_output=True) -> OperateTuneData:
+                                output_path_csv, do_csv_output=True,
+                                mapping_strategy='map_by_res_index') -> OperateTuneData:
     """General process for and instance of OperateTuneData (tune_data) with metadata (design_data, layout_data).
 
     Writes a CSV file with combined tune and metadata, and returns an instance of OperateTuneData that is fully
@@ -156,6 +157,21 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
         A string for the and output path for a CSV file with combined tune and metadata
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    mapping_strategy : object: string, int, float, optional
+        A variable used to select the strategy for mapping measured resonator frequency data to designed frequencies.
+        This is mapping is not a one-to-one process and can be done in a number of ways.
+        Strategies that require no additional metadata include:
+        Mapping by resonator index, select with: mapping_strategy in {0, '0', 0.0, 'map_by_res_index'}
+            This is the lowest computation effort mapping strategy that maps that simple maps resonators to design
+            frequencies in the order in which they were measurer within each SMuRF band.
+        Mapping by Frequency, select with: mapping_strategy in {1, 1.0, '1', 'map_by_freq'}
+            This storage occurs on several levels of frequency corrections. The first is a linear (mx + b) remapping
+            of measured frequencies across the whole range of designed frequencies. Minimizing the frequency distance
+            between measured and design frequencies for 4 SMuRF bands. This process is then repeated with a second
+            remapping of measured freelance but, no only considering a single smurf band. The final per-SMuRF band
+            process is a healing stage to create a 1-1 mapping of measured to design resonators where measured
+            resonators mapping to the same design resonator are moved to a nearest neighbor pushing the other mapped
+            resonators to fill in the gaps where designed resonators previously did not have measured counterparts.
 
     Returns
     -------
@@ -166,7 +182,7 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
     """
     # update the tune_data collections to include design data.
     if design_data is not None:
-        tune_data.map_design_data(design_data=design_data, mapping_strategy='map_by_res_index')  # 'map_by_freq')
+        tune_data.map_design_data(design_data=design_data, mapping_strategy=mapping_strategy)
         # update the tune data to include the layout data.
         if layout_data is not None:
             tune_data.map_layout_data(layout_data=layout_data)
@@ -178,7 +194,8 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
 
 def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_default_path,
                    waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
-                   dark_bias_lines=None, output_path_csv=None, do_csv_output=True) -> OperateTuneData:
+                   dark_bias_lines=None, output_path_csv=None, do_csv_output=True,
+                   mapping_strategy='map_by_res_index') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is full populated with metadata.
 
     Parameters
@@ -209,6 +226,8 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    mapping_strategy : object: string, int, float, optional
+        See the docstring in the function add_metadata_and_get_output().
 
     Returns
     -------
@@ -236,7 +255,8 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
     tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband,
                                       layout_position_path=layout_position_path)
     return add_metadata_and_get_output(tune_data=tune_data_smurf, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       mapping_strategy=mapping_strategy)
 
 
 def make_map_vna(tune_data_vna_output_filename,
@@ -245,7 +265,7 @@ def make_map_vna(tune_data_vna_output_filename,
                  shift_mhz=10.0,
                  design_file=designfile_default_path, waferfile=waferfile_default_path,
                  layout_position_path=mux_pos_to_mux_band_file_default_path, dark_bias_lines=None,
-                 output_path_csv=None, do_csv_output=True) -> OperateTuneData:
+                 output_path_csv=None, do_csv_output=True, mapping_strategy='map_by_res_index') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a pair of arrays of frequency data from a VNA.
 
         Two array of frequency data (north and south sides of an array) are allowed as input for a single detector focal
@@ -298,6 +318,8 @@ def make_map_vna(tune_data_vna_output_filename,
         sodetlib/sodetlib/detmap/detmap_config.py.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    mapping_strategy : object: string, int, float, optional
+        See the docstring in the function add_metadata_and_get_output().
 
     Returns
     -------
@@ -343,12 +365,14 @@ def make_map_vna(tune_data_vna_output_filename,
                                     layout_position_path=layout_position_path)
 
     return add_metadata_and_get_output(tune_data=tune_data_vna, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       mapping_strategy=mapping_strategy)
 
 
 def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=designfile_default_path,
                            waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
-                           dark_bias_lines=None, output_path_csv=None, do_csv_output=True) -> OperateTuneData:
+                           dark_bias_lines=None, output_path_csv=None, do_csv_output=True,
+                           mapping_strategy='map_by_res_index') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is full populated with metadata.
 
     Parameters
@@ -379,6 +403,8 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    mapping_strategy : object: string, int, float, optional
+        See the docstring in the function add_metadata_and_get_output().
 
     Returns
     -------
@@ -404,7 +430,8 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
                                      north_is_highband=north_is_highband,
                                      layout_position_path=layout_position_path)
     return add_metadata_and_get_output(tune_data=tune_data_g3ts, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output)
+                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       mapping_strategy=mapping_strategy)
 
 
 def psat_map(tune_data: OperateTuneData, cold_ramp_file, temp_k=9.0, show_plot=False, save_plot=True):

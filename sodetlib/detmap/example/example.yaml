@@ -1,3 +1,4 @@
+# # # General options that apply to all measured data input types
 # use None for no highband, True for North as the highband, False for South as the highband
 north_is_highband: False
 # SMuRF bands
@@ -20,14 +21,10 @@ dark_bias_lines:
     - 9
     - 10
     - 11
-
-# # SMuRF input parameters
 # data directory of the tune ile, coldramp file, and psat IV-data
 data_dir: None
-# the tune filename
-tunefile: 1632247315_tune.npy
-# output smurf data filename
-output_filename_smurf: smurf_pixel_freq_mapping.csv
+# the strategy to mapp measured frequencies to design frequencies
+mapping_strategy: map_by_res_index
 
 # # psat (saturation power measurements) input parameters
 # cold ramp bath temperature sweep filename - Will be deprecated soon
@@ -38,7 +35,15 @@ psat_temp_k: 9.0
 psat_show_plot: False
 psat_save_plot: True
 
-# # vna data
+# # SMuRF parameters - measured data input
+# the tune filename
+tunefile: 1632247315_tune.npy
+# output smurf data filename
+output_filename_smurf: smurf_pixel_freq_mapping.csv
+# the mapping strategy to use
+mapping_strategy: map_by_res_index
+
+# # vna data - measured data input
 # in MHz, applies a shift to the VNA data when determining the smurf band and resonator index
 vna_shift_mhz: 10.0
 path_north_side_vna: north_side_vna_farray.csv
@@ -47,3 +52,9 @@ path_south_side_vna: south_side_vna_farray.csv
 tune_data_vna_output_filename: tune_data_vna.csv
 # output vna data filename
 output_filename_vna: test_pixel_info_vna.csv
+
+# # g3timestream data - measured data input
+# the filename
+timestream: freq_map.npy
+# output smurf data filename
+output_filename_g3: g3_pixel_freq_mapping.csv
