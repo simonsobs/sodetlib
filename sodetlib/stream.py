@@ -9,10 +9,28 @@ except:
     set_action = lambda : (lambda f : f)
 
 
-def get_session_files(cfg, session_id, idx=None, stream_id=None):
-    base_dir = cfg.sys['g3_dir']
-    if stream_id is None:
-        stream_id = cfg.sys['slots'][f'SLOT[{cfg.slot}]']['stream_id']
+def get_session_files(stream_id, session_id, idx=None,
+                      base_dir='/data/so/timestreams'):
+    """
+    Gets a list of all files on the system corresponding to a given streaming
+    session.
+
+    Args
+    ----
+    stream_id : str
+        stream_id for the stream you wish to load. Often this will be in
+        cfg.stream_id
+    session_id : int
+        Session id corresonding with the stream session you wish to load.
+        This is what is returned by the stream-taking functions.
+    idx : int, list(int), optional
+        Index of file you wish to load. Long streams are chunked into 10-minute
+        files, and this parameter can used to isolate a smaller part of a long
+        stream.
+    base_dir : str
+        Base directory where timestreams are stored. Defaults to
+        /data/so/timestreams.
+    """
     subdir = os.path.join(base_dir, str(session_id)[:5], stream_id)
     files = sorted([
         os.path.join(subdir, f) for f in os.listdir(subdir)
@@ -26,20 +44,57 @@ def get_session_files(cfg, session_id, idx=None, stream_id=None):
     else:  # list of indexes
         return [files[i] for i in idx]
 
-
-def load_session(cfg, session_id, idx=None, stream_id=None, show_pb=False):
+def load_session_status(stream_id, session_id, base_dir='/data/so/timestreams'):
     """
-    Loads a stream-session into an axis manager.
+    Gets SmurfStatus object for a given stream.
 
     Args
     ----
-    cfg : DetConfig object
-        DetConfig object
-    session_id: int
-        Session id corresonding with the stream session you wish to load
-    idx: int, list(int), optional
+    stream_id : str
+        stream_id for the stream you wish to load. Often this will be in
+        cfg.stream_id
+    session_id : int
+        Session id corresonding with the stream session you wish to load.
+        This is what is returned by the stream-taking functions.
+    base_dir : str
+        Base directory where timestreams are stored. Defaults to
+        /data/so/timestreams.
     """
-    files = get_session_files(cfg, session_id, idx, stream_id=stream_id)
+    files = get_session_files(stream_id, session_id, base_dir=base_dir)
+    if len(files) == 0:
+        raise FileNotFoundError(
+            f"Could not find files for {(stream_id, session_id)}"
+        )
+    return load_smurf.SmurfStatus.from_file(files[0])
+
+
+def load_session(stream_id, session_id, idx=None,
+                 base_dir='/data/so/timestreams', show_pb=False):
+    """
+    Loads a stream-session into an axis manager.
+ 
+    Args
+    ----
+    stream_id : str
+        stream_id for the stream you wish to load. Often this will be in
+        cfg.stream_id
+    session_id : int
+        Session id corresonding with the stream session you wish to load.
+        This is what is returned by the stream-taking functions.
+    idx : int, list(int), optional
+        Index of file you wish to load. Long streams are chunked into 10-minute
+        files, and this parameter can used to isolate a smaller part of a long
+        stream.
+    base_dir : str
+        Base directory where timestreams are stored. Defaults to
+        /data/so/timestreams.
+    """
+    files = get_session_files(stream_id, session_id, idx=idx,
+                              base_dir=base_dir)
+    if len(files) == 0:
+        raise FileNotFoundError(
+            f"Could not find files for {(stream_id, session_id)}"
+        )
     return load_smurf.load_file(files, show_pb=show_pb)
 
 
@@ -68,7 +123,7 @@ def take_g3_data(S, dur, **stream_kw):
 
 @set_action()
 def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
-                 channel_mask=None, filter_wait_time=2):
+                 channel_mask=None, filter_wait_time=2, make_datfile=False):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -95,7 +150,7 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     reg.stream_tag.set(tag)
 
     S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
-                     filter_wait_time=filter_wait_time)
+                     filter_wait_time=filter_wait_time, make_datafile=make_datfile)
 
     if emulator:
         reg.source_enable.set(1)

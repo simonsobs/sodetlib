@@ -15,6 +15,7 @@ Contents
    module_overview
    smurf_funcs
    analysis
+   stream
 
 .. toctree::
    :caption: Sodetlib Operations

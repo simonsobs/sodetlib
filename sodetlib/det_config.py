@@ -381,6 +381,8 @@ class DetConfig:
             )
 
         slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
+        self.stream_id = slot_cfg['stream_id']
+
         if dev_file is None:
             self.dev_file = os.path.abspath(os.path.expandvars(slot_cfg['device_config']))
         else:
@@ -538,9 +540,7 @@ class DetConfig:
         if epics_root is None:
             epics_root = f'smurf_server_s{self.slot}'
         if smurfpub_id is None:
-            smurfpub_id = slot_cfg.get(
-                'stream_id', f'crate{self.sys["crate_id"]}slot{self.slot}'
-            )
+            smurfpub_id = self.stream_id
         if dump_configs is None:
             dump_configs = self.dump
 
