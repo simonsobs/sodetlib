@@ -1,6 +1,8 @@
 import numpy as np
 import time
 from scipy.interpolate import interp1d
+from sotodlib.core import AxisManager, LabelAxis, IndexAxis
+
 
 class IVAnalysis:
     def __init__(self, S=None, cfg=None, run_kwargs=None, sid=None,
@@ -15,39 +17,47 @@ class IVAnalysis:
         if self._S is not None:
             # Initialization stuff on initial creation with a smurf instance
             self.meta = get_metadata(S, cfg)
-
             self.biases_cmd = np.sort(self.run_kwargs['biases'])
             self.nbiases = len(self.biases_cmd)
             self.bias_groups = self.run_kwargs['bias_groups']
 
-            self.am = self._load_am()
-            self.bands = self.am.ch_info.band
-            self.channels = self.am.ch_info.channel
-            self.nchans = len(self.am.signal)
+            tod = self._load_am()
+            self.nchans = len(tod.signal)
+
+            res = AxisManager(
+                LabelAxis('dets', [f"b{b}_c{c}" for b, c in
+                                  zip(tod.ch_info.band, tod.ch_info.channel)]),
+                IndexAxis('bins', self.nbiases)
+            )
+
+            res.wrap('band', tod.ch_info.band, [(0, 'dets')])
+            res.wrap('channel', tod.ch_info.channel, [(0, 'dets')])
+            apply_bgmap(res, self.meta['bgmap_file'])
+            for key in ['resp', 'R', 'p_tes', 'v_tes', 'i_tes',]:
+                res.wrap_new(key, shape=('dets', 'bins'),
+                             cls=np.full, fill_value=np.nan, dtype=np.float32)
+            for key in ['R_n', 'R_L', 'p_sat', 'si']:
+                res.wrap_new(key, shape='dets',
+                             cls=np.full, fill_value=np.nan, dtype=np.float32)
+            for key in ['bg', 'polarity']:
+                res.wrap_new(key, 'dets',
+                             cls=np.full, fill_value=np.nan, dtype=int)
+            for key in ['v_bias', 'i_bias', 'start_times', 'stop_times']:
+                res.wrap_new(key, 'bins',
+                             cls=np.full, fill_value=np.nan, dtype=int)
+
+
 
             bgmap_full = np.load(self.meta['bgmap_file'],
                                  allow_pickle=True).item()
             # Load bgmap and polarities for active detectors
             idxs = map_band_chans(
-                self.bands, self.channels,
+                res.bands, res.channels,
                 bgmap_full['bands'], bgmap_full['channels']
             )
-            self.polarity = bgmap_full['polarity'][idxs]
-            self.bgmap = bgmap_full['bgmap'][idxs]
-            self.bgmap[idxs == -1] = -1
-
-            # Analysis product arrays
-            self.resp = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_bias = np.full(self.nbiases, np.nan)
-            self.R = np.full((self.nchans, self.nbiases), np.nan)
-            self.R_n = np.full((self.nchans,), np.nan)
-            self.R_L = np.full((self.nchans,), np.nan)
-            self.idxs = np.full((self.nchans, 3), np.nan)
-            self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.p_sat = np.full((self.nchans), np.nan)
-            self.si = np.full((self.nchans,), np.nan)
+            res.polarity[:] = bgmap_full['polarity'][idxs]
+            res.bg[:] = bgmap_full['bgmap'][idxs]
+            res.bg[idxs == -1] = -1
 
     def save(self, path=None, update_cfg=False):
         saved_fields = [
@@ -310,8 +320,6 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
         iva.run_analysis(save=True, **analysis_kwargs)
 
     return iva
-
-
 
 
 
