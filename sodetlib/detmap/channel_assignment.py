@@ -239,9 +239,6 @@ class OperateTuneData:
             self.plot_dir = os.path.join(os.path.dirname(abs_path_detmap), 'plots')
         else:
             self.plot_dir = os.path.join(os.path.dirname(self.tune_path), 'plots')
-        # make the plot directory if it does not exist
-        if not os.path.exists(self.plot_dir):
-            os.mkdir(self.plot_dir)
 
         # auto read in known file types
         if tune_path is not None:
@@ -811,6 +808,9 @@ class OperateTuneData:
 
     def plot_with_psat(self, psat_by_temp, bandpass_target, temp_k, psat_min=0.0, psat_max=6.0e-12,
                        show_plot=False, save_plot=False):
+        # make the plot directory if it does not exist
+        if not os.path.exists(self.plot_dir):
+            os.mkdir(self.plot_dir)
         # # Plot layout initialization
         # colorbar across the bottom, key/legend on the top, A B and D polarization maps across the middle
         left = 0.05

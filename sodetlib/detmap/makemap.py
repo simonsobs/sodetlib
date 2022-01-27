@@ -226,7 +226,7 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
-    mapping_strategy : object: string, int, float, optional
+    mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
     Returns
@@ -318,7 +318,7 @@ def make_map_vna(tune_data_vna_output_filename,
         sodetlib/sodetlib/detmap/detmap_config.py.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
-    mapping_strategy : object: string, int, float, optional
+    mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
     Returns
@@ -403,7 +403,7 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
-    mapping_strategy : object: string, int, float, optional
+    mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
     Returns

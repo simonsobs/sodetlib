@@ -1,6 +1,8 @@
 import os
+from bisect import bisect
 from operator import attrgetter
-from itertools import zip_longest
+
+from random import randint
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -70,6 +72,26 @@ def design_pickle_to_csv(design_file_path, design_filename_csv,
             f.write(f'{row_str[:-1]}\n')
 
 
+def add_design_data(meas_datum, des_datum, design_attributes, is_north, mux_band_to_mux_pos_dict):
+    # we can extract specific parameters from the design_datum and build a dictionary
+    design_dict = {design_key: des_datum.__getattribute__(design_key)
+                   for design_key in design_attributes}
+    # set the mux_layout_position is available
+    if mux_band_to_mux_pos_dict is not None:
+        mux_band = design_dict['mux_band']
+        if mux_band in mux_band_to_mux_pos_dict[is_north].keys():
+            design_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[is_north][mux_band]
+    # move the design frequency to the appropriate attribute
+    design_dict['design_freq_mhz'] = des_datum.freq_mhz
+    # get a mutable dictionary for the tune datum
+    tune_dict = meas_datum.dict()
+    # update the tune dict with the design parameters
+    tune_dict.update(design_dict)
+    # reassign these key-value pairs to the immutable TuneDatum
+    tune_datum_with_design_data = TuneDatum(**tune_dict)
+    return tune_datum_with_design_data
+
+
 def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_pos_dict):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
@@ -95,22 +117,10 @@ def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_
         if design_band in design_tune_data_by_band_channel.keys() and \
                 res_index in design_tune_data_by_band_channel[design_band].keys():
             design_datum = design_tune_data_by_band_channel[design_band][res_index]
-            # we can extract specific parameters from the design_datum and build a dictionary
-            design_dict = {design_key: design_datum.__getattribute__(design_key)
-                           for design_key in design_attributes}
-            # set the mux_layout_position is available
-            if mux_band_to_mux_pos_dict is not None:
-                mux_band = design_dict['mux_band']
-                if mux_band in mux_band_to_mux_pos_dict[is_north].keys():
-                    design_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[is_north][mux_band]
-            # move the design frequency to the appropriate attribute
-            design_dict['design_freq_mhz'] = design_datum.freq_mhz
-            # get a mutable dictionary for the tune datum
-            tune_dict = tune_datum.dict()
-            # update the tune dict with the design parameters
-            tune_dict.update(design_dict)
-            # reassign these key-value pairs to the immutable TuneDatum
-            tune_datum_with_design_data = TuneDatum(**tune_dict)
+            tune_datum_with_design_data = add_design_data(meas_datum=tune_datum, des_datum=design_datum,
+                                                          design_attributes=design_attributes,
+                                                          is_north=is_north,
+                                                          mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
             # add this to the new data set
             tune_data_new.add(tune_datum_with_design_data)
             # track which datums have designs info
@@ -162,7 +172,7 @@ def f_array_and_tune_dict(tune_data_dict):
                                            key=attrgetter('freq_mhz'))
     freq_array = np.array([tune_datum.freq_mhz for tune_datum in tune_data_this_band_f_ordered])
     freq_to_datums = {freq_mhz: tune_datum for freq_mhz, tune_datum
-                               in zip(freq_array, tune_data_this_band_f_ordered)}
+                      in zip(freq_array, tune_data_this_band_f_ordered)}
     return freq_array, freq_to_datums
 
 
@@ -222,7 +232,8 @@ def find_nearest(array, value):
 
 
 def find_nearest_design_for_measured(design, measured):
-    return np.array(find_nearest(array=design, value=meas) for meas in measured)
+    nearest_design_for_measured = [find_nearest(array=design, value=meas) for meas in measured]
+    return np.array(nearest_design_for_measured)
 
 
 def nearest_diff(freq_array_smurf, freq_array_design):
@@ -250,7 +261,9 @@ def make_opt_func(freq_array_smurf, freq_array_design):
     return opt_func
 
 
-def heal_mapping_right(design, measured):
+def pigeon_mapping_right(design, measured):
+    # Two cases, an application of the pigeonhole principle
+    # We only allow One measured resonator (pigeon) per designed resonator (a pigeonhole)
     if len(measured) >= len(design):
         # There are more (or exactly equal number of) measured frequencies then available design frequencies
         design_to_measured_one_to_one = {des: meas for des, meas in zip(design, measured)}
@@ -269,25 +282,29 @@ def heal_mapping_right(design, measured):
         design_index_delta = 0
         design_to_measured_one_to_one = {}
         design_unmapped = []
+        # loop of the design frequencies, must map each measured.
         for meas_counter, (meas, nearest_des) in list(enumerate(measured_to_nearest_design)):
-            design_to_possibly_skip = design = design[meas_counter + design_index_delta]
-
-            if design_to_possibly_skip < nearest_des and number_of_skips_available != design_index_delta:
-                # a skip is only allowed if the nearest_des is bigger then the design_to_possibly_skip
-                # and the skips wer not already used.
-                design_index_delta += 1
-                design_unmapped.append(design_to_possibly_skip)
-            else:
-                design_to_measured_one_to_one[design_to_possibly_skip] = meas
+            design_to_possibly_skip = design[meas_counter + design_index_delta]
+            # if skips are available, see if this design frequency should be skipped and make a better assignment
+            while number_of_skips_available != design_index_delta:
+                if design_to_possibly_skip < nearest_des:
+                    # a skip is allowed if design_to_possibly_skip is less than the nearest_des for this meas
+                    design_unmapped.append(design_to_possibly_skip)
+                    design_index_delta += 1
+                    design_to_possibly_skip = design[meas_counter + design_index_delta]
+                else:
+                    # if design_to_possibly_skip is equal to (or greater than) nearest_des, exit and assign
+                    break
+            design_to_measured_one_to_one[design_to_possibly_skip] = meas
         measured_overrun = []
     return design_to_measured_one_to_one, measured_overrun, design_unmapped
 
 
-def heal_mapping_left(design, measured):
+def pigeon_mapping_left(design, measured):
     design_right_transform = np.flip(design) * -1.0
     measured_right_transform = np.flip(measured) * -1.0
     design_to_measured_one_to_one_right_transform, measured_overrun_right_transform, design_unmapped_right_transform = \
-        heal_mapping_right(design=design_right_transform, measured=measured_right_transform)
+        pigeon_mapping_right(design=design_right_transform, measured=measured_right_transform)
     design_to_measured_one_to_one = {design_right_key * -1.0:
                                          design_to_measured_one_to_one_right_transform[design_right_key] * -1.0
                                      for design_right_key in design_to_measured_one_to_one_right_transform.keys()}
@@ -297,7 +314,8 @@ def heal_mapping_left(design, measured):
 
 
 def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
-                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False):
+                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False,
+                design_random_remove=False):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
     # track TuneDatums that are mapped to a design record
@@ -310,6 +328,10 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
         smurf_band_res_index_to_freq(tune_data_band_index=design_tune_data_band_res_index)
     # loop over both sides of the UFM
     for is_north in tune_data_side_band_res_index.keys():
+        """
+        For entire Readout chain (all High or all Low SMuRF bands) and
+        Shift the measured frequencies to be closer to the design frequencies.
+        """
         # only consider the tune data this side of the UFM
         tune_data_this_side = tune_data_side_band_res_index[is_north]
         # get the tunes as a frequency array, and a dictionary with freq_mhz as a key to the tune_datums
@@ -336,6 +358,10 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
         # With the resonators remapped to fit the design frequencies, now we will apply a mapping strategy
         # independently for each smurf band.
         for smurf_band in sorted(tune_data_this_side.keys()):
+            """
+            For a single smurf band and
+            Shift the measured frequencies to be closer to the design frequencies.
+            """
             tune_data_this_band = tune_data_this_side[smurf_band]
             # get the tune_datums ordered by frequency, built as a generator statement for speed, not clarity
             tune_data_this_band_f_ordered = sorted([tune_datum for tune_datum
@@ -350,197 +376,164 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
             shifted_to_tune_datums = {freq_shifted: tune_datum for freq_shifted, tune_datum
                                       in zip(freq_array_smurf_shifted, tune_data_this_band_f_ordered)}
             # get the design and look up dict
-            freq_array_design, design_to_design_datums = \
+            freq_array_design_this_band, design_to_design_datums = \
                 f_array_and_tune_dict(tune_data_dict=design_tune_data_band_res_index[smurf_band])
+            # a test to force there to be over-mapped design frequencies
+            if design_random_remove:
+                print('Random missing design frequencies test - to generate over populated measurements arrays')
+                # randomly remove some design data for a test
+                freq_array_design_this_band_list = list(freq_array_design_this_band)
+                for remove_loop_index in range(2):
+                    freq_array_design_this_band_list.pop(randint(a=0, b=len(freq_array_design_this_band_list) - 1))
+
+                freq_array_design_this_band = np.array(freq_array_design_this_band_list)
+                print('Random missing design frequencies test - to generate over populated measurements arrays')
 
             if show_plots:
-                freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design,
+                freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design_this_band,
                               freq_array_smurf_shifted=freq_array_smurf_shifted)
+            """
+            Trim the outlier data of a single smurf band and 
+            Shift the measured frequencies to be closer to the design frequencies.
+            """
             # trim any outliers
             nearest_diff_values = nearest_diff(freq_array_smurf=freq_array_smurf_shifted,
-                                               freq_array_design=freq_array_design)
+                                               freq_array_design=freq_array_design_this_band)
             trimmed_tune_datums = {shifted_freq_mhz: shifted_to_tune_datums[shifted_freq_mhz]
                                    for shifted_freq_mhz, nearest_value_mhz
                                    in zip(freq_array_smurf_shifted, nearest_diff_values)
                                    if nearest_value_mhz < trim_at_mhz}
+
             # reset to the original frequencies use the trimmed data set
             freq_array_trimmed, trimmed_to_tune_datum = \
                 f_array_and_tune_dict(tune_data_dict=trimmed_tune_datums)
-            opt_func2 = make_opt_func(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design)
+            opt_func2 = make_opt_func(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band)
             opt_result = minimize(fun=opt_func2, x0=np.array([b_opt, m_opt]), method='Nelder-Mead')
             if opt_result.success:
                 b_opt_this_band, m_opt_this_band = opt_result.x
             else:
                 raise ValueError(f'No convergent Result for smurf band {smurf_band} resonator mapping.')
-            # shift the values based on the optimization
-            smurf_trimmed_and_shifted = transform(measure=freq_array_trimmed, b=b_opt_this_band, m=m_opt_this_band)
+            # shift the values based on the optimization, but use the array that still has the outliers
+            smurf_processed = transform(measure=freq_array_smurf_shifted, b=b_opt_this_band, m=m_opt_this_band)
             if show_plots:
-                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design,
-                              freq_array_smurf_shifted=smurf_trimmed_and_shifted)
-
-            # map the shifted values to the original tune_datums
-            trimmed_and_shifted_to_tune_datum = {freq_trim_shifted: trimmed_to_tune_datum[freq_trimmed]
-                                                 for freq_trim_shifted, freq_trimmed
-                                                 in zip(smurf_trimmed_and_shifted, freq_array_trimmed)}
-            # find the closest indexes for the trimmed
-            trimmed_and_shifted_to_design = {freq_trim_shifted: find_nearest_index(array=freq_array_design, value=freq_trim_shifted)
-                                             for freq_trim_shifted in smurf_trimmed_and_shifted}
-
-            closest_design_index = np.array(sorted(trimmed_and_shifted_to_design.keys()), dtype=int)
-            #
-            design_indexes_available = [an_index for an_index in range(len(freq_array_design))]
-            if len(design_indexes_available) % 2 == 0:
-                design_half_index = int(len(design_indexes_available) / 2)
+                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
+                              freq_array_smurf_shifted=smurf_processed)
+            """
+            Remove multiple measurements that map to a single design value 
+            Starting from the center of the design array outward
+            """
+            # map the processed values (2 shifts with outliers add back in) to the original tune_datums
+            smurf_processed_to_tune_datum = {freq_processed: shifted_to_tune_datums[freq_shifted]
+                                             for freq_processed, freq_shifted in
+                                             zip(smurf_processed, freq_array_smurf_shifted)}
+            # get a monotonic array of measured data
+            process_measured_array = np.array(sorted([meas for meas in smurf_processed_to_tune_datum.keys()]))
+            # Now find what are the nearest measured values is compared to the design array
+            design_value_to_meas_index = {des: find_nearest_index(array=process_measured_array, value=des)
+                                          for des in freq_array_design_this_band}
+            # get the half way index of the design to spit the data and to left and rights sides.
+            if len(freq_array_design_this_band) % 2 == 0:
+                design_half_index = int(len(freq_array_design_this_band) / 2)
             else:
-                design_half_index = int((len(design_indexes_available) + 1) / 2)
+                design_half_index = int((len(freq_array_design_this_band) + 1) / 2)
+            design_half_value = freq_array_design_this_band[design_half_index]
+            # the measurement index that corresponds to the design_half_index
+            meas_half_index = design_value_to_meas_index[design_half_value]
+            # split the arrays into left and right
+            design_left = freq_array_design_this_band[:design_half_index]
+            meas_left = process_measured_array[:meas_half_index]
+            design_right = freq_array_design_this_band[design_half_index:]
+            meas_right = process_measured_array[meas_half_index:]
+            design_to_measured_one_to_one_left, measured_overrun_left, design_unmapped_left = \
+                pigeon_mapping_left(design=design_left, measured=meas_left)
+            design_to_measured_one_to_one_right, measured_overrun_right, design_unmapped_right = \
+                pigeon_mapping_right(design=design_right, measured=meas_right)
+            left_meas_sum = len(design_to_measured_one_to_one_left) + len(measured_overrun_left)
+            right_meas_sum = len(design_to_measured_one_to_one_right) + len(measured_overrun_right)
+            if left_meas_sum != len(meas_left):
+                raise IndexError
+            if right_meas_sum != len(meas_right):
+                raise IndexError
 
+            # put the one-to-one map together
+            design_to_measured_one_to_one = {**design_to_measured_one_to_one_left,
+                                             **design_to_measured_one_to_one_right}
+            design_oto_array, measured_oto_array = zip(*[(des, design_to_measured_one_to_one[des]) for des
+                                                         in design_to_measured_one_to_one.keys()])
+
+            design_oto_list = list(design_oto_array)
+            measured_oto_list = list(measured_oto_array)
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
+                              freq_array_smurf_shifted=design_oto_list)
             """
-            Needs to be split by the frequencies to be mapped, to make dictionary's with frequencies keys.
-            
-            the mappings are monotonic, so left design indexes will be strictly greater then the right side
+            Heal unmapped data on the outside of the one-to-one mapped zones by
+                filling the available un-mapped design points, if needed, and if possible.
             """
+            if any([measured_overrun_right != [], measured_overrun_left != []]):
+                print(f'   smurf_band: {smurf_band}')
+                print(f'right overrun: {measured_overrun_right}')
+                print(f' left overrun: {measured_overrun_left}')
+                print('')
 
 
-            closest_design_indexes_left = closest_design_index[design_half_index < closest_design_index]
-            smurf_trimmed_and_shifted_left = set(smurf_trimmed_and_shifted[design_half_index < closest_design_index])
-            design_indexes_available_left = set(design_indexes_available[design_half_index:])
-            mapping_per_index_counter = {}
-            trimmed_and_shifted_one_to_one_design_left = {}
-            for closest_design_index in closest_design_indexes_left:
-                if closest_design_index in mapping_per_index_counter.keys():
-                    mapping_per_index_counter[closest_design_index] += 1
+            # the over run measured data back into the solutions ()
+            design_unmapped = design_unmapped_left + design_unmapped_right
+            # start on the left side every other smurf band (for less biased algorithm behavior)
+            do_left = bool(smurf_band % 2)
+            while design_unmapped != [] and any([measured_overrun_right != [], measured_overrun_left != []]):
+                if do_left:
+                    # check to see if there is still data on the left side
+                    if measured_overrun_left:
+                        # get and remove left most un-mapped design point
+                        left_design_unmapped = design_unmapped.pop(0)
+                        # heal the left side overrun's right most point, get and remove it from measured_overrun_left
+                        left_measure_overrun = measured_overrun_left.pop()
+                        # consider this shifting the measured data by one to fill the first gap in designn data.
+                        # add the measured part to the beginning of the measured list, staying in monotonic order
+                        measured_oto_list.insert(0, left_measure_overrun)
+                        # insert the available design frequency into the one-to-one array to keep monotonic order
+                        design_oto_list.insert(bisect(a=design_oto_list, x=left_design_unmapped), left_design_unmapped)
+                    # do the right side next loop
+                    do_left = False
                 else:
-                    mapping_per_index_counter[closest_design_index] = 1
-
-            design_indexes_unmapped = design_indexes_available_left - set(mapping_per_index_counter.keys())
-            freq_to_design_indexes_one_to_one = {design_index for design_index in mapping_per_index_counter.keys()
-                                                 if mapping_per_index_counter[design_index] == 1}
-            design_indexes_one_multi = {design_index for design_index in mapping_per_index_counter.keys()
-                                        if mapping_per_index_counter[design_index] != 1}
-
-
-
+                    # check to see if there is data on the right side still
+                    if measured_overrun_right:
+                        # get and remove left most un-mapped design point
+                        right_design_unmapped = design_unmapped.pop()
+                        # heal the right side overrun's left most point, get and remove it from measured_overrun_right
+                        right_measure_overrun = measured_overrun_right.pop(0)
+                        # effectively shift the measured array until the right most gap in the design data is filled
+                        # add the measured part to the end of the measured list, staying in monotonic order
+                        measured_oto_list.append(right_measure_overrun)
+                        # insert the available design frequency into the one-to-one array to keep monotonic order
+                        design_oto_list.insert(bisect(a=design_oto_list, x=right_design_unmapped),
+                                               right_design_unmapped)
+                    # do the left side next loop
+                    do_left = True
+            meas_unmapped = measured_overrun_right + measured_overrun_left
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
+                              freq_array_smurf_shifted=design_oto_array)
             """
-            start with this dict before entering the while loop that does the healing
+            Record this solution in the standard format.
             """
-            trimmed_and_shifted_one_to_one_design_left = {freq: 'design_index_her' for freq in design_indexes_one_to_one}
-
-            trimmed_and_shifted_one_to_one_design = {}
-            while smurf_trimmed_and_shifted_left != set():
-                """
-                Needs to end when the multi are all gone
-                """
-                # keep doing this loop until if exits without reaching the break statement
-                design_indexes_unmapped_array = np.array(sorted(design_indexes_unmapped))
-                design_indexes_one_to_one_list = sorted(design_indexes_one_to_one)
-                design_indexes_one_multi_list = sorted(design_indexes_one_multi)
-                design_indexes_available_left_list = sorted(design_indexes_available_left)
-                smurf_trimmed_and_shifted_left_list = sorted(smurf_trimmed_and_shifted_left)
-
-
-                for design_index, smurf_freq in zip_longest(design_indexes_available_left_list,
-                                                            smurf_trimmed_and_shifted_left_list):
-                    """
-                    This loop should only be over the remaining multi_desing indexes.
-                    """
-                    if design_index is None:
-                        raise IndexError('write this part of the algorithm')
-                    elif design_index in design_indexes_one_to_one:
-                        trimmed_and_shifted_one_to_one_design[smurf_freq] = design_index
-                        smurf_trimmed_and_shifted_left.remove(smurf_freq)
-                        design_indexes_available_left.remove(design_index)
-                        design_indexes_one_to_one.remove(design_index)
-                    elif design_index in design_indexes_one_multi:
-                        closest_unmapped = find_nearest(array=design_indexes_unmapped_array, value=design_index)
-                        # here is the healing algorithm
-                        if closest_unmapped < design_index:
-                            # back the mapping up on value to fill in the unmapped index
-                            for set_design_index in trimmed_and_shifted_one_to_one_design.keys():
-                                if closest_unmapped < set_design_index < design_index:
-                                    smurf_freq = trimmed_and_shifted_one_to_one_design[set_design_index]
-                                    smurf_trimmed_and_shifted_left.add(smurf_freq)
-                                    design_indexes_available_left.add(set_design_index)
-                                    del trimmed_and_shifted_one_to_one_design[set_design_index]
-
-
-                            print('test point 2')
-                        else:
-                            # move the mapping forward on index to fill in the unmapped index
-                            design_indexes_unmapped.remove(closest_unmapped)
-                        mapping_per_index_counter[design_index] = mapping_per_index_counter[design_index] - 1
-                        if mapping_per_index_counter[design_index] == 1:
-                            del mapping_per_index_counter[design_index]
-                            design_indexes_one_multi.remove(design_index)
-
-                            print('test point 3')
-
-
-                else:
-                    finished = True
-
-
-
-
-
-
-
-
-            closest_design_indexes_right = closest_design_index[design_half_index >= closest_design_index]
-            smurf_trimmed_and_shifted_right = smurf_trimmed_and_shifted[design_half_index >= closest_design_index]
-            design_indexes_available_right = set(design_indexes_available[:design_half_index])
-
-
-
-            print('temp test point')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            # Track the unmapped measured resonators
+            for unmapped_meas_datum in [smurf_processed_to_tune_datum[meas] for meas in meas_unmapped]:
+                # if there is no available design data then we pass the unchanged tune_datum to the new set
+                tune_data_new.add(unmapped_meas_datum)
+                # we also track what datums were not able to matched with design data.
+                tune_data_without_design_data.add(unmapped_meas_datum)
+            # Create new tune_datum from the design datum for the mapped resonators
+            for meas, des in zip(measured_oto_list, design_oto_list):
+                meas_datum = smurf_processed_to_tune_datum[meas]
+                des_datum = design_to_design_datums[des]
+                tune_datum_with_design_data = add_design_data(meas_datum=meas_datum, des_datum=des_datum,
+                                                              design_attributes=design_attributes,
+                                                              is_north=is_north,
+                                                              mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
+                # add this to the new data set
+                tune_data_new.add(tune_datum_with_design_data)
+                # track which datums have designs info
+                tune_data_with_design_data.add(tune_datum_with_design_data)
     return tune_data_new, tune_data_with_design_data, tune_data_without_design_data
