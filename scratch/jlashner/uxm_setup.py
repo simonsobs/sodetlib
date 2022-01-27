@@ -120,19 +120,13 @@ def setup_amps(S: SmurfControl, cfg: DetConfig, id_hemt=8.0, id_50k=15.0,
     # Update device cfg
     biases = S.get_amplifier_biases()
     cfg.dev.update_experiment({
-        'amp_50k_Id':  biases['50K_Id'],
-        'amp_hemt_Id': biases['hemt_Id'],
+        'amp_50k_Id':  id_50k,
+        'amp_hemt_Id': id_hemt,
         'amp_50k_Vg':  biases['50K_Vg'],
         'amp_hemt_Vg': biases['hemt_Vg'],
     }, update_file=True)
 
-    summary = {
-        'success':     True,
-        'amp_50k_Id':  biases['50K_Id'], 
-        'amp_hemt_Id': biases['hemt_Id'],
-        'amp_50k_Vg':  biases['50K_Vg'],
-        'amp_hemt_Vg': biases['hemt_Vg'],
-    }
+    summary = {'success': True, **biases}
     S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
     return True
 
