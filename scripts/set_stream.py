@@ -6,7 +6,7 @@ data streaming, or takes data for some duration.
 import matplotlib
 matplotlib.use('Agg')
 import argparse
-import sodetlib.smurf_funcs.smurf_ops as so
+import sodetlib as sdl
 
 from sodetlib.det_config import DetConfig
 
@@ -35,8 +35,8 @@ if __name__ == '__main__':
             'make_freq_mask': not args.skip_freq_mask,
         }
         if args.duration is not None:
-            sid = so.take_g3_data(S, args.duration, **stream_kw)
+            sid = sdl.take_g3_data(S, args.duration, **stream_kw)
         else:
-            sid = so.stream_g3_on(S, **stream_kw)
+            sid = sdl.stream_g3_on(S, **stream_kw)
     else:
-        so.stream_g3_off(S, emulator=args.emulator)
+        sdl.stream_g3_off(S, emulator=args.emulator)
