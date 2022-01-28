@@ -92,9 +92,12 @@ def get_layout_data(filename, dark_bias_lines=None, plot=False):
         if mux_layout_position not in wafer_info.keys():
             wafer_info[mux_layout_position] = {}
         if bond_pad in wafer_info[mux_layout_position].keys():
-            raise KeyError(f'mux_layout_position and bond_pad must be a unique pair for each row of layout data, ' +
-                           f'(mux_layout_position, bond_pad) = ({mux_layout_position}, {bond_pad}) is associated ' +
-                           f'with at least two rows of data in the file: {filename}')
+            if wafer_datum == wafer_info[mux_layout_position][bond_pad]:
+                pass
+            else:
+                raise KeyError(f'mux_layout_position and bond_pad must be a unique pair for each row of layout data, ' +
+                               f'(mux_layout_position, bond_pad) = ({mux_layout_position}, {bond_pad}) is associated ' +
+                               f'with at least two rows of data in the file: {filename}')
         else:
             wafer_info[mux_layout_position][bond_pad] = wafer_datum
     if plot:

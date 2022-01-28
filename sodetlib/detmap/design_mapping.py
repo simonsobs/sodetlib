@@ -314,7 +314,7 @@ def pigeon_mapping_left(design, measured):
 
 
 def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
-                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False,
+                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False, verbose=True,
                 design_random_remove=False):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
@@ -470,14 +470,13 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
             Heal unmapped data on the outside of the one-to-one mapped zones by
                 filling the available un-mapped design points, if needed, and if possible.
             """
-            if any([measured_overrun_right != [], measured_overrun_left != []]):
+            if verbose and any([measured_overrun_right != [], measured_overrun_left != []]):
                 print(f'   smurf_band: {smurf_band}')
                 print(f'right overrun: {measured_overrun_right}')
                 print(f' left overrun: {measured_overrun_left}')
                 print('')
 
-
-            # the over run measured data back into the solutions ()
+            # put the overrun measured data back into the solutions
             design_unmapped = design_unmapped_left + design_unmapped_right
             # start on the left side every other smurf band (for less biased algorithm behavior)
             do_left = bool(smurf_band % 2)
