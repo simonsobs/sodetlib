@@ -15,7 +15,20 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
-import sodetlib
+
+# Mock imports that we don't want to install for builds
+
+autodoc_mock_imports = [
+    'pysmurf.client.util.pub',
+    'sotodlib',
+    'sotodlib.io'
+]
+
+from unittest import mock
+for m in autodoc_mock_imports:
+    sys.modules[m] = mock.Mock()
+
+from sodetlib._version import get_versions
 
 # -- Project information -----------------------------------------------------
 
@@ -24,7 +37,7 @@ copyright = '2018-2020, Simons Observatory DAQ Group'
 author = 'Simons Observatory DAQ Group'
 
 # The short X.Y version.
-version = sodetlib.__version__
+version = get_versions()['version']
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -75,9 +88,6 @@ pygments_style = 'sphinx'
 # Have __init__ and class docstrings both show up
 autoclass_content = "both"
 autosummary_generate=True
-
-# Mock imports that we don't want to install for builds
-autodoc_mock_imports = ['pysmurf']
 
 # -- Options for HTML output -------------------------------------------------
 
