@@ -75,13 +75,12 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
     return tk
 
 
-def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
+def get_psd(times, phases, detrend='constant', nperseg=2**12, fs=None,
+            pA_per_phi0=9e6):
     """
     Returns PSD for all channels.
 
     Args:
-        S:
-            pysmurf.SmurfControl object
         times: np.ndarray
             timestamps (in ns)
         phases: np.ndarray
@@ -93,6 +92,9 @@ def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
         fs: float
             sample frequency for signal.welch. If None will calculate using the
             timestamp array.
+        pA_per_phi0: float
+            Conversion from phi_0 to pA, defaults to 9e6 set by the mux chip
+            mutual inductance between TES to SQUID.
 
     Returns:
         f: np.ndarray
@@ -101,8 +103,8 @@ def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
             PSD in pA/sqrt(Hz)
     """
     if fs is None:
-        fs = 1/np.diff(times/1e9).mean()
-    current = phases * S.pA_per_phi0 / (2 * np.pi)
+        fs = 1/np.diff(times).mean()
+    current = phases * pA_per_phi0 / (2 * np.pi)
     f, Pxx = signal.welch(current, detrend=detrend, nperseg=nperseg, fs=fs)
     Pxx = np.sqrt(Pxx)
     return f, Pxx
@@ -426,4 +428,3 @@ def set_current_mode(S, bgs, mode, const_current=True):
         S._caput(S.C.writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
-
