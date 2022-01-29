@@ -74,7 +74,7 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
         tk.update(kwargs)
     return tk
 
-
+def get_psd(times, phases, detrend='constant', nperseg=2**15, fs=None,
             pA_per_phi0=9e6):
     """
     Returns PSD for all channels.
