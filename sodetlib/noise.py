@@ -1,6 +1,24 @@
 from scipy.signal import welch
 from scipy.optimize import curve_fit
+from sodetlib.util import get_psd, cprint
 import numpy as np
+import matplotlib.pyplot as plt
+
+def noise_model(freq, wl, n, f_knee):
+    """
+    Crude model for noise modeling.
+    Args
+    ----
+    wl : float
+        White-noise level.
+    n : float
+        Exponent of 1/f^(n/2) component.
+    f_knee : float
+        Frequency at which white noise = 1/f^n component
+    """
+    A = wl*(f_knee**n)
+    return wl*np.sqrt((f_knee/freq)**n + 1)
+
 
 def fit_noise_psd(f, Pxx, wl_f_range=(10,30), p0=None):
     """
@@ -27,21 +45,6 @@ def fit_noise_psd(f, Pxx, wl_f_range=(10,30), p0=None):
     """
     if p0 is None:
         p0 = [100.,0.5,0.01]
-
-    def noise_model(freq, wl, n, f_knee):
-        """
-        Crude model for noise modeling.
-        Args
-        ----
-        wl : float
-            White-noise level.
-        n : float
-            Exponent of 1/f^(n/2) component.
-        f_knee : float
-            Frequency at which white noise = 1/f^n component
-        """
-        A = wl*(f_knee**n)
-        return wl*np.sqrt((f_knee/freq)**n + 1)
 
     bounds_low = [0.,0.,0.] # constrain 1/f^n to be red spectrum
     bounds_high = [np.inf,np.inf,np.inf]
@@ -99,7 +102,7 @@ def get_noise_params(am, wl_f_range=(10,30),
     """
     f, pxx = get_psd(am.timestamps, am.signal, **psd_args)
     wls_tot = np.zeros((np.shape(pxx)[0],3))
-    if fit = False:
+    if fit == False:
         #Find white noise
         fmask = (wl_f_range[0] < f) & (f < wl_f_range[1])
         wls = np.median(pxx[:, fmask], axis=1)
@@ -127,8 +130,9 @@ def get_noise_params(am, wl_f_range=(10,30),
         lowfn = np.zeros((len(wls),len(bincenters)))
         for ii,be in enumerate(binedges[:-1]):
             m = (f > be) & (f < binedges[ii+1])
-            lowfn[:,ii] = np.median(Pxx[:,m],axis = 1)
-        fknees = [lowfn[idx,np.nanargmin(np.abs(lowfn[idx]-wls[idx]*np.sqrt(2)))] for idx in range(len(wls))]
+            lowfn[:,ii] = np.median(pxx[:,m],axis = 1)
+        fknees = [bincenters[np.nanargmin(np.abs(lowfn[idx]-wls[idx]*np.sqrt(2)))] for idx in range(len(wls))]
+        fknees = np.asarray(fknees)
         m = [np.nanmax(lowfn[idx]) < np.sqrt(2)*wls[idx] for idx in range(len(wls))]
         fknees[m] = f[1]
         #Set wls_tot to have same structure as when we fit.
@@ -136,8 +140,11 @@ def get_noise_params(am, wl_f_range=(10,30),
         wls_tot[:,1] = np.full(len(wls),np.nan)
         wls_tot[:,2] = fknees
     else:
+        bincenters = np.logspace(np.log10(f[1]),np.log10(wl_f_range[1]),30)
+        lowfn = np.zeros((len(wls_tot[:,0]),len(bincenters)))
         for i, ppxx in enumerate(pxx):
             wls_tot[i,:] = fit_noise_psd(f, ppxx, wl_f_range=wl_f_range)
+            lowfn[i,:] = noise_model(bincenters,*wls_tot[i,:])
         band_medians = np.zeros(8)
         for i in range(8):
             m = am.ch_info.band == i
@@ -145,7 +152,9 @@ def get_noise_params(am, wl_f_range=(10,30),
     outdict = {'wls_tot': wls_tot,
                'band_medians': band_medians,
                'f': f,
-               'pxx': pxx}
+               'pxx': pxx,
+               'bincenters': bincenters,
+               'lowfn': lowfn}
     return outdict
 
 def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
@@ -242,14 +251,14 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
     fig_fk, axes_fk = plt.subplots(4, 2, figsize=(16, 8),
                              gridspec_kw={'hspace': 0})
     fig_fk.patch.set_facecolor('white')
-    bins = np.logspace(np.floor(np.log10(np.min(fknees))),
-                       np.ceil(np.log10(np.max(fknees))),
+    bins = np.logspace(np.floor(np.log10(np.min(fknees[fknees>0]))),
+                       np.ceil(np.log10(np.max(fknees[fknees>0]))),
                        nbins)
     max_bins = 0
 
     for b in range(8):
         ax = axes_fk[b % 4, b // 4]
-        m = bands == b
+        m = (bands == b) & (fknees > 0)
         x = ax.hist(fknees[m], bins=bins)
         text  = f"Median: {np.median(fknees[m]):0.2f}\n"
         text += f"Chans pictured: {np.sum(x[0]):0.0f}"
@@ -260,8 +269,8 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
 
     axes_fk[0][0].set(title="AMC 0")
     axes_fk[0][1].set(title="AMC 1")
-    axes_fk[-1][0].set(xlabel="$f_{knee} (Hz)")
-    axes_fk[-1][1].set(xlabel="$f_{knee} (Hz)")
+    axes_fk[-1][0].set(xlabel="$f_{knee}$ (Hz)")
+    axes_fk[-1][1].set(xlabel="$f_{knee}$ (Hz)")
     for _ax in axes_fk:
         for ax in _ax:
             ax.set(ylim=(0, max_bins * 1.1))
@@ -324,6 +333,7 @@ def plot_channel_noise(am, rc, save_path, noisedict=None, wl_f_range=(10,30),
     #Check if matplotlib is isinteractive mode so we can reset state at end.
     init_interactive = plt.isinteractive()
     plt.ioff()
+    props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
 
     plt.figure()
     fig, axes = plt.subplots(2, 1)
@@ -339,15 +349,19 @@ def plot_channel_noise(am, rc, save_path, noisedict=None, wl_f_range=(10,30),
     ax2.loglog(f,pxx[rc],color = 'grey',alpha = 0.7)
     ax2.axhline(wls_tot[rc,0], xmin=0.5, xmax=1, lw=2, ls=':',
                 color='k')
-    wl_fknee = pxx[np.argmin(f-wls_tot[rc,2])]
+    wl_fknee = pxx[rc,np.argmin(np.abs(f-wls_tot[rc,2]))]
     ax2.plot(wls_tot[rc,2], wl_fknee, '*', markersize=8, color='green')
     if plot1overfregion:
+        #plt.axhline(np.sqrt(2)*wls_tot[rc,0],color = 'C0')
+        #plt.axvline(wls_tot[rc,2])
+        plt.plot(noisedict['bincenters'],
+                 noisedict['lowfn'][rc],'.',lw = 3,color = 'r')
         l1 = wls_tot[rc,0]*np.ones(len(f[f<=0.1]))
         with np.errstate(divide='ignore'):
             l2 = 65*np.sqrt(0.1/f[f<=0.1])
         ax2.plot(f[f<=0.1],l2,'--',color = 'C1')
         ax2.fill_between(f[f<=0.1],l2,l1,color = 'wheat',alpha = 0.3)
-    text = f'White Noise: {np.round(float(wls[rc]),2)} pA/rtHz\n'
+    text = f'White Noise: {np.round(float(wls_tot[rc,0]),2)} pA/rtHz\n'
     text += 'f$_{knee}$: '+f'{np.round(wls_tot[rc,2],4)} Hz'
     ax2.text(0.55, 0.7, text, bbox=props, transform=ax2.transAxes)
     ax2.set_xlabel('Frequency [Hz]', fontsize=14)
@@ -367,7 +381,7 @@ def plot_channel_noise(am, rc, save_path, noisedict=None, wl_f_range=(10,30),
 def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                plot_channel_noise=False, show_plot=True, save_plot=False,
                rchans=None, wl_f_range=(10,30), fit=False, nperdecade=10,
-               plot1overfregion=False, save_path=S.plot_dir(), **psd_args):
+               plot1overfregion=False, save_path=None, **psd_args):
     """
     Streams data for specified amount of time and then calculated the ASD and
     calculates the white noise levels and fknees for all channels. Optionally
@@ -430,11 +444,13 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     """
     sid = sdl.take_g3_data(S, 30)
     am = sdl.load_session(cfg.stream_id, sid)
+    if save_path == None:
+        save_path = S.plot_dir()
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                  nperdecade=nperdecade, **psd_args)
     outdict['noisedict'] = noisedict
     if plot_band_summary:
-        fig_wnl, axes_wnl, fig_fk, axes_fk = \\
+        fig_wnl, axes_wnl, fig_fk, axes_fk = \
         plot_band_noise(am, nbins=nbins, noisedict=noisedict,
                         show_plot=show_plot, save_plot=save_plot,
                         save_path=save_path, **psd_args)
