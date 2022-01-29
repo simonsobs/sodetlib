@@ -329,6 +329,7 @@ def plot_channel_noise(am, rc, save_path=None, noisedict=None, wl_f_range=(10,30
             matplotlib axes object for plot
     """
     if (save_plot) & (save_path==None):
+        cprint('Must provide save path, exiting.')
         return
     if noisedict == None:
         noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
