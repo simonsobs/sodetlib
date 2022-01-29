@@ -151,7 +151,7 @@ def get_noise_params(am, wl_f_range=(10,30),
         for i in range(8):
             m = am.ch_info.band == i
             band_medians[i] = np.median(wls_tot[m,0])
-    nl_10mHz_rat = pxx[:,idx10mHz]/nl_ref10mHz
+    nl_10mHz_rat = pxx[:,idx10mHz]/nlref_10mHz
     outdict = {'wls_tot': wls_tot,
                'band_medians': band_medians,
                'f': f,
