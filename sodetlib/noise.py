@@ -100,7 +100,9 @@ def get_noise_params(am, wl_f_range=(10,30),
             pxx: ndarray
                 square root of welch output PSD shape is [nchans,len(f)]
     """
+    nlref_10mHz = 65*np.sqrt((0.1/0.01)+1)
     f, pxx = get_psd(am.timestamps, am.signal, **psd_args)
+    idx10mHz = np.argmin(np.abs(f-0.01))
     wls_tot = np.zeros((np.shape(pxx)[0],3))
     if fit == False:
         #Find white noise
@@ -149,12 +151,14 @@ def get_noise_params(am, wl_f_range=(10,30),
         for i in range(8):
             m = am.ch_info.band == i
             band_medians[i] = np.median(wls_tot[m,0])
+    nl_10mHz_rat = pxx[:,idx10mHz]/nl_ref10mHz
     outdict = {'wls_tot': wls_tot,
                'band_medians': band_medians,
                'f': f,
                'pxx': pxx,
                'bincenters': bincenters,
-               'lowfn': lowfn}
+               'lowfn': lowfn,
+               'low_f_10mHz': nl_10mHz_rat}
     return outdict
 
 def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
@@ -287,7 +291,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         plt.ion()
     return fig_wnl, axes_wnl, fig_fk, axes_fk
 
-def plot_channel_noise(am, rc, save_path, noisedict=None, wl_f_range=(10,30),
+def plot_channel_noise(am, rc, save_path=None, noisedict=None, wl_f_range=(10,30),
                        fit=False, show_plot=False, save_plot=True, nperdecade=10,
                        plot1overfregion=False, **psd_args):
     """
@@ -324,6 +328,8 @@ def plot_channel_noise(am, rc, save_path, noisedict=None, wl_f_range=(10,30),
         axes:
             matplotlib axes object for plot
     """
+    if (save_plot) & (save_path==None):
+        return
     if noisedict == None:
         noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                      nperdecade=nperdecade, **psd_args)
