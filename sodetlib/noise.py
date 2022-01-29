@@ -100,9 +100,9 @@ def get_noise_params(am, wl_f_range=(10,30),
             pxx: ndarray
                 square root of welch output PSD shape is [nchans,len(f)]
     """
-    nlref_10mHz = 65*np.sqrt((0.1/0.01)+1)
     f, pxx = get_psd(am.timestamps, am.signal, **psd_args)
     idx10mHz = np.argmin(np.abs(f-0.01))
+    nlref_10mHz = 65*np.sqrt((0.1/f[idx10mHz])+1)
     wls_tot = np.zeros((np.shape(pxx)[0],3))
     if fit == False:
         #Find white noise
