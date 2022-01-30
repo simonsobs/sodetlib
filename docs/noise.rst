@@ -1,5 +1,5 @@
 Noise Model
----------------
+------------
 Noise data refers to processing of time ordered data to extract statistics
 about the noise in the timestream. The core function is to take a power spectrum
 using the ``scipy.welch`` function and then extract the white and low frequency
@@ -25,7 +25,7 @@ low-f component is 1/f^{1/2}) and in the case of using the fitting option we
 also report the fitted spectral index n.
 
 Data Taking Example Usage
-````````````
+``````````````````````````
 This example takes 5 minutes of noise data (to get a good measure of 1/f you
 really want a longer timestream like this but can process shorter data as well)
 on all channels turned on attached to the smurf blade in slot 2. Then it also
@@ -45,7 +45,7 @@ displayed but not saved::
 
 
 Analyzing Existing Data
-``````````````
+````````````````````````
 This example assumes that you have your data in an AxisManager loaded using
 `sodetlib.load_session()` or `sotodlib.io.load_smurf.G3tSmurf`::
 

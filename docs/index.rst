@@ -16,6 +16,7 @@ Contents
    smurf_funcs
    analysis
    stream
+   noise
 
 .. toctree::
    :caption: Sodetlib Operations
