@@ -5,12 +5,11 @@ import sodetlib as sdl
 
 from sodetlib.util import get_tracking_kwargs
 
-if typing.TYPE_CHECKING:
-    from pysmurf.client.base.smurf_control import SmurfControl
-    from sodetlib.det_config import DetConfig
+from pysmurf.client.base.smurf_control import SmurfControl
+from sodetlib.det_config import DetConfig
 
 
-def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
+def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=50):
     """
     Scans through bias voltage for hemt or 50K amplifier to get the correct
     gate voltage for a target current.
@@ -44,6 +43,7 @@ def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=30):
         Vg = amp_biases[f"{amp_name}_Vg"]
         Id = amp_biases[f"{amp_name}_Id"]
         delta = target_Id - Id
+
         # Id should be within 0.5 from target without going over.
         if 0 <= delta < 0.5:
             return True
@@ -94,9 +94,10 @@ def setup_amps(S: SmurfControl, cfg: DetConfig, id_hemt=8.0, id_50k=15.0,
     """
     S.pub.publish({'current_operation': 'setup_amps'}, msgtype='session_data')
 
-    S.set_50k_amp_gate_voltage(0)
-    S.set_hemt_gate_voltage(0)
+    S.set_50k_amp_gate_voltage(-0.8)
+    S.set_hemt_gate_voltage(-0.8)
     S.C.write_ps_en(3)
+    time.sleep(0.3)
 
     # Data to be passed back to the ocs-pysmurf-controller clients
     summary = {
@@ -110,12 +111,14 @@ def setup_amps(S: SmurfControl, cfg: DetConfig, id_hemt=8.0, id_50k=15.0,
     if not find_gate_voltage(S, id_hemt, vgmin_hemt, 0, 'hemt'):
         S.log("Failed determining hemt gate voltage")
         S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
-        return False
+        S.C.write_ps_en(0)
+        return False, summary
 
     if not find_gate_voltage(S, id_50k, vgmin_50k, 0, '50K'):
         S.log("Failed determining 50k gate voltage")
         S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
-        return False
+        S.C.write_ps_en(0)
+        return False, summary
 
     # Update device cfg
     biases = S.get_amplifier_biases()
@@ -128,7 +131,7 @@ def setup_amps(S: SmurfControl, cfg: DetConfig, id_hemt=8.0, id_50k=15.0,
 
     summary = {'success': True, **biases}
     S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
-    return True
+    return True, summary
 
 
 def setup_phase_delay(S: SmurfControl, cfg: DetConfig, bands, uc_att=20,
@@ -165,7 +168,7 @@ def setup_phase_delay(S: SmurfControl, cfg: DetConfig, bands, uc_att=20,
     cfg.dev.dump(cfg.dev_file, clobber=True)
 
     S.pub.publish(
-        {'setup_phase_delay': {'success': True}}, 
+        {'setup_phase_delay': {'success': True}},
         msgtype='session_data')
 
     return True
@@ -191,6 +194,8 @@ def setup_tune(S: SmurfControl, cfg: DetConfig, bands, tone_power=None,
         vgmin_50k : (float)
             Min 50k gate voltage (V)
     """
+    bands = np.atleast_1d(bands)
+
     if tone_power is None:
         # Lets just assume all tone-powers are the same for now
         tone_power = S._amplitude_scale[bands[0]]
@@ -216,6 +221,8 @@ def setup_tune(S: SmurfControl, cfg: DetConfig, bands, tone_power=None,
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
+    cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
+
     return True
 
 
@@ -237,12 +244,12 @@ def compute_tracking_quality(S, f, df, sync):
             Array containing tracking sync flags, as returned by tracking_setup
     """
     sync_idxs = S.make_sync_flag(sync)
-    seg_size = np.max(np.diff(sync_idxs))
+    seg_size = np.min(np.diff(sync_idxs))
     nstacks = len(sync_idxs) - 1
 
     fstack = np.zeros((seg_size, len(f[0])))
     for i in range(nstacks):
-        fstack += f[sync_idxs[i], sync_idxs[i+1]] / nstacks
+        fstack += f[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
 
 
     # calculates quality of estimate wrt real data
@@ -294,7 +301,7 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
         )
         tk = get_tracking_kwargs(
             S, cfg, band, kwargs={
-                'lms_freq_hz':         None, 
+                'lms_freq_hz':         None,
                 'show_plot':           False,
                 'meas_lms_freq':       True,
                 'fraction_full_scale': init_fracpp,
@@ -310,13 +317,11 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
         asa_good[r2 < 0.95] = 0
         S.set_amplitude_scale_array(band, asa_good)
 
-
         # Calculate trracking parameters
         S.tracking_setup(band, **tk)
         lms_meas = S.lms_freq_hz[band]
         lms_freq = nphi0 * tk['reset_rate_khz'] * 1e3
         frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
-
 
         # Re-enables all channels and re-run tracking setup with correct params
         S.set_amplitude_scale_array(band, asa_init)
@@ -329,7 +334,7 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
         ## Lets add some cuts on p2p(f) and p2p(df) here. What are good numbers
         ## for that?
         num_good_chans = np.sum(r2 > 0.95)
-        summary['num_good_chans'][band] = num_good_chans
+        summary['num_good_chans'][band] = int(num_good_chans)
         S.pub.publish(
             {'setup_tracking_params_summary': summary},
             msgtype='session_data'
@@ -343,7 +348,7 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
 
         }, update_file=True)
 
-    return True
+    return True, summary
 
 
 def uxm_setup(S: SmurfControl, cfg: DetConfig, uc_att, dc_att, tone_power=None,
@@ -381,7 +386,7 @@ def uxm_setup(S: SmurfControl, cfg: DetConfig, uc_att, dc_att, tone_power=None,
     # 3. Find Freq
     if not setup_tune(S, cfg, bands):
         S.log("UXM Setup failed on setup tune step")
-        
+
     # 4. tracking setup
     if not setup_tracking_params(S, cfg, bands):
         S.log("UXM Setup failed on setup tracking step")
