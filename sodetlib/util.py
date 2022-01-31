@@ -8,6 +8,7 @@ import time
 import os
 from collections import namedtuple
 from sodetlib import det_config
+from sotodlib.tod_ops.fft_ops import calc_psd
 
 try:
     import epics
@@ -74,12 +75,12 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
         tk.update(kwargs)
     return tk
 
-def get_psd(times, phases, detrend='constant', nperseg=2**15, fs=None,
-            pA_per_phi0=9e6):
+def get_psd(S, times, phases, detrend='constant', nperseg=2**12, fs=None):
     """
     Returns PSD for all channels.
-
     Args:
+        S:
+            pysmurf.SmurfControl object
         times: np.ndarray
             timestamps (in ns)
         phases: np.ndarray
@@ -91,10 +92,6 @@ def get_psd(times, phases, detrend='constant', nperseg=2**15, fs=None,
         fs: float
             sample frequency for signal.welch. If None will calculate using the
             timestamp array.
-        pA_per_phi0: float
-            Conversion from phi_0 to pA, defaults to 9e6 set by the mux chip
-            mutual inductance between TES to SQUID.
-
     Returns:
         f: np.ndarray
             Frequencies
@@ -102,11 +99,35 @@ def get_psd(times, phases, detrend='constant', nperseg=2**15, fs=None,
             PSD in pA/sqrt(Hz)
     """
     if fs is None:
-        fs = 1/np.diff(times).mean()
-    current = phases * pA_per_phi0 / (2 * np.pi)
+        fs = 1/np.diff(times/1e9).mean()
+    current = phases * S.pA_per_phi0 / (2 * np.pi)
     f, Pxx = signal.welch(current, detrend=detrend, nperseg=nperseg, fs=fs)
     Pxx = np.sqrt(Pxx)
     return f, Pxx
+
+def get_asd(am, pA_per_phi0=9e6, **psd_kwargs):
+    """
+    Returns ASD (sqrt(PSD)) for all channels.
+
+    Args
+    ----
+    am: AxisManager
+        timestamps (in ns)
+    pA_per_phi0: float
+        Conversion from phi_0 to pA, defaults to 9e6 set by the mux chip
+        mutual inductance between TES to SQUID.
+    psd_kwargs: dictionary
+        keyword arguments taken by scipy.welch function.
+
+    Returns:
+        f: np.ndarray
+            Frequencies
+        Axx: np.ndarray
+            ASD in pA/sqrt(Hz)
+    """
+    f, Pxx = calc_psd(am, **psd_kwargs)
+    Axx = np.sqrt(Pxx)*pA_per_phi0/(2 * np.pi)
+    return f, Axx
 
 
 class SectionTimer:
