@@ -69,9 +69,10 @@ def load_session_status(stream_id, session_id, base_dir='/data/so/timestreams'):
 
 
 def load_session(stream_id, session_id, idx=None,
-                 base_dir='/data/so/timestreams', show_pb=False):
+                 base_dir='/data/so/timestreams', show_pb=False, **kwargs):
     """
-    Loads a stream-session into an axis manager.
+    Loads a stream-session into an axis manager. Any additional keyword
+    arguments will be passed to the ``load_smurf.load_file`` function.
  
     Args
     ----
@@ -95,7 +96,7 @@ def load_session(stream_id, session_id, idx=None,
         raise FileNotFoundError(
             f"Could not find files for {(stream_id, session_id)}"
         )
-    return load_smurf.load_file(files, show_pb=show_pb)
+    return load_smurf.load_file(files, show_pb=show_pb, **kwargs)
 
 
 @set_action()
