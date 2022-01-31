@@ -4,26 +4,35 @@ from sodetlib.util import get_asd, cprint
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def noise_model(freq, wl, n, f_knee):
     """
-    Crude model for noise modeling.
+    Crude model for noise modeling
+
     Args
     ----
+    freq : float
+        independent variable in function (frequency Hz)
     wl : float
         White-noise level.
     n : float
         Exponent of 1/f^(n/2) component.
     f_knee : float
         Frequency at which white noise = 1/f^n component
+    Returns
+    -------
+    y : float
+        dependent variable in function noise in (pA/rtHz)
     """
-    return wl*np.sqrt((f_knee/freq)**n + 1)
-
+    y = wl*np.sqrt((f_knee/freq)**n+1)
+    return y
 
 def fit_noise_asd(f, Axx, wl_f_range=(10,30), p0=None):
     """
     Return model fit for a ASD.
     p0 (float array): initial guesses for model fitting: [white-noise level
     in pA/rtHz, exponent of 1/f^n component, knee frequency in Hz]
+
     Args
     ----
     f : float array
@@ -66,6 +75,7 @@ def get_noise_params(am, wl_f_range=(10,30),
     Function to calculate the ASD from an axis manager and then calculate the
     white noise, and fknee (and n-index of 1/f^{n/2} if fit=True). The fit=True
     option is a lot slower.
+
     Args
     ----
     am: AxisManager
@@ -88,6 +98,7 @@ def get_noise_params(am, wl_f_range=(10,30),
         dictionary that contains all of the calculated noise parameters by
         channel, band averaged white noise levels, and f, axx ndarrays from
         the calculated ASD the keys are:
+
         wls_tot: ndarray
             shape is [nchans,3] the 3 items in axis=1 are: 0 = white noise,
             1 = n (1/f index nan if fit=False), and 2 = fknee.
@@ -178,7 +189,8 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
     Makes a summary plot w/ subplots per band of a histogram of the white noise
     levels and another plot with histograms of the fknees. If an axis AxisManager
     is passed without a noisedict then `get_noise_params` will be called to
-    generat a noisedict otherwise those parameters will be skipped.
+    generate a noisedict otherwise those parameters will be skipped.
+
     Args
     ----
     am: AxisManager
@@ -206,13 +218,13 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         directory where plots are saved. Required if `save_plot` is True.
     Returns
     -------
-    fig_wnl:
+    fig_wnl: `matplotlib.figure.Figure`
         matplotlib figure object for white noise plot
-    axes_wnl:
+    axes_wnl: `matplotlib.axes.Axes`
         matplotlib axes object for white noise plot
-    fig_fk:
+    fig_fk: `matplotlib.figure.Figure` 
         matplotlib figure object for fknee plot
-    axes_fk:
+    axes_fk: `matplotlib.axes.Axes`
         matplotlib axes object for fknee plot
     """
     if save_plot:
@@ -305,9 +317,10 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
     """
     Function for plotting the tod and psd with white noise and fknee identified
     for a single channel.
+
     Args
     ----
-    am: AxisManager
+    am: `sotodlib.core.AxisManager`
         axis manager loaded using G3tSmurf with timestamps and signal keys
         to be analyzed.
     rc: int
@@ -333,9 +346,9 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
         slope must be <= 1/f^{1/2} in the ASD)
     Returns
     -------
-    fig:
+    fig: `matplotlib.figure.Figure`
         matplotlib figure object for plot
-    axes:
+    axes: `matplotlib.axes.Axes`
         matplotlib axes object for plot
     """
     if (save_plot) & (save_dir==None):
@@ -403,33 +416,34 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     calculates the white noise levels and fknees for all channels. Optionally
     the band medians of the fitted parameters can be plotted and/or individual
     channel plots of the TOD and ASD with white noise and fknee called out.
+
     Args
     ----
-    S:
+    S : `pysmurf.client.base.smurf_control.SmurfControl`
         pysmurf control object
-    cfg:
+    cfg : `sodetlib.det_config.DetConfig`
         detconfig object
-    acq_time: float
+    acq_time : float
         acquisition time for the noise timestream.
-    plot_band_summary: bool
+    plot_band_summary : bool
         if true will plot band summary of white noise and  fknees.
-    plot_channel_noise: bool
+    plot_channel_noise : bool
         if true will plot TOD and ASD for each channel in plotted_rchans. If
         plotted_rchans is left as None this step will be skipped.
-    show_plot: bool
+    show_plot : bool
         if true will display plots.
-    plotted_rchans: int list
+    plotted_rchans : int list
         list of readout channels (i.e. index of am.signal) to make channel
         plots for.
-    wl_f_range: float tuple
+    wl_f_range : float tuple
         tuple contains (f_low, f_high), if fit=True see `fit_noise_asd`.
         The white noise is calculated as the median of the ASD (pA/rtHz)
         between f_low and f_high.
-    fit: bool
+    fit : bool
         if true will fit the ASD using `fit_noise_asd` function
-    nperdecade: int
+    nperdecade : int
         used to calculate fknee, see `get_noise_params` doc string.
-    plot1overfregion: bool
+    plot1overfregion : bool
         if true plots a line and shaded region that represents the SO
         passing low-f requirement (i.e. fknee set by wl = 65pA/rtHz and
         slope must be <= 1/f^{1/2} in the ASD)
