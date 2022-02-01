@@ -70,6 +70,7 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
         'nsamp': 2**18, 'return_data': True,
         'feedback_start_frac': 0.02,
         'feedback_end_frac': 0.94,
+        'feedback_gain': band_cfg.get('feedback_gain', 2048),
         'return_data': True}
     if kwargs is not None:
         tk.update(kwargs)
