@@ -59,6 +59,18 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
+def load_bgmap(bands, channels, bgmap_file):
+    bgmap_full = np.load(bgmap_file, allow_pickle=True).item()
+    idxs = map_band_chans(
+        bands, channels, bgmap_full['bands'], bgmap_full['channels']
+    )
+    bgmap = bgmap_full['bgmap'][idxs]
+    polarity = bgmap_full['polarity'][idxs]
+    bgmap[idxs == -1] = -1
+
+    return bgmap, polarity
+
+
 def map_band_chans(b1, c1, b2, c2, chans_per_band=512):
     """
     Returns an index mapping of length nchans1 from one set of bands and

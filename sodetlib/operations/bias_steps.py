@@ -1,11 +1,8 @@
 import time
 import os
+import traceback
 import numpy as np
-import sodetlib.smurf_funcs.smurf_ops as so
-from sodetlib.util import (
-    make_filename, set_current_mode, get_metadata, validate_and_save,
-    map_band_chans
-)
+import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
 from pysmurf.client.util.pub import set_action
@@ -167,10 +164,6 @@ class BiasStepAnalysis:
         self._S = S
         self._cfg = cfg
 
-        self.meta = get_metadata(S, cfg)
-
-        self.bgmap_full = np.load(self.meta['bgmap_file'], allow_pickle=True)
-
         self.bgs = bgs
         self.am = None
         self.edge_idxs = None
@@ -178,10 +171,18 @@ class BiasStepAnalysis:
         self.bg_sweep_start = None
         self.bg_sweep_stop = None
 
-        if run_kwargs is None:
-            run_kwargs = {}
-        self.run_kwargs = run_kwargs
-        self.high_current_mode = run_kwargs.get("high_current_mode", True)
+        if S is not None:
+
+            self.meta = sdl.get_metadata(S, cfg)
+            self.stream_id = cfg.stream_id
+
+            self.bgmap_full = np.load(self.meta['bgmap_file'], allow_pickle=True)
+
+
+            if run_kwargs is None:
+                run_kwargs = {}
+            self.run_kwargs = run_kwargs
+            self.high_current_mode = run_kwargs.get("high_current_mode", True)
 
     def save(self, path=None):
         data = {}
@@ -191,7 +192,7 @@ class BiasStepAnalysis:
             'bgmap_full', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
             'high_current_mode',
             # Bgmap data
-            'bgmap', 'signs',
+            'bgmap', 'polarity',
             # Step data and fits
             'resp_times', 'mean_resp', 'step_resp',
             # Step fit data
@@ -209,9 +210,9 @@ class BiasStepAnalysis:
             data[f] = getattr(self, f, None)
 
         if path is not None:
-            validate_and_save(path, data, make_path=False)
+            sdl.validate_and_save(path, data, make_path=False)
         else:
-            self.filepath = validate_and_save(
+            self.filepath = sdl.validate_and_save(
                 'bias_step_analysis.npy', data, S=self._S, cfg=self._cfg,
                 make_path=True
             )
@@ -269,14 +270,8 @@ class BiasStepAnalysis:
             self._create_bg_map(assignment_thresh=assignment_thresh,
                                 save_bg_map=save_bg_map)
         else:
-            # Generate bg map from the full mapping loaded from dev cfg
-            idxs = map_band_chans(
-                self.bands, self.channels,
-                self.bgmap_full['bands'], self.bgmap_full['channels']
-            )
-            self.bgmap = self.bgmap_full['bgmap'][idxs]
-            self.polarity = self.bgmap_full['polarity'][idxs]
-            self.bgmap[idxs == -1] = -1
+            self.bgmap, self.polarity = sdl.load_bgmap(
+                self.bands, self.channels, self.meta['bgmap_file'])
 
         self._get_step_response(step_window=step_window)
         self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
@@ -297,8 +292,9 @@ class BiasStepAnalysis:
                                 ts[:5],
                                 self.meta['stream_id'],
                                 f'{ts}_bg_map.npy')
-            validate_and_save(path, data, S=self._S, cfg=self._cfg,
-                              register=True, make_path=False)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            sdl.validate_and_save(path, data, S=self._S, cfg=self._cfg,
+                                  register=True, make_path=False)
             self._cfg.dev.update_experiment({'bgmap_file': path},
                                             update_file=True)
 
@@ -319,7 +315,7 @@ class BiasStepAnalysis:
             if arc:
                 self.am = arc.load_data(self.start, self.stop)
             else:
-                self.am = so.load_session(self._cfg, self.sid)
+                self.am = sdl.load_session(self.meta['stream_id'], self.sid)
             self.bands = self.am.ch_info.band
             self.channels = self.am.ch_info.channel
             self.abs_chans = self.bands*512 + self.channels
@@ -407,9 +403,9 @@ class BiasStepAnalysis:
         bgmap[m] = -1
 
         # Calculate the sign of each channel
-        self.signs = np.ones(self.nchans, dtype=int)
+        self.polarity = np.ones(self.nchans, dtype=int)
         for i in range(self.nchans):
-            self.signs[i] = np.sign(bg_corr[i, bgmap[i]])
+            self.polarity[i] = np.sign(bg_corr[i, bgmap[i]])
 
         self.bg_corr = normalized_bg_corr
         self.bgmap = bgmap
@@ -446,6 +442,7 @@ class BiasStepAnalysis:
         sigs = np.full((nchans, n_edges, npts), np.nan)
         ts = np.full((nbgs, npts), np.nan)
 
+        A_per_rad  = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
         for bg in np.unique(self.bgmap):
             if bg == -1:
                 continue
@@ -454,7 +451,7 @@ class BiasStepAnalysis:
                 s = slice(ei - pts_before_step, ei + pts_after_step)
                 if np.isnan(ts[bg]).all():
                     ts[bg, :] = am.timestamps[s] - am.timestamps[ei]
-                sig = self.edge_signs[bg][i] * am.signal[rcs, s] * self.pA_per_phi0 / (2*np.pi) * 1e-12
+                sig = self.edge_signs[bg][i] * am.signal[rcs, s] * A_per_rad
                 # Subtracts mean of last 10 pts such that step ends at 0
                 sigs[rcs, i, :] = (sig.T - np.mean(sig[:, -10:], axis=1)).T
 
@@ -473,7 +470,7 @@ class BiasStepAnalysis:
         dItes = self.dItes
         Ib[self.bgmap == -1] = np.nan
         dIb[self.bgmap == -1] = np.nan
-        dIrat = self.signs * dItes / dIb
+        dIrat = self.polarity * dItes / dIb
 
         R_sh = self.meta["R_sh"]
         if not transition:
@@ -575,7 +572,7 @@ class BiasStepAnalysis:
         I0[tmask] = I0_trans[tmask]
         Pj[tmask] = Pj_trans[tmask]
 
-        Si = -1./(I0 * (R0 - self.R_sh))
+        Si = -1./(I0 * (R0 - self.meta['R_sh']))
 
         # If resistance is too high, most likely crosstalk so just reset
         # bg mapping and det params
@@ -809,12 +806,12 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         dc_biases = dc_biases / S.high_low_current_ratio
         step_voltage /= S.high_low_current_ratio
 
-        set_current_mode(S, bgs, 1)
+        sdl.set_current_mode(S, bgs, 1)
         S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
         time.sleep(hcm_wait_time)
 
     bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
-    bsa.sid = so.stream_g3_on(S, tag='bias_steps')
+    bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
     try:
         bsa.start = time.time()
         if create_bg_map:
@@ -828,9 +825,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
         bsa.stop = time.time()
     finally:
-        so.stream_g3_off(S)
+        sdl.stream_g3_off(S)
         if high_current_mode:
-            set_current_mode(S, bgs, 0)
+            sdl.set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
@@ -845,8 +842,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             if analysis_kwargs is not None:
                 _analysis_kwargs.update(analysis_kwargs)
             bsa.run_analysis(save=True, **_analysis_kwargs)
-        except Exception as e:
-            print(f"Bias step analysis failed with exception {e}")
+        except Exception:
+            print(f"Bias step analysis failed with exception:")
+            print(traceback.format_exc())
 
     return bsa
 
