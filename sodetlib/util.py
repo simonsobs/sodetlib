@@ -102,7 +102,7 @@ def get_metadata(S, cfg):
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,
-        'rtm_bit_to_volt': S.rtm_bit_to_volt,
+        'rtm_bit_to_volt': S._rtm_slow_dac_bit_to_volt,
         'bias_line_resistance': S.bias_line_resistance,
         'chans_per_band': S.get_number_channels(),
         'high_current_mode': get_current_mode_array(S),
@@ -475,7 +475,7 @@ class Registers:
             setattr(self, name, _Register(S, reg))
 
 
-def get_current_mode_array(S)
+def get_current_mode_array(S):
     """
     Gets high-current-mode relay status for all bias groups
     """
