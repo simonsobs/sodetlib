@@ -442,7 +442,7 @@ class BiasStepAnalysis:
         sigs = np.full((nchans, n_edges, npts), np.nan)
         ts = np.full((nbgs, npts), np.nan)
 
-        A_per_rad  = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
+        A_per_rad = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
         for bg in np.unique(self.bgmap):
             if bg == -1:
                 continue
@@ -456,8 +456,8 @@ class BiasStepAnalysis:
                 sigs[rcs, i, :] = (sig.T - np.mean(sig[:, -10:], axis=1)).T
 
         self.resp_times = ts
-        self.step_resp = sigs
-        self.mean_resp = np.nanmean(sigs, axis=1)
+        self.step_resp = (sigs.T * self.polarity).T
+        self.mean_resp = (np.nanmean(sigs, axis=1).T * self.polarity).T
 
         return ts, sigs
 
@@ -470,7 +470,7 @@ class BiasStepAnalysis:
         dItes = self.dItes
         Ib[self.bgmap == -1] = np.nan
         dIb[self.bgmap == -1] = np.nan
-        dIrat = self.polarity * dItes / dIb
+        dIrat = dItes / dIb
 
         R_sh = self.meta["R_sh"]
         if not transition:
@@ -669,9 +669,9 @@ class BiasStepAnalysis:
         return fig, ax
 
 
-def take_bgmap(S, cfg, bgs=None, step_voltage=0.1, step_duration=0.05,
-               nsweep_steps=10, nsteps=10, high_current_mode=True,
-               hcm_wait_time=0, analysis_kwargs=None):
+def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
+               step_duration=0.05, nsweep_steps=10, nsteps=10,
+               high_current_mode=True, hcm_wait_time=0, analysis_kwargs=None):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -713,15 +713,16 @@ def take_bgmap(S, cfg, bgs=None, step_voltage=0.1, step_duration=0.05,
         analysis_kwargs = {}
 
     for bg in bgs:
-        S.set_tes_bias_bipolar(bg, 0)
-
+        S.set_tes_bias_bipolar(bg, dc_voltage)
 
     _analysis_kwargs = {'assignment_thresh': 0.9}
     _analysis_kwargs.update(analysis_kwargs)
     bsa = take_bias_steps(
-        S, cfg, bgs, step_voltage=0.1, step_duration=0.05, create_bg_map=True,
-        save_bg_map=True, nsteps=20, nsweep_steps=10, high_current_mode=True,
-        hcm_wait_time=0, run_analysis=True, analysis_kwargs=_analysis_kwargs)
+        S, cfg, bgs, step_voltage=step_voltage, step_duration=0.05,
+        create_bg_map=True, save_bg_map=True, nsteps=nsteps,
+        nsweep_steps=nsweep_steps, high_current_mode=high_current_mode,
+        hcm_wait_time=hcm_wait_time, run_analysis=True,
+        analysis_kwargs=_analysis_kwargs)
 
     return bsa
 
@@ -788,11 +789,14 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     # Dumb way to get all run kwargs, but we probably want to save these in
     # data object
-    run_kwargs = {k: locals().get(k) for k in [
-        'bgs', 'step_voltage', 'step_duration', 'create_bg_map', 'save_bg_map',
-        'nsteps', 'nsweep_steps', 'high_current_mode', 'hcm_wait_time',
-        'run_anlaysis', 'analysis_kwargs'
-    ]}
+    run_kwargs = {
+        'bgs': bgs, 'step_voltage': step_voltage,
+        'step_duration': step_duration, 'create_bg_map': create_bg_map,
+        'save_bg_map': save_bg_map, 'nsteps': nsteps,
+        'nsweep_steps': nsweep_steps, 'high_current_mode': high_current_mode,
+        'hcm_wait_time': hcm_wait_time, 'run_analysis': run_analysis,
+        'analysis_kwargs': analysis_kwargs
+    }
 
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
