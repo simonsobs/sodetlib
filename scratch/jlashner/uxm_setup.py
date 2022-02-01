@@ -267,7 +267,8 @@ def compute_tracking_quality(S, f, df, sync):
 
 
 def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
-                          init_fracpp=0.25, nphi0=5, reset_rate_khz=4):
+                          init_fracpp=0.44, nphi0=5, reset_rate_khz=4,
+                          lms_gain=0, feedback_gain=2048, show_plots=False):
     """
     Setups up tracking parameters by determining correct frac-pp and lms-freq
     for each band.
@@ -306,6 +307,8 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
                 'meas_lms_freq':       True,
                 'fraction_full_scale': init_fracpp,
                 'reset_rate_khz':      reset_rate_khz,
+                'lms_gain': lms_gain,
+                'feedback_gain': feedback_gain,
             }
         )
         f, df, sync = S.tracking_setup(band, **tk)
@@ -328,6 +331,7 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
         tk['meas_lms_freq'] = False
         tk['fraction_full_scale'] = frac_pp
         tk['lms_freq_hz'] = lms_freq
+        tk['show_plot'] = show_plots
         f, df, sync = S.tracking_setup(band, **tk)
         r2 = compute_tracking_quality(S, f, df, sync)
 
@@ -344,7 +348,10 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
         cfg.dev.update_band(band, {
             'frac_pp':            frac_pp,
             'lms_freq_hz':        lms_freq,
-            'flux_ramp_rate_khz': reset_rate_khz
+            'flux_ramp_rate_khz': reset_rate_khz,
+            'lms_gain': lms_gain,
+            'feedback_gain': feedback_gain,
+
 
         }, update_file=True)
 
