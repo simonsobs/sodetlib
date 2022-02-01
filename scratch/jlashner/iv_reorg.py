@@ -2,6 +2,7 @@ import numpy as np
 import time
 from scipy.interpolate import interp1d
 from sotodlib.core import AxisManager, LabelAxis, IndexAxis
+import sodetlib as sdl
 
 
 class IVAnalysis:
@@ -21,43 +22,30 @@ class IVAnalysis:
             self.nbiases = len(self.biases_cmd)
             self.bias_groups = self.run_kwargs['bias_groups']
 
-            tod = self._load_am()
-            self.nchans = len(tod.signal)
+            am = self._load_am()
+            self.nchans= len(am.signal)
 
-            res = AxisManager(
-                LabelAxis('dets', [f"b{b}_c{c}" for b, c in
-                                  zip(tod.ch_info.band, tod.ch_info.channel)]),
-                IndexAxis('bins', self.nbiases)
+            self.bands = am.ch_info.band
+            self.channels = am.ch_info.channel
+            self.resp = np.full((self.nchans, self.nbiases), np.nan)
+            self.R = np.full((self.nchans, self.nbiases), np.nan)
+            self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.v_bias = np.full((self.nbiases, ), np.nan)
+            self.i_bias = np.full((self.nbiases, ), np.nan)
+            self.start_times = np.full((self.nbiases, ), np.nan)
+            self.stop_times = np.full((self.nbiases, ), np.nan)
+            self.R_n = np.full((self.nchans, ), np.nan)
+            self.R_L = np.full((self.nchans, ), np.nan)
+            self.p_sat = np.full((self.nchans, ), np.nan)
+            self.s_i = np.full((self.nchans, ), np.nan)
+            self.idxs = np.full((self.nchans, 3), -1, dtype=int)
+
+
+            self.bgmap, self.polarity = sdl.load_bgmap(
+                self.bands, self.channels, self.meta['bgmap_file']
             )
-
-            res.wrap('band', tod.ch_info.band, [(0, 'dets')])
-            res.wrap('channel', tod.ch_info.channel, [(0, 'dets')])
-            apply_bgmap(res, self.meta['bgmap_file'])
-            for key in ['resp', 'R', 'p_tes', 'v_tes', 'i_tes',]:
-                res.wrap_new(key, shape=('dets', 'bins'),
-                             cls=np.full, fill_value=np.nan, dtype=np.float32)
-            for key in ['R_n', 'R_L', 'p_sat', 'si']:
-                res.wrap_new(key, shape='dets',
-                             cls=np.full, fill_value=np.nan, dtype=np.float32)
-            for key in ['bg', 'polarity']:
-                res.wrap_new(key, 'dets',
-                             cls=np.full, fill_value=np.nan, dtype=int)
-            for key in ['v_bias', 'i_bias', 'start_times', 'stop_times']:
-                res.wrap_new(key, 'bins',
-                             cls=np.full, fill_value=np.nan, dtype=int)
-
-
-
-            bgmap_full = np.load(self.meta['bgmap_file'],
-                                 allow_pickle=True).item()
-            # Load bgmap and polarities for active detectors
-            idxs = map_band_chans(
-                res.bands, res.channels,
-                bgmap_full['bands'], bgmap_full['channels']
-            )
-            res.polarity[:] = bgmap_full['polarity'][idxs]
-            res.bg[:] = bgmap_full['bgmap'][idxs]
-            res.bg[idxs == -1] = -1
 
     def save(self, path=None, update_cfg=False):
         saved_fields = [
@@ -92,169 +80,168 @@ class IVAnalysis:
             if arc:
                 self.am = arc.load_data(self.start, self.stop)
             else:
-                self.am = so.load_session(None, self.sid,
-                                          stream_id=self.meta['stream_id'])
+                self.am = sdl.load_session(self.meta['stream_id'], self.sid)
         return self.am
 
-    def _compute_psats(self, psat_level):
-        # calculates P_sat as P_TES at 90% R_n
-        # if the TES is at 90% R_n more than once, just take the first crossing
+def compute_psats(iva, psat_level):
+    # calculates P_sat as P_TES at 90% R_n
+    # if the TES is at 90% R_n more than once, just take the first crossing
 
-        for i in range(self.nchans):
-            if np.isnan(self.R_n[i]):
-                continue
+    for i in range(iva.nchans):
+        if np.isnan(iva.R_n[i]):
+            continue
 
-            level = psat_level
-            R = self.R[i]
-            R_n = self.R_n[i]
-            p_tes = self.p_tes[i]
-            cross_idx = np.where(
-                np.logical_and(R/R_n - level >= 0,
-                               np.roll(R/R_n - level, 1) < 0)
-            )[0]
+        level = psat_level
+        R = iva.R[i]
+        R_n = iva.R_n[i]
+        p_tes = iva.p_tes[i]
+        cross_idx = np.where(
+            np.logical_and(R/R_n - level >= 0,
+                           np.roll(R/R_n - level, 1) < 0)
+        )[0]
 
-            if not cross_idx:
-                self.p_sat[i] = np.nan
-                continue
+        if not cross_idx:
+            iva.p_sat[i] = np.nan
+            continue
 
-            cross_idx = cross_idx[0]
-            if cross_idx == 0:
-                self.p_sat[i] = np.nan
-                continue
+        cross_idx = cross_idx[0]
+        if cross_idx == 0:
+            iva.p_sat[i] = np.nan
+            continue
 
-            self.idxs[i, 2] = cross_idx
-            self.p_sat[i] = interp1d(
-                R[cross_idx-1:cross_idx+1]/R_n,
-                p_tes[cross_idx-1:cross_idx+1]
-            )(level)
+        iva.idxs[i, 2] = cross_idx
+        iva.p_sat[i] = interp1d(
+            R[cross_idx-1:cross_idx+1]/R_n,
+            p_tes[cross_idx-1:cross_idx+1]
+        )(level)
 
-    def _compute_si(self):
+def compute_si(iva):
+    smooth_dist = 5
+    w_len = 2 * smooth_dist + 1
+    w = (1./float(w_len))*np.ones(w_len)  # window
 
-        smooth_dist = 5
-        w_len = 2 * smooth_dist + 1
-        w = (1./float(w_len))*np.ones(w_len)  # window
+    for i in range(iva.nchans):
+        if np.isnan(iva.R_n[i]):
+            continue
 
-        for i in range(self.nchans):
-            if np.isnan(self.R_n[i]):
-                continue
+        # Running average
+        i_tes_smooth = np.convolve(iva.i_tes[i], w, mode='same')
+        v_tes_smooth = np.convolve(iva.v_tes[i], w, mode='same')
+        r_tes_smooth = v_tes_smooth/i_tes_smooth
 
-            # Running average
-            i_tes_smooth = np.convolve(self.i_tes[i], w, mode='same')
-            v_tes_smooth = np.convolve(self.v_tes[i], w, mode='same')
-            r_tes_smooth = v_tes_smooth/i_tes_smooth
+        sc_idx = iva.idxs[i, 0]
+        R_L = iva.R_L[i]
 
-            sc_idx = self.idxs[i, 0]
-            R_L = self.R_L[i]
+        # Take derivatives
+        di_tes = np.diff(i_tes_smooth)
+        dv_tes = np.diff(v_tes_smooth)
+        R_L_smooth = np.ones(len(r_tes_smooth)) * R_L
+        R_L_smooth[:sc_idx] = dv_tes[:sc_idx]/di_tes[:sc_idx]
+        r_tes_smooth_noStray = r_tes_smooth - R_L_smooth
+        i0 = i_tes_smooth[:-1]
+        r0 = r_tes_smooth_noStray[:-1]
+        rL = R_L_smooth[:-1]
+        beta = 0.
 
-            # Take derivatives
-            di_tes = np.diff(i_tes_smooth)
-            dv_tes = np.diff(v_tes_smooth)
-            R_L_smooth = np.ones(len(r_tes_smooth)) * R_L
-            R_L_smooth[:sc_idx] = dv_tes[:sc_idx]/di_tes[:sc_idx]
-            r_tes_smooth_noStray = r_tes_smooth - R_L_smooth
-            i0 = i_tes_smooth[:-1]
-            r0 = r_tes_smooth_noStray[:-1]
-            rL = R_L_smooth[:-1]
-            beta = 0.
+        # artificially setting rL to 0 for now,
+        # to avoid issues in the SC branch
+        # don't expect a large change, given the
+        # relative size of rL to the other terms
+        rL = 0
 
-            # artificially setting rL to 0 for now,
-            # to avoid issues in the SC branch
-            # don't expect a large change, given the
-            # relative size of rL to the other terms
-            rL = 0
+        # Responsivity estimate, derivation done here by MSF
+        # https://www.overleaf.com/project/613978cb38d9d22e8550d45c
+        si = -(1./(i0*r0*(2+beta)))*(1-((r0*(1+beta)+rL)/(dv_tes/di_tes)))
+        iva.si[i] = si
 
-            # Responsivity estimate, derivation done here by MSF
-            # https://www.overleaf.com/project/613978cb38d9d22e8550d45c
-            si = -(1./(i0*r0*(2+beta)))*(1-((r0*(1+beta)+rL)/(dv_tes/di_tes)))
-            self.si[i] = si
 
-    def run_analysis(self, save=False, update_cfg=False, psat_level=0.9,
-                     phase_excursion_min=3.0):
+def run_analysis(iva, save=False, update_cfg=False, psat_level=0.9,
+                 phase_excursion_min=3.0):
 
-        am = self._load_am()
-        R_sh = self.meta['R_sh']
+    am = iva._load_am()
+    R_sh = iva.meta['R_sh']
 
-        # Calculate phase response and bias_voltages / currents
-        for i in range(self.nbiases):
-            # Start from back because analysis is easier low->high voltages
-            t0, t1 = self.start_times[-i], self.stop_times[-i]
-            t0 = t0 + (t1 - t0) * 0.5
-            m = (t0 < am.timestamps) & (am.timestamps < t1)
-            self.resp[:, i] = np.mean(am.signal[:, m], axis=1)
+    # Calculate phase response and bias_voltages / currents
+    for i in range(iva.nbiases):
+        # Start from back because analysis is easier low->high voltages
+        t0, t1 = iva.start_times[-i], iva.stop_times[-i]
+        t0 = t0 + (t1 - t0) * 0.5
+        m = (t0 < am.timestamps) & (am.timestamps < t1)
+        iva.resp[:, i] = np.mean(am.signal[:, m], axis=1)
 
-            # Assume all bias groups have the same bias during IV
-            bias_bits = np.median(am.signal.biases[self.bias_groups[0], m])
-            self.v_bias[i] = bias_bits * 2 * self.meta['rtm_bit_to_volt']
+        # Assume all bias groups have the same bias during IV
+        bias_bits = np.median(am.signal.biases[iva.bias_groups[0], m])
+        iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
 
-        R_inline = self.meta['bias_line_resistance']
-        if self.meta['high_current_mode'][self.bias_groups[0]]:
-            R_inline /= self.meta['high_low_current_ratio']
-        self.i_bias = self.v_bias / R_inline
+    R_inline = iva.meta['bias_line_resistance']
+    if iva.meta['high_current_mode'][iva.bias_groups[0]]:
+        R_inline /= iva.meta['high_low_current_ratio']
+    iva.i_bias = iva.v_bias / R_inline
 
-        # Convert phase to uA
-        self.resp = self.resp * self.meta['pA_per_phi0'] / (2*np.pi * 1e6) \
-                              * self.polarity
+    # Convert phase to uA
+    iva.resp = iva.resp * iva.meta['pA_per_phi0'] / (2*np.pi * 1e6) \
+                          * iva.polarity
 
-        for i in range(self.nchans):
-            # Skip channels we don't expect are coupled to detectors based on
-            # bias-group mapping
-            if self.bgmap[i] == -1:
-                continue
+    for i in range(iva.nchans):
+        # Skip channels we don't expect are coupled to detectors based on
+        # bias-group mapping
+        if iva.bgmap[i] == -1:
+            continue
 
-            d_resp = np.diff(self.resp[i])
-            dd_resp = np.diff(d_resp)
-            dd_resp_abs = np.abs(dd_resp)
+        d_resp = np.diff(iva.resp[i])
+        dd_resp = np.diff(d_resp)
+        dd_resp_abs = np.abs(dd_resp)
 
-            # Find index of superconducting branch
-            sc_idx = np.argmax(dd_resp_abs) + 1
-            self.idxs[i, 0] = sc_idx
+        # Find index of superconducting branch
+        sc_idx = np.argmax(dd_resp_abs) + 1
+        iva.idxs[i, 0] = sc_idx
 
-            # Find index of normal branch by finding the min index after
-            # sc branch
-            nb_idx_default = int(0.8*self.nbiases)
-            nb_idx = nb_idx_default
-            for i in np.arange(nb_idx_default, sc_idx, -1):
-                # look for minimum of IV curve outside of superconducting region
-                # but get the sign right by looking at the sc branch
-                if d_resp[i]*np.mean(d_resp[:sc_idx]) < 0.:
-                    nb_idx = i+1
-                    break
+        # Find index of normal branch by finding the min index after
+        # sc branch
+        nb_idx_default = int(0.8*iva.nbiases)
+        nb_idx = nb_idx_default
+        for i in np.arange(nb_idx_default, sc_idx, -1):
+            # look for minimum of IV curve outside of superconducting region
+            # but get the sign right by looking at the sc branch
+            if d_resp[i]*np.mean(d_resp[:sc_idx]) < 0.:
+                nb_idx = i+1
+                break
 
-            self.idxs[i, 1] = nb_idx
-            nb_fit_idx = (self.nbiases + nb_idx) // 2
-            norm_fit = np.polyfit(self.i_bias[nb_fit_idx:],
-                                  self.resp[i, nb_fit_idx:], 1)
-            self.resp[i] -= norm_fit[1]  # Put resp in real current units
+        iva.idxs[i, 1] = nb_idx
+        nb_fit_idx = (iva.nbiases + nb_idx) // 2
+        norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:],
+                              iva.resp[i, nb_fit_idx:], 1)
+        iva.resp[i] -= norm_fit[1]  # Put resp in real current units
 
-            sc_fit = np.polyfit(self.i_bias[:sc_idx], self.resp[i, :sc_idx], 1)
-            # subtract off unphysical y-offset in superconducting branch; this
-            # is probably due to an undetected phase wrap at the kink between
-            # the superconducting branch and the transition, so it is
-            # *probably* legitimate to remove it by hand. We don't use the
-            # offset of the superconducting branch for anything meaningful
-            # anyway. This will just make our plots look nicer.
-            self.resp[i, :sc_idx] -= sc_fit[1]
-            sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
+        sc_fit = np.polyfit(iva.i_bias[:sc_idx], iva.resp[i, :sc_idx], 1)
+        # subtract off unphysical y-offset in superconducting branch; this
+        # is probably due to an undetected phase wrap at the kink between
+        # the superconducting branch and the transition, so it is
+        # *probably* legitimate to remove it by hand. We don't use the
+        # offset of the superconducting branch for anything meaningful
+        # anyway. This will just make our plots look nicer.
+        iva.resp[i, :sc_idx] -= sc_fit[1]
+        sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
-            R = R_sh * (self.i_bias/(self.resp[i]) - 1)
-            R_n = np.mean(R[nb_fit_idx:])
-            R_L = np.mean(R[1:sc_idx])
+        R = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
+        R_n = np.mean(R[nb_fit_idx:])
+        R_L = np.mean(R[1:sc_idx])
 
-            if R_n < 0:
-                continue
+        if R_n < 0:
+            continue
 
-            self.v_tes[i] = self.i_bias * R_sh * R / (R + R_sh)
-            self.i_tes[i] = self.v_tes[i] / R
-            self.p_tes[i] = (self.v_tes[i]**2) / R
-            self.R[i] = R
-            self.R_n[i] = R_n
-            self.R_L[i] = R_L
+        iva.v_tes[i] = iva.i_bias * R_sh * R / (R + R_sh)
+        iva.i_tes[i] = iva.v_tes[i] / R
+        iva.p_tes[i] = (iva.v_tes[i]**2) / R
+        iva.R[i] = R
+        iva.R_n[i] = R_n
+        iva.R_L[i] = R_L
 
-        self._compute_psats(psat_level)
-        self._compute_si()
+    compute_psats(iva, psat_level)
+    compute_si(iva)
 
-        if save:
-            self.save(update_cfg=update_cfg)
+    if save:
+        iva.save(update_cfg=update_cfg)
 
 
 
@@ -267,7 +254,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
                              'pysmurf session. Load active tunefile.')
 
     if bias_groups is None:
-        bias_groups = no.arange(12)
+        bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
 
     if biases is None:
@@ -303,7 +290,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     S.log("Starting TES Bias Ramp", S.LOG_USER)
     bias_group_bool = np.zeros((S._n_bias_groups))
     bias_group_bool[bias_groups] = 1
-    sid = so.stream_g3_on(S)
+    sid = sdl.stream_g3_on(S)
     start_times = np.zeros_like(biases)
     stop_times = np.zeros_like(biases)
     for i, bias in enumerate(biases):
@@ -312,12 +299,12 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
         start_times[i] = time.time()
         time.sleep(wait_time)
         stop_times[i] = time.time()
-    so.stream_g3_off(S)
+    sdl.stream_g3_off(S)
 
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
     if run_analysis:
-        iva.run_analysis(save=True, **analysis_kwargs)
+        run_analysis(iva save=True, **analysis_kwargs)
 
     return iva
 
