@@ -435,6 +435,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     Args
     ----
+
     S : `pysmurf.client.base.smurf_control.SmurfControl`
         pysmurf control object
     cfg : `sodetlib.det_config.DetConfig`
@@ -463,8 +464,10 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
         if true plots a line and shaded region that represents the SO
         passing low-f requirement (i.e. fknee set by wl = 65pA/rtHz and
         slope must be <= 1/f^{1/2} in the ASD)
+
     Returns
     -------
+
     am: AxisManager
         AxisManager from the timestream acquired to calculate noise
         parameters.

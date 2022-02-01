@@ -21,7 +21,9 @@ sys.path.insert(0, os.path.abspath('..'))
 autodoc_mock_imports = [
     'pysmurf.client.util.pub',
     'sotodlib',
-    'sotodlib.io'
+    'sotodlib.io',
+    'sotodlib.tod_ops.fft_ops',
+    'tqdm.auto',
 ]
 
 from unittest import mock
