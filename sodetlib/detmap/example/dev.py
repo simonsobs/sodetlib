@@ -1,17 +1,13 @@
 """
 A Developmental Environment for Testing New features.
 """
-import os
 from sodetlib.detmap.example.download_example_data import sample_data_init
-from sodetlib.detmap.detmap_config import get_config, abs_path_sample_data_default, abs_path_metadata_files_default, \
-    abs_path_detmap
-from sodetlib.detmap.makemap import make_map_smurf, psat_map, make_map_g3_timestream
+from sodetlib.detmap.detmap_config import get_config
+from sodetlib.detmap.makemap import make_map_smurf, psat_map
 
 
 sample_data_init(del_dir=False)
 config = get_config()
-for_jack = True
-abstracted = False
 
 
 tune_data_smurf = make_map_smurf(tunefile=config['tunefile'], north_is_highband=config['north_is_highband'],

@@ -1,6 +1,8 @@
 import os
 from bisect import bisect
+from typing import Union, NamedTuple
 from operator import attrgetter
+
 
 from random import randint
 import numpy as np
@@ -176,7 +178,7 @@ def f_array_and_tune_dict(tune_data_dict):
     return freq_array, freq_to_datums
 
 
-def freq_rug_plot(freq_array_smurf, freq_array_design, freq_array_smurf_shifted=None):
+def freq_rug_plot(freq_array_smurf, freq_array_design, f_array_adjusted=None, title=None):
     fig = plt.figure(figsize=(16, 6))
     left = 0.05
     bottom = 0.08
@@ -187,19 +189,21 @@ def freq_rug_plot(freq_array_smurf, freq_array_design, freq_array_smurf_shifted=
     ax = fig.add_axes([left, bottom, x_width, y_height], frameon=False)
     # 'threads' of the rug plot
     ax.tick_params(axis="y", labelleft=False)
-    for xdata, color, y_min, y_max in [(freq_array_smurf, 'dodgerblue', 0.0, 0.6),
-                                       (freq_array_design, 'firebrick', 0.4, 1.0),
-                                       (freq_array_smurf_shifted, 'darkgoldenrod', 0.2, 0.8)]:
+    artists = []
+    for xdata, color, y_min, y_max, label in [(freq_array_design, 'firebrick', 0.4, 1.0, '         Design'),
+                                              (f_array_adjusted, 'darkgoldenrod', 0.2, 0.8, 'Output Measured'),
+                                              (freq_array_smurf, 'dodgerblue', 0.0, 0.6, ' Input Measured')]:
         if xdata is not None:
             if len(xdata) < 400:
-                linewidth = 1.0
+                linewidth = 2.0
                 alpha = 0.5
             else:
-                linewidth = 0.3
-                alpha = 0.7
+                linewidth = 0.2
+                alpha = 0.5
             for f_center in xdata:
-                ax.plot((f_center, f_center), (y_min, y_max), ls='solid', linewidth=linewidth, color=color,
-                        alpha=alpha)
+                ax.plot((f_center, f_center), (y_min, y_max), ls='solid', linewidth=linewidth, color=color, alpha=alpha)
+            artists.append(plt.Line2D(range(3), range(3), ls='solid', linewidth=3, color=color, alpha=alpha,
+                                      label=label))
     ax.set_ylim(bottom=0.0, top=1.0)
     ax.tick_params(axis='y',  # changes apply to the x-axis
                    which='both',  # both major and minor ticks are affected
@@ -215,6 +219,9 @@ def freq_rug_plot(freq_array_smurf, freq_array_design, freq_array_smurf_shifted=
     ax.xaxis.tick_top()
     ax.xaxis.tick_bottom()
     ax.set_xlabel(F"Frequency (MHz)")
+    ax.legend(handles=artists, loc=8)
+    if title is not None:
+        ax.set_title(title)
 
     plt.show()
 
@@ -313,8 +320,174 @@ def pigeon_mapping_left(design, measured):
     return design_to_measured_one_to_one, measured_overrun, design_unmapped
 
 
+class SimpleFreqDatum(NamedTuple):
+    freq_mhz: float
+
+
+minimize_kwargs = dict(method='Nelder-Mead', bounds=[(-50, 50), (0.95, 1.05)])
+
+
+def res_refit_and_map(f_array_design: Union[list, tuple, np.array, dict],
+                      adjusted_to_original: Union[list, tuple, np.array, dict],
+                      trim_at_mhz: Union[None, float, int] = None,
+                      show_plots: bool = False, verbose: bool = False, band_num: int = 0):
+    if not isinstance(adjusted_to_original, dict):
+        adjusted_to_original = {single_freq: single_freq for single_freq in adjusted_to_original}
+    for adjusted_f in adjusted_to_original.keys():
+        original_datum = adjusted_to_original[adjusted_f]
+        if isinstance(original_datum, float):
+            adjusted_to_original[adjusted_f] = SimpleFreqDatum(freq_mhz=adjusted_to_original[adjusted_f])
+
+    # get the f_array from the sorted dictionary keys of the mapping of adjusted frequencies to the original frequencies
+    f_array_adjusted = np.array(sorted(adjusted_to_original.keys()))
+
+    """
+    Trim the outlier data of a single smurf band and
+    Shift the measured frequencies to be closer to the design frequencies.
+    """
+    if verbose:
+        print(f'SMuRF-band:{band_num}  Making One-to-One refit and mapping')
+    if trim_at_mhz is not None:
+        # get distance in MHz to the nearest design frequency for each value of f_array_adjusted
+        nearest_diff_values = nearest_diff(freq_array_smurf=f_array_adjusted, freq_array_design=f_array_design)
+        # trim any outliers of f_array_adjusted that are more than trim_at_mhz from the nearest f_array_design value
+        freq_array_trimmed = np.array([shifted_freq_mhz for shifted_freq_mhz, nearest_value_mhz
+                                       in zip(f_array_adjusted, nearest_diff_values)
+                                       if nearest_value_mhz <= trim_at_mhz])
+        num_of_outliers = len(f_array_adjusted) - len(freq_array_trimmed)
+        if num_of_outliers != 0:
+            if verbose:
+                print(f'  {num_of_outliers} outlier(s) are more than {trim_at_mhz} MHz from a design value.')
+            # reset to the original frequencies use the trimmed data set
+            opt_func2 = make_opt_func(freq_array_smurf=freq_array_trimmed, freq_array_design=f_array_design)
+            opt_result = minimize(fun=opt_func2, x0=np.array([0.0, 1.0]), **minimize_kwargs)
+            if opt_result.success:
+                b_opt_this_band, m_opt_this_band = opt_result.x
+            else:
+                raise ValueError(f'No convergent Result for band {band_num} resonator mapping.')
+            # shift the values based on the optimization, but use the array that still has the outliers
+            smurf_processed = transform(measure=f_array_adjusted, b=b_opt_this_band, m=m_opt_this_band)
+            if show_plots:
+                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=f_array_design,
+                              f_array_adjusted=smurf_processed,
+                              title=f"Trim Outlier Data and Reapply Minimization, Smurf-band {band_num}")
+        else:
+            if verbose:
+                print(f'  No outliers that are more than {trim_at_mhz} MHz from a design value.')
+            smurf_processed = f_array_adjusted
+    else:
+        smurf_processed = f_array_adjusted
+    """
+    Remove multiple measurements that map to a single design value 
+    Starting from the center of the design array outward
+    """
+    # map the processed values (2 shifts with outliers add back in) to the original tune_datums
+    smurf_processed_to_tune_datum = {freq_processed: adjusted_to_original[freq_shifted]
+                                     for freq_processed, freq_shifted in
+                                     zip(smurf_processed, f_array_adjusted)}
+    # get a monotonic array of measured data
+    process_measured_array = np.array(sorted([meas for meas in smurf_processed_to_tune_datum.keys()]))
+    # Now find what are the nearest measured values is compared to the design array
+    design_value_to_meas_index = {des: find_nearest_index(array=process_measured_array, value=des)
+                                  for des in f_array_design}
+    # get the half way index of the design to spit the data and to left and rights sides.
+    if len(f_array_design) % 2 == 0:
+        design_half_index = int(len(f_array_design) / 2)
+    else:
+        design_half_index = int((len(f_array_design) + 1) / 2)
+    design_half_value = f_array_design[design_half_index]
+    # the measurement index that corresponds to the design_half_index
+    meas_half_index = design_value_to_meas_index[design_half_value]
+    # split the arrays into left and right
+    design_left = f_array_design[:design_half_index]
+    meas_left = process_measured_array[:meas_half_index]
+    design_right = f_array_design[design_half_index:]
+    meas_right = process_measured_array[meas_half_index:]
+    design_to_measured_one_to_one_left, measured_overrun_left, design_unmapped_left = \
+        pigeon_mapping_left(design=design_left, measured=meas_left)
+    design_to_measured_one_to_one_right, measured_overrun_right, design_unmapped_right = \
+        pigeon_mapping_right(design=design_right, measured=meas_right)
+    left_meas_sum = len(design_to_measured_one_to_one_left) + len(measured_overrun_left)
+    right_meas_sum = len(design_to_measured_one_to_one_right) + len(measured_overrun_right)
+    if left_meas_sum != len(meas_left):
+        raise IndexError
+    if right_meas_sum != len(meas_right):
+        raise IndexError
+
+    # put the one-to-one map together
+    design_to_measured_one_to_one = {**design_to_measured_one_to_one_left,
+                                     **design_to_measured_one_to_one_right}
+    design_oto_array, measured_oto_array = zip(*[(des, design_to_measured_one_to_one[des]) for des
+                                                 in design_to_measured_one_to_one.keys()])
+
+    design_oto_list = list(design_oto_array)
+    measured_oto_list = list(measured_oto_array)
+    data_mapping_after_pigeon = design_oto_list + measured_overrun_left + measured_overrun_right
+    if show_plots:
+        freq_rug_plot(freq_array_smurf=smurf_processed, freq_array_design=f_array_design,
+                      f_array_adjusted=data_mapping_after_pigeon,
+                      title=f"One-to-One map from Pigeon Hole Mapping, Smurf-band {band_num}")
+    """
+    Heal unmapped data on the outside of the one-to-one mapped zones by
+        filling the available un-mapped design points, if needed, and if possible.
+    """
+    meas_unmapped = measured_overrun_right + measured_overrun_left
+    if meas_unmapped:
+        if verbose:
+            print(f'  right overrun: {measured_overrun_right}')
+            print(f'   left overrun: {measured_overrun_left}')
+            print('  Doing overrun healing...')
+
+        # put the overrun measured data back into the solutions
+        design_unmapped = design_unmapped_left + design_unmapped_right
+        # start on the left side every other smurf band (for less biased algorithm behavior)
+        do_left = bool(band_num % 2)
+        while design_unmapped != [] and any([measured_overrun_right != [], measured_overrun_left != []]):
+            if do_left:
+                # check to see if there is still data on the left side
+                if measured_overrun_left:
+                    # get and remove left most un-mapped design point
+                    left_design_unmapped = design_unmapped.pop(0)
+                    # heal the left side overrun's right most point, get and remove it from measured_overrun_left
+                    left_measure_overrun = measured_overrun_left.pop()
+                    # consider this shifting the measured data by one to fill the first gap in design data.
+                    # add the measured part to the beginning of the measured list, staying in monotonic order
+                    measured_oto_list.insert(0, left_measure_overrun)
+                    # insert the available design frequency into the one-to-one array to keep monotonic order
+                    design_oto_list.insert(bisect(a=design_oto_list, x=left_design_unmapped), left_design_unmapped)
+                # do the right side next loop
+                do_left = False
+            else:
+                # check to see if there is data on the right side still
+                if measured_overrun_right:
+                    # get and remove left most un-mapped design point
+                    right_design_unmapped = design_unmapped.pop()
+                    # heal the right side overrun's left most point, get and remove it from measured_overrun_right
+                    right_measure_overrun = measured_overrun_right.pop(0)
+                    # effectively shift the measured array until the right most gap in the design data is filled
+                    # add the measured part to the end of the measured list, staying in monotonic order
+                    measured_oto_list.append(right_measure_overrun)
+                    # insert the available design frequency into the one-to-one array to keep monotonic order
+                    design_oto_list.insert(bisect(a=design_oto_list, x=right_design_unmapped),
+                                           right_design_unmapped)
+                # do the left side next loop
+                do_left = True
+        meas_unmapped = measured_overrun_right + measured_overrun_left
+        if verbose:
+            print('  Overrun healing complete.')
+            if meas_unmapped:
+                print(f' {len(meas_unmapped)} measured frequencies unmapped (more measured then design): ' +
+                      f'{meas_unmapped}')
+        if show_plots:
+            freq_rug_plot(freq_array_smurf=data_mapping_after_pigeon, freq_array_design=f_array_design,
+                          f_array_adjusted=design_oto_list + meas_unmapped,
+                          title=f"One-to-One Final Healing to Map Overrun Edge Data, Smurf-band {band_num}")
+    return measured_oto_list, design_oto_list, smurf_processed_to_tune_datum, meas_unmapped
+
+
 def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
-                ignore_smurf_neg_one=False, trim_at_mhz=10.0, show_plots=False, verbose=True,
+                ignore_smurf_neg_one=False, trim_at_mhz: Union[None, float, int] = 10.0,
+                show_plots=False, verbose=True,
                 design_random_remove=False):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
@@ -339,13 +512,14 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
             smurf_band_res_index_to_freq(tune_data_band_index=tune_data_this_side, ignore_neg_one=ignore_smurf_neg_one)
         # optimize the resonator to match across the entire side of a single UFM
         opt_func = make_opt_func(freq_array_smurf, freq_array_design)
-        opt_result = minimize(fun=opt_func, x0=np.array([0.0, 1.0]), method='Nelder-Mead')
+        opt_result = minimize(fun=opt_func, x0=np.array(list((0.0, 1.0))), **minimize_kwargs)
         if opt_result.success:
             b_opt, m_opt = opt_result.x
             shifted_smurf_optimal = transform(measure=freq_array_smurf, b=b_opt, m=m_opt)
             if show_plots:
                 freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design,
-                              freq_array_smurf_shifted=shifted_smurf_optimal)
+                              f_array_adjusted=shifted_smurf_optimal,
+                              title=f'Single SMuRF Measured Resonator Rescale to Design')
         else:
             if is_north:
                 side_str = 'North Side UFM'
@@ -373,11 +547,13 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
             # apply the initial optimization
             freq_array_smurf_shifted = transform(measure=freq_array_smurf, b=b_opt, m=m_opt)
             # make a look-up dict for the shifted frequencies to the original tune datums
-            shifted_to_tune_datums = {freq_shifted: tune_datum for freq_shifted, tune_datum
-                                      in zip(freq_array_smurf_shifted, tune_data_this_band_f_ordered)}
+            shifted_to_original = {freq_shifted: tune_datum for freq_shifted, tune_datum
+                                   in zip(freq_array_smurf_shifted, tune_data_this_band_f_ordered)}
+
             # get the design and look up dict
             freq_array_design_this_band, design_to_design_datums = \
                 f_array_and_tune_dict(tune_data_dict=design_tune_data_band_res_index[smurf_band])
+
             # a test to force there to be over-mapped design frequencies
             if design_random_remove:
                 print('Random missing design frequencies test - to generate over populated measurements arrays')
@@ -391,129 +567,15 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
 
             if show_plots:
                 freq_rug_plot(freq_array_smurf=freq_array_smurf, freq_array_design=freq_array_design_this_band,
-                              freq_array_smurf_shifted=freq_array_smurf_shifted)
-            """
-            Trim the outlier data of a single smurf band and 
-            Shift the measured frequencies to be closer to the design frequencies.
-            """
-            # trim any outliers
-            nearest_diff_values = nearest_diff(freq_array_smurf=freq_array_smurf_shifted,
-                                               freq_array_design=freq_array_design_this_band)
-            trimmed_tune_datums = {shifted_freq_mhz: shifted_to_tune_datums[shifted_freq_mhz]
-                                   for shifted_freq_mhz, nearest_value_mhz
-                                   in zip(freq_array_smurf_shifted, nearest_diff_values)
-                                   if nearest_value_mhz < trim_at_mhz}
+                              f_array_adjusted=freq_array_smurf_shifted,
+                              title=f'Previous All-SMuRF Minimization as Applied to smurf-band {smurf_band}')
+            # Run the single-band mapping strategy
+            measured_oto_list, design_oto_list, smurf_processed_to_tune_datum, meas_unmapped = \
+                res_refit_and_map(f_array_design=freq_array_design_this_band,
+                                  adjusted_to_original=shifted_to_original,
+                                  trim_at_mhz=trim_at_mhz,
+                                  show_plots=show_plots, verbose=verbose, band_num=smurf_band)
 
-            # reset to the original frequencies use the trimmed data set
-            freq_array_trimmed, trimmed_to_tune_datum = \
-                f_array_and_tune_dict(tune_data_dict=trimmed_tune_datums)
-            opt_func2 = make_opt_func(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band)
-            opt_result = minimize(fun=opt_func2, x0=np.array([b_opt, m_opt]), method='Nelder-Mead')
-            if opt_result.success:
-                b_opt_this_band, m_opt_this_band = opt_result.x
-            else:
-                raise ValueError(f'No convergent Result for smurf band {smurf_band} resonator mapping.')
-            # shift the values based on the optimization, but use the array that still has the outliers
-            smurf_processed = transform(measure=freq_array_smurf_shifted, b=b_opt_this_band, m=m_opt_this_band)
-            if show_plots:
-                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
-                              freq_array_smurf_shifted=smurf_processed)
-            """
-            Remove multiple measurements that map to a single design value 
-            Starting from the center of the design array outward
-            """
-            # map the processed values (2 shifts with outliers add back in) to the original tune_datums
-            smurf_processed_to_tune_datum = {freq_processed: shifted_to_tune_datums[freq_shifted]
-                                             for freq_processed, freq_shifted in
-                                             zip(smurf_processed, freq_array_smurf_shifted)}
-            # get a monotonic array of measured data
-            process_measured_array = np.array(sorted([meas for meas in smurf_processed_to_tune_datum.keys()]))
-            # Now find what are the nearest measured values is compared to the design array
-            design_value_to_meas_index = {des: find_nearest_index(array=process_measured_array, value=des)
-                                          for des in freq_array_design_this_band}
-            # get the half way index of the design to spit the data and to left and rights sides.
-            if len(freq_array_design_this_band) % 2 == 0:
-                design_half_index = int(len(freq_array_design_this_band) / 2)
-            else:
-                design_half_index = int((len(freq_array_design_this_band) + 1) / 2)
-            design_half_value = freq_array_design_this_band[design_half_index]
-            # the measurement index that corresponds to the design_half_index
-            meas_half_index = design_value_to_meas_index[design_half_value]
-            # split the arrays into left and right
-            design_left = freq_array_design_this_band[:design_half_index]
-            meas_left = process_measured_array[:meas_half_index]
-            design_right = freq_array_design_this_band[design_half_index:]
-            meas_right = process_measured_array[meas_half_index:]
-            design_to_measured_one_to_one_left, measured_overrun_left, design_unmapped_left = \
-                pigeon_mapping_left(design=design_left, measured=meas_left)
-            design_to_measured_one_to_one_right, measured_overrun_right, design_unmapped_right = \
-                pigeon_mapping_right(design=design_right, measured=meas_right)
-            left_meas_sum = len(design_to_measured_one_to_one_left) + len(measured_overrun_left)
-            right_meas_sum = len(design_to_measured_one_to_one_right) + len(measured_overrun_right)
-            if left_meas_sum != len(meas_left):
-                raise IndexError
-            if right_meas_sum != len(meas_right):
-                raise IndexError
-
-            # put the one-to-one map together
-            design_to_measured_one_to_one = {**design_to_measured_one_to_one_left,
-                                             **design_to_measured_one_to_one_right}
-            design_oto_array, measured_oto_array = zip(*[(des, design_to_measured_one_to_one[des]) for des
-                                                         in design_to_measured_one_to_one.keys()])
-
-            design_oto_list = list(design_oto_array)
-            measured_oto_list = list(measured_oto_array)
-            if show_plots:
-                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
-                              freq_array_smurf_shifted=design_oto_list)
-            """
-            Heal unmapped data on the outside of the one-to-one mapped zones by
-                filling the available un-mapped design points, if needed, and if possible.
-            """
-            if verbose and any([measured_overrun_right != [], measured_overrun_left != []]):
-                print(f'   smurf_band: {smurf_band}')
-                print(f'right overrun: {measured_overrun_right}')
-                print(f' left overrun: {measured_overrun_left}')
-                print('')
-
-            # put the overrun measured data back into the solutions
-            design_unmapped = design_unmapped_left + design_unmapped_right
-            # start on the left side every other smurf band (for less biased algorithm behavior)
-            do_left = bool(smurf_band % 2)
-            while design_unmapped != [] and any([measured_overrun_right != [], measured_overrun_left != []]):
-                if do_left:
-                    # check to see if there is still data on the left side
-                    if measured_overrun_left:
-                        # get and remove left most un-mapped design point
-                        left_design_unmapped = design_unmapped.pop(0)
-                        # heal the left side overrun's right most point, get and remove it from measured_overrun_left
-                        left_measure_overrun = measured_overrun_left.pop()
-                        # consider this shifting the measured data by one to fill the first gap in designn data.
-                        # add the measured part to the beginning of the measured list, staying in monotonic order
-                        measured_oto_list.insert(0, left_measure_overrun)
-                        # insert the available design frequency into the one-to-one array to keep monotonic order
-                        design_oto_list.insert(bisect(a=design_oto_list, x=left_design_unmapped), left_design_unmapped)
-                    # do the right side next loop
-                    do_left = False
-                else:
-                    # check to see if there is data on the right side still
-                    if measured_overrun_right:
-                        # get and remove left most un-mapped design point
-                        right_design_unmapped = design_unmapped.pop()
-                        # heal the right side overrun's left most point, get and remove it from measured_overrun_right
-                        right_measure_overrun = measured_overrun_right.pop(0)
-                        # effectively shift the measured array until the right most gap in the design data is filled
-                        # add the measured part to the end of the measured list, staying in monotonic order
-                        measured_oto_list.append(right_measure_overrun)
-                        # insert the available design frequency into the one-to-one array to keep monotonic order
-                        design_oto_list.insert(bisect(a=design_oto_list, x=right_design_unmapped),
-                                               right_design_unmapped)
-                    # do the left side next loop
-                    do_left = True
-            meas_unmapped = measured_overrun_right + measured_overrun_left
-            if show_plots:
-                freq_rug_plot(freq_array_smurf=freq_array_trimmed, freq_array_design=freq_array_design_this_band,
-                              freq_array_smurf_shifted=design_oto_array)
             """
             Record this solution in the standard format.
             """
