@@ -275,7 +275,7 @@ class BiasStepAnalysis:
                 self.bgmap_full['bands'], self.bgmap_full['channels']
             )
             self.bgmap = self.bgmap_full['bgmap'][idxs]
-            self.signs = self.bgmap_full['signs'][idxs]
+            self.polarity = self.bgmap_full['polarity'][idxs]
             self.bgmap[idxs == -1] = -1
 
         self._get_step_response(step_window=step_window)
@@ -291,7 +291,7 @@ class BiasStepAnalysis:
                 'sid': self.sid,
                 'meta': self.meta,
                 'bgmap': self.bgmap,
-                'signs': self.signs,
+                'polarity': self.polarity,
             }
             path = os.path.join('/data/smurf_data/bias_group_maps',
                                 ts[:5],
@@ -712,9 +712,12 @@ def take_bgmap(S, cfg, bgs=None, step_voltage=0.1, step_duration=0.05,
     """
     if bgs is None:
         bgs = np.arange(12)
+    if analysis_kwargs is None:
+        analysis_kwargs = {}
 
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, 0)
+
 
     _analysis_kwargs = {'assignment_thresh': 0.9}
     _analysis_kwargs.update(analysis_kwargs)
