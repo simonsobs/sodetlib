@@ -55,9 +55,80 @@ def reload_amps(S: SmurfControl, cfg: DetConfig):
 
 def reload_tune(S: SmurfControl, cfg: DetConfig, bands,
                 new_master_assignment=False):
-
-
     pass
+
+
+def relock_tracking_setup(S: SmurfControl, cfg: DetConfig, bands,
+                          reset_rate_khz=None, nphi0=None, **kwargs):
+    """
+    Sets up tracking for smurf. This assumes you already have optimized
+    lms_freq and frac-pp for each bands in the device config. This function
+    will chose the flux-ramp fraction-full-scale by averaging the optimized
+    fractions across the bands you're running on.
+
+    This function also allows you to set reset_rate_khz and nphi0. The
+    fraction-full-scale, and lms frequencies of each band will be automatically
+    adjusted based on their pre-existing optimized values.
+    """
+
+    bands = np.atleast_1d(bands)
+    nbands = len(bands)
+
+    # Arrays containing the optimized tracking parameters for each band
+    frac_pp0 = np.zeros(nbands)
+    lms_freq0 = np.zeros(nbands)  # Hz
+    reset_rate_khz0 = None  # This is assumed to be the same for each band
+
+    for i, b in enumerate(bands):
+        bcfg = cfg.dev.bands[b]
+        frac_pp0[i] = bcfg['frac_pp']
+        lms_freq0[i] = bcfg['lms_freq_hz'] 
+        if reset_rate_khz0 is None:
+            reset_rate_khz0 = bcfg['flux_ramp_rate_khz']
+
+    # Nphi0 used during optimization (assumes this is the same for each band)
+    init_nphi0 = np.round(lms_freq0[0] / reset_rate_khz0)
+
+    # Choose frac_pp to be the mean of all running bands.
+    # This is the frac-pp at the flux-ramp-rate used for optimization
+    fpp0 = np.mean(frac_pp0)
+
+    # Adjust fpp, lms_freq, and flux-ramp-rate depending on desired
+    # flux-ramp-rate and nphi0
+    fpp, lms_freqs = fpp0, lms_freq0
+    if nphi0 is not None:
+        fpp *= nphi0 / init_nphi0
+        lms_freqs *= fpp / fpp0
+    if reset_rate_khz is not None:
+        lms_freqs *= reset_rate_khz / reset_rate_khz0
+    else:
+        reset_rate_khz = reset_rate_khz0
+
+    # Runs tracking setup
+    res = {}
+    tk = sdl.get_tracking_kwargs(S, cfg, bands[0], kwargs=kwargs)
+    tk['reset_rate_khz'] = reset_rate_khz
+    tk['fraction_full_scale'] = fpp
+    for i, b in enumerate(bands):
+        tk.update({'lms_freq_hz': lms_freqs[i]})
+        res[b] = S.tracking_setup(b, **tk)
+
+    return res
+
+
+
+
+
+
+
+
+
+        
+        
+
+
+
+
 
 def uxm_relock(S: SmurfControl, cfg: DetConfig, bands=None, id_tolerance=0.5,
                new_master_assignment=False):
