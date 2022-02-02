@@ -33,10 +33,10 @@ RUN apt-get install -y \
 
 RUN git clone https://github.com/CMB-S4/spt3g_software.git
 RUN cd spt3g_software \
-      && mkdir -p build \
-      && cd build \
-      && cmake .. -DPYTHON_EXECUTABLE=`which python3` \
-      && make core version
+    && mkdir -p build \
+    && cd build \
+    && cmake .. -DPYTHON_EXECUTABLE=`which python3` \
+    && make core version
 
 ENV SPT3G_SOFTWARE_PATH /usr/local/src/spt3g_software
 ENV SPT3G_SOFTWARE_BUILD_PATH /usr/local/src/spt3g_software/build
@@ -58,10 +58,10 @@ RUN /bin/bash /usr/local/src/so3g/docker/qpoint-setup.sh
 
 # Build so3g
 RUN mkdir build \
-   && cd build \
-   && cmake .. -DCMAKE_PREFIX_PATH=$SPT3G_SOFTWARE_BUILD_PATH \
-   && make \
-   && make install
+    && cd build \
+    && cmake .. -DCMAKE_PREFIX_PATH=$SPT3G_SOFTWARE_BUILD_PATH \
+    && make \
+    && make install
 
 #################################################################
 # SOTODLIB Install
@@ -88,7 +88,6 @@ ENV OCS_CONFIG_DIR=/config
 #################################################################
 COPY . /sodetlib
 WORKDIR /sodetlib
-
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
 
