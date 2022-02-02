@@ -411,6 +411,9 @@ def plot_channel_iv(iva, rc):
     axes[3].plot(iva.v_bias, iva.si[rc], color='black')
     axes[3].set_ylabel("S_i")
 
+    b, c, bg = iva.bands[rc], iva.channels[rc], iva.bgmap[rc]
+    axes[0].set_title(f"Band: {b}, Chan: {c}, BG: {bg}", fontsize=18)
+
     axes[-1].set_xlabel("Voltage (V)")
     return fig, axes
 
@@ -539,7 +542,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     return iva
 
 @set_action()
-def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None):
+def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
+                  overbias_voltage=19.9, overbias_wait=5.0):
     """
     Biases detectors to a specified Rfrac value
 
@@ -577,5 +581,14 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None):
             target_idx = np.argmin(np.abs(Rfrac[rc] - rfrac))
             target_biases.append(iva.v_bias[target_idx])
         biases[bg] = np.median(target_biases)
+
+    S.log(f"Target biases: {biases}")
+    S.log("Overbiasing detectors")
+    sdl.set_current_mode(S, bias_groups, 1)
+    for bg in bias_groups:
+        S.set_tes_bias_bipolar(bg, overbias_voltage)
+    time.sleep(overbias_wait)
+    S.set_tes_bias_bipolar_array(biases)
+    sdl.set_current_mode(S, bias_groups, 0, const_current=False)
 
     return biases
