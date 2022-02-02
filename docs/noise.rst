@@ -40,8 +40,7 @@ displayed but not saved::
   S = cfg.get_smurf_control()
 
   noise.take_noise(S, cfg, acq_time=300, plot_band_summary=True,
-                   plot_channel_noise=True, show_plot=True, save_plot=False,
-                   rchans=[0])
+                   show_plot=True, save_plot=False, plotted_rchans=[0])
 
 
 Analyzing Existing Data

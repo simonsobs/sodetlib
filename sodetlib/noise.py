@@ -423,8 +423,8 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
     return fig, axes
 
 def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
-               plot_channel_noise=False, show_plot=True, save_plot=False,
-               plotted_rchans=None, wl_f_range=(10,30), fit=False,
+               show_plot=True, save_plot=False, plotted_rchans=None,
+               wl_f_range=(10,30), fit=False,
                nperdecade=10, plot1overfregion=False, save_dir=None,
                **asd_args):
     """
@@ -444,9 +444,6 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
         acquisition time for the noise timestream.
     plot_band_summary : bool
         if true will plot band summary of white noise and  fknees.
-    plot_channel_noise : bool
-        if true will plot TOD and ASD for each channel in plotted_rchans. If
-        plotted_rchans is left as None this step will be skipped.
     show_plot : bool
         if true will display plots.
     plotted_rchans : int list
@@ -497,7 +494,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
         save_dir = S.plot_dir
 
     sid = sdl.take_g3_data(S, acq_time)
-    am = sdl.load_session(cfg.stream_id, sid)
+    am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                  nperdecade=nperdecade, **asd_args)
     outdict = {}
@@ -508,10 +505,9 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                         show_plot=show_plot, save_plot=save_plot,
                         save_dir=save_dir, **asd_args)
 
-    if plot_channel_noise:
-        if plotted_rchans is None:
-            cprint('An rchans list must be provided to make channel plots')
-            return am, outdict
+    if plotted_rchans is None:
+        return am, outdict
+    else:
         outdict['channel_plots'] = {}
         for rc in np.atleast_1d(plotted_rchans):
             outdict['channel_plots'][rc] = {}
