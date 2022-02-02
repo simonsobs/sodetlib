@@ -3,21 +3,122 @@ import time
 from scipy.interpolate import interp1d
 from sotodlib.core import AxisManager, LabelAxis, IndexAxis
 import sodetlib as sdl
+import matplotlib.pyplot as plt
+from pysmurf.client.util.pub import set_action
+
+
+np.seterr(all="ignore")
 
 
 class IVAnalysis:
+    """
+    IVAnalysis is the object used to hold take_iv information and analysis
+    products. When instantiating from scratch, all keyword arguments must be
+    specified. (This is not true if you are loading from an existing file
+    using the load function).
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    run_kwargs : dict
+        Dictionary of keyword arguments passed to the take_iv function.
+    sid : int
+        Session id form the IV stream session
+    start_times : np.ndarray
+        Array of start_times of each bias-step
+    stop_times : np.ndarray
+        Array of stop_times of each bias-step
+
+
+    Attributes
+    -----------
+    meta : dict
+        Dictionary of pysmurf and sodetlib metadata during the IV.
+    biases_cmd : np.ndarray
+        Array of commanded biases voltages (in low-current-mode units)
+    nbiases : int
+        Number of biases commanded throughout the IV
+    bias_groups : np.ndarray
+        Array containing the bias-groups included in this IV
+    am : AxisManager
+        AxisManager containing TOD from the IV (this is not saved to disk,
+        but can be loaded with the _load_am function)
+    nchans : int
+        Number of channels included in the IV
+    bands : np.ndarray
+        Array of shape (nchans) containing the smurf-band of each channel
+    channels : np.ndarray
+        Array of shape (nchans) containing the smurf-channel of each channel
+    v_bias : np.ndarray
+        Array of shape (nbiases) containing the bias voltage at each bias step
+        (in low-current-mode Volts)
+    i_bias : np.ndarray
+        Array of shape (nbiases) containing the commanded bias-current
+        at each step (Amps)
+    resp : np.ndarray
+        Array of shape (nchans, nbiases) containing the squid response (Amps)
+        at each bias-step.
+    R : np.ndarray
+        Array of shape (nchans, nbiases) containing the TES Resistance of each
+        channel at each biasstep
+    p_tes : np.ndarray
+        Array of shape (nchans, nbiases) containing the electrical power on the
+        TES (W) of each channel at each biasstep
+    v_tes : np.ndarray
+        Array of shape (nchans, nbiases) containing the voltage across the TES
+        for each channel at each bias-step (V)
+    i_tes : np.ndarray
+        Array of shape (nchans, nbiases) containing the current across the TES
+        for each channel at each bias-step (Amps)
+    R_n : np.ndarry
+        Array of shape (nchans) containing the normal resistance (Ohms) of the
+        TES
+    R_n : np.ndarry
+        Array of shape (nchans) containing the normal resistance (Ohms) of the
+        TES
+    R_L : np.ndarry
+        Array of shape (nchans) containing the non-TES resistance (Ohms).
+        Should be shunt resistance + parasitic resistance
+    p_sat : np.ndarray
+        Array of shape (nchans) containing the electrical power (W) at which
+        Rfrac crosses the 90% threshold (or whatever arg is passed to the
+        analysis fn)
+    si : np.ndarray
+        Array of shape (nchans, nbiases) containing the responsivity (1/V)
+        of the TES for each bis-step
+    idxs : np.ndarray
+        Array of shape (nchans, 3) containing:
+            1. Last index of the SC branch
+            2. First index off the normal branch
+            3. Index at which p_tes crosses the 90% thresh
+    bgmap : np.ndarray
+        Array of shape (nchans) containing bias-group assignment of each
+        channel in the IV. This is not calculated with the IV but pulled in
+        from the device cfg, so it's important you run the take_bgmap function
+        to generate the bias-group map before running the IV.
+    polarity : np.ndarray
+        Array of shape (nchans) containing the polarity of each channel (also
+        from the bias-map file in the device cfg). This tells you if the TES
+        current changes in the same direction or opposite direction of the bias
+        current.
+    """
     def __init__(self, S=None, cfg=None, run_kwargs=None, sid=None,
                  start_times=None, stop_times=None):
+
         self._S = S
         self._cfg = cfg
         self.run_kwargs = run_kwargs
         self.sid = sid
         self.start_times = start_times
         self.stop_times = stop_times
+        self.am = None
 
         if self._S is not None:
             # Initialization stuff on initial creation with a smurf instance
-            self.meta = get_metadata(S, cfg)
+            self.meta = sdl.get_metadata(S, cfg)
             self.biases_cmd = np.sort(self.run_kwargs['biases'])
             self.nbiases = len(self.biases_cmd)
             self.bias_groups = self.run_kwargs['bias_groups']
@@ -27,21 +128,18 @@ class IVAnalysis:
 
             self.bands = am.ch_info.band
             self.channels = am.ch_info.channel
+            self.v_bias = np.full((self.nbiases, ), np.nan)
+            self.i_bias = np.full((self.nbiases, ), np.nan)
             self.resp = np.full((self.nchans, self.nbiases), np.nan)
             self.R = np.full((self.nchans, self.nbiases), np.nan)
             self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
             self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
             self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_bias = np.full((self.nbiases, ), np.nan)
-            self.i_bias = np.full((self.nbiases, ), np.nan)
-            self.start_times = np.full((self.nbiases, ), np.nan)
-            self.stop_times = np.full((self.nbiases, ), np.nan)
             self.R_n = np.full((self.nchans, ), np.nan)
             self.R_L = np.full((self.nchans, ), np.nan)
             self.p_sat = np.full((self.nchans, ), np.nan)
-            self.s_i = np.full((self.nchans, ), np.nan)
+            self.si = np.full((self.nchans, self.nbiases), np.nan)
             self.idxs = np.full((self.nchans, 3), -1, dtype=int)
-
 
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file']
@@ -60,10 +158,9 @@ class IVAnalysis:
         if path is not None:
             np.save(path, data, allow_pickle=True)
         else:
-            self.filepath = validate_and_save(
-                self._S, self._cfg, 'iv_analysis', data, make_path=True,
-                register=True)
-
+            self.filepath = sdl.validate_and_save(
+                'iv_analysis.npy', data, S=self._S, cfg=self._cfg, register=True,
+                make_path=True)
             if update_cfg:
                 self._cfg.dev.update_experiment({'iv_file': self.filepath},
                                                 update_file=True)
@@ -71,7 +168,7 @@ class IVAnalysis:
     @classmethod
     def load(cls, path):
         iva = cls()
-        for key, val in np.load(path, allow_pickle=True).item():
+        for key, val in np.load(path, allow_pickle=True).item().items():
             setattr(iva, key, val)
         return iva
 
@@ -83,10 +180,27 @@ class IVAnalysis:
                 self.am = sdl.load_session(self.meta['stream_id'], self.sid)
         return self.am
 
-def compute_psats(iva, psat_level):
+
+def compute_psats(iva, psat_level=0.9):
+    """
+    Computes Psat for an IVAnalysis object. Will save results to iva.p_sat.
+    This assumes i_tes, v_tes, and r_tes have already been calculated.
+
+    Args
+    ----
+    iva : IVAnalysis
+        IV Analysis object
+    psat_level : float
+        R_frac level for which Psat is defined. If 0.9, Psat will be the
+        power on the TES when R_frac = 0.9.
+
+    Returns
+    -------
+    p_sat : np.ndarray
+        Array of length (nchan) with the p-sat computed for each channel (W)
+    """
     # calculates P_sat as P_TES at 90% R_n
     # if the TES is at 90% R_n more than once, just take the first crossing
-
     for i in range(iva.nchans):
         if np.isnan(iva.R_n[i]):
             continue
@@ -100,7 +214,7 @@ def compute_psats(iva, psat_level):
                            np.roll(R/R_n - level, 1) < 0)
         )[0]
 
-        if not cross_idx:
+        if len(cross_idx) == 0:
             iva.p_sat[i] = np.nan
             continue
 
@@ -115,7 +229,26 @@ def compute_psats(iva, psat_level):
             p_tes[cross_idx-1:cross_idx+1]
         )(level)
 
+    return iva.p_sat
+
+
 def compute_si(iva):
+    """
+    Computes responsivity S_i for an IV analysis object. Will save results
+    to iva.si. This assumes i_tes, v_tes, and r_tes have already been
+    calculated.
+
+    Args
+    ----
+    iva : IVAnalysis
+        IV Analysis object
+
+    Returns
+    -------
+    si : np.ndarray
+        Array of length (nchan, nbiases) with  the responsivity as a fn of bias
+        voltage for each channel (V^-1).
+    """
     smooth_dist = 5
     w_len = 2 * smooth_dist + 1
     w = (1./float(w_len))*np.ones(w_len)  # window
@@ -130,12 +263,14 @@ def compute_si(iva):
         r_tes_smooth = v_tes_smooth/i_tes_smooth
 
         sc_idx = iva.idxs[i, 0]
+        if sc_idx == -1:
+            continue
         R_L = iva.R_L[i]
 
         # Take derivatives
         di_tes = np.diff(i_tes_smooth)
         dv_tes = np.diff(v_tes_smooth)
-        R_L_smooth = np.ones(len(r_tes_smooth)) * R_L
+        R_L_smooth = np.ones(len(r_tes_smooth-1)) * R_L
         R_L_smooth[:sc_idx] = dv_tes[:sc_idx]/di_tes[:sc_idx]
         r_tes_smooth_noStray = r_tes_smooth - R_L_smooth
         i0 = i_tes_smooth[:-1]
@@ -152,83 +287,89 @@ def compute_si(iva):
         # Responsivity estimate, derivation done here by MSF
         # https://www.overleaf.com/project/613978cb38d9d22e8550d45c
         si = -(1./(i0*r0*(2+beta)))*(1-((r0*(1+beta)+rL)/(dv_tes/di_tes)))
-        iva.si[i] = si
+        si[:sc_idx] = np.nan
+        iva.si[i, :-1] = si
 
 
-def run_analysis(iva, save=False, update_cfg=False, psat_level=0.9,
-                 phase_excursion_min=3.0):
+def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
+    """
+    Runs main analysis for an IVAnalysis object. This calculates the attributes
+    defined in the IVAnalysis class.
 
+    Args
+    ----
+    iva : IVAnalysis
+        IV analysis object
+    psat_level : float
+        R_frac for which P_sat is defined. Defaults to 0.9
+    save : bool
+        If true, will save IVAnalysis object after completing
+    update_cfg : bool
+        If true, will update the device config with the new IV analysis
+        filepath
+    """
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
+
+    smooth_dist = 20
+    w_len = 2 * smooth_dist + 1
+    w = (1./float(w_len))*np.ones(w_len)  # window
 
     # Calculate phase response and bias_voltages / currents
     for i in range(iva.nbiases):
         # Start from back because analysis is easier low->high voltages
-        t0, t1 = iva.start_times[-i], iva.stop_times[-i]
-        t0 = t0 + (t1 - t0) * 0.5
+        t0, t1 = iva.start_times[-(i+1)], iva.stop_times[-(i+1)]
+
         m = (t0 < am.timestamps) & (am.timestamps < t1)
         iva.resp[:, i] = np.mean(am.signal[:, m], axis=1)
 
         # Assume all bias groups have the same bias during IV
-        bias_bits = np.median(am.signal.biases[iva.bias_groups[0], m])
+        bias_bits = np.median(am.biases[iva.bias_groups[0], m])
         iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
 
-    R_inline = iva.meta['bias_line_resistance']
-    if iva.meta['high_current_mode'][iva.bias_groups[0]]:
-        R_inline /= iva.meta['high_low_current_ratio']
-    iva.i_bias = iva.v_bias / R_inline
+    if iva.run_kwargs['high_current_mode']:
+        iva.v_bias *= iva.meta['high_low_current_ratio']
+
+    iva.i_bias = iva.v_bias / iva.meta['bias_line_resistance']
 
     # Convert phase to uA
-    iva.resp = iva.resp * iva.meta['pA_per_phi0'] / (2*np.pi * 1e6) \
-                          * iva.polarity
+    A_per_rad = iva.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
+    iva.resp = (iva.resp.T * iva.polarity).T * A_per_rad
 
     for i in range(iva.nchans):
-        # Skip channels we don't expect are coupled to detectors based on
-        # bias-group mapping
-        if iva.bgmap[i] == -1:
-            continue
-
         d_resp = np.diff(iva.resp[i])
         dd_resp = np.diff(d_resp)
         dd_resp_abs = np.abs(dd_resp)
 
         # Find index of superconducting branch
         sc_idx = np.argmax(dd_resp_abs) + 1
+        if sc_idx == 1:
+            continue
         iva.idxs[i, 0] = sc_idx
 
         # Find index of normal branch by finding the min index after
-        # sc branch
-        nb_idx_default = int(0.8*iva.nbiases)
-        nb_idx = nb_idx_default
-        for i in np.arange(nb_idx_default, sc_idx, -1):
-            # look for minimum of IV curve outside of superconducting region
-            # but get the sign right by looking at the sc branch
-            if d_resp[i]*np.mean(d_resp[:sc_idx]) < 0.:
-                nb_idx = i+1
-                break
-
+        # sc branch. (Skips a few indices after sc branch to avoid possible
+        # phase skipping)
+        nb_idx = sc_idx + 1 + np.argmin(iva.resp[i, sc_idx+1:])
         iva.idxs[i, 1] = nb_idx
         nb_fit_idx = (iva.nbiases + nb_idx) // 2
+
         norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:],
                               iva.resp[i, nb_fit_idx:], 1)
         iva.resp[i] -= norm_fit[1]  # Put resp in real current units
 
         sc_fit = np.polyfit(iva.i_bias[:sc_idx], iva.resp[i, :sc_idx], 1)
+
         # subtract off unphysical y-offset in superconducting branch; this
         # is probably due to an undetected phase wrap at the kink between
         # the superconducting branch and the transition, so it is
-        # *probably* legitimate to remove it by hand. We don't use the
-        # offset of the superconducting branch for anything meaningful
-        # anyway. This will just make our plots look nicer.
+        # *probably* legitimate to remove it by hand. 
         iva.resp[i, :sc_idx] -= sc_fit[1]
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
         R = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
         R_n = np.mean(R[nb_fit_idx:])
         R_L = np.mean(R[1:sc_idx])
-
-        if R_n < 0:
-            continue
 
         iva.v_tes[i] = iva.i_bias * R_sh * R / (R + R_sh)
         iva.i_tes[i] = iva.v_tes[i] / R
@@ -244,14 +385,101 @@ def run_analysis(iva, save=False, update_cfg=False, psat_level=0.9,
         iva.save(update_cfg=update_cfg)
 
 
+def plot_channel_iv(iva, rc):
+    """
+    Plots anlayzed IV results for a given channel.
+
+    Args
+    ----
+    iva : IVAnalysis
+        Analyzed IVAnalysis instance
+    rc : int
+        Readout channel to plot
+    """
+    fig, axes = plt.subplots(4, 1, figsize=(10, 10))
+    for ax in axes.ravel():
+        v_sc = iva.v_bias[iva.idxs[rc, 0]]
+        v_norm = iva.v_bias[iva.idxs[rc, 1]]
+        ax.axvspan(0, v_sc, alpha=0.1, color='C0')
+        ax.axvspan(v_sc, v_norm, alpha=0.1, color='C2')
+        ax.axvspan(v_norm, iva.v_bias[-1], alpha=0.1, color='C1')
+
+    axes[0].plot(iva.v_bias, iva.i_tes[rc], color='black')
+    axes[0].set_ylabel("Current (Amps)")
+    axes[1].plot(iva.v_bias, iva.R[rc]*1000, color='black')
+    axes[1].set_ylabel("R (mOhms)")
+    axes[2].plot(iva.v_bias, iva.p_tes[rc]*1e12, color='black')
+    axes[2].set_ylabel("Pbias (pW)")
+    axes[3].plot(iva.v_bias, iva.si[rc], color='black')
+    axes[3].set_ylabel("S_i")
+
+    axes[-1].set_xlabel("Voltage (V)")
+    return fig, axes
+
+
 
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
-            high_current_mode=True, cool_wait=30, cool_voltage=None,
-            biases=None, bias_high=16, bias_low=0, bias_step=0.025,
-            wait_time=0.001, run_analysis=True, analysis_kwargs=None):
+            high_current_mode=True, cool_wait=30, biases=None, bias_high=16,
+            bias_low=0, bias_step=0.025, wait_time=0.1, run_analysis=True,
+            analysis_kwargs=None):
+    """
+    Takes an IV.
+
+    This function requires an accurate bias-group-map, so be sure to run
+    ``take_bgmap`` before this.
+
+    Args
+    ----
+    S : SmurfControl
+        pysmurf instance
+    cfg : DetConfig
+        detconfig instance
+    bias_groups : list, int
+        List of bias groups to run on. Defaults to all 12.
+    overbias_voltage : float
+        Voltage to use to overbias detectors
+    overbias_wait : float
+        Time (sec) to wait at overbiased voltage
+    high_current_mode : bool
+        If True, will run IV in high-current-mode. This is highly recommended
+        to avoid the bias-line filter.
+    cool_wait : float
+        Amout of time to wait at the first bias step after overbiasing.
+    biases : np.ndarray, optional
+        array of biases to use for IV.
+        This should be in units of Low-Current-Mode volts. If you are running
+        in high-current-mode this will automatically be adjusted for you!!
+    bias_high : float
+        Upper limit for biases if not manually set. (to be used in np.arange)
+        This should be in units of Low-Current-Mode volts. If you are running
+        in high-current-mode this will automatically be adjusted for you!!
+    bias_low : float
+        Lower limit for biases if not manually set. (to be used in np.arange)
+        This should be in units of Low-Current-Mode volts. If you are running
+        in high-current-mode this will automatically be adjusted for you!!
+    bias_step : float
+        Step size for biases if not manually set. (to be used in np.arange)
+        This should be in units of Low-Current-Mode volts. If you are running
+        in high-current-mode this will automatically be adjusted for you!!
+    wait_time : float
+        Amount of time to wait at each bias-step.
+    run_analysis : bool
+        If True, will automatically run analysis, save it, and update device
+        cfg. (unless otherwise specified in analysis_kwargs)
+    analysis_kwargs : dict
+        Keyword arguments to pass to analysis
+
+    Returns
+    -------
+    iva : IVAnalysis
+        IVAnalysis object. Will be already analyzed if run_analysis=True.
+    """
     if not hasattr(S, 'tune_file'):
         raise AttributeError('No tunefile loaded in current '
                              'pysmurf session. Load active tunefile.')
+
+    if analysis_kwargs is None:
+        analysis_kwargs = {}
 
     if bias_groups is None:
         bias_groups = np.arange(12)
@@ -265,7 +493,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     run_kwargs = {
         'bias_groups': bias_groups, 'overbias_voltage': overbias_voltage,
         'overbias_wait': overbias_wait, 'high_current_mode': high_current_mode,
-        'cool_wait': cool_wait, 'cool_voltage': cool_voltage, 'biases': biases,
+        'cool_wait': cool_wait,  'biases': biases,
         'bias_high': bias_high, 'bias_low': bias_low, 'bias_step': bias_step,
         'wait_time': wait_time, 'run_analysis': run_analysis,
         'analysis_kwargs': analysis_kwargs
@@ -273,13 +501,11 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
 
     if high_current_mode:
         biases /= S.high_low_current_ratio
-        if cool_voltage is not None:
-            cool_voltage /= S.high_low_current_ratio
 
+    sid = sdl.stream_g3_on(S)
 
     if overbias_voltage > 0:
-        if cool_voltage is None:
-            cool_voltage = np.max(biases)
+        cool_voltage = np.max(biases)
         S.overbias_tes_all(
             bias_groups=bias_groups, overbias_wait=overbias_wait,
             tes_bias=cool_voltage, cool_wait=cool_wait,
@@ -290,144 +516,68 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     S.log("Starting TES Bias Ramp", S.LOG_USER)
     bias_group_bool = np.zeros((S._n_bias_groups))
     bias_group_bool[bias_groups] = 1
-    sid = sdl.stream_g3_on(S)
     start_times = np.zeros_like(biases)
     stop_times = np.zeros_like(biases)
     for i, bias in enumerate(biases):
-        S.log("Setting bias to {bias:4.3f}")
+        S.log(f"Setting bias to {bias:4.3f}")
         S.set_tes_bias_bipolar_array(bias * bias_group_bool)
         start_times[i] = time.time()
         time.sleep(wait_time)
         stop_times[i] = time.time()
+
+    # Turns off biases
+    for bg in bias_groups:
+        S.set_tes_bias_bipolar(bg, 0)
+
     sdl.stream_g3_off(S)
 
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
     if run_analysis:
-        run_analysis(iva save=True, **analysis_kwargs)
+        _analysis_kwargs = {'save': True, 'update_cfg': True}
+        _analysis_kwargs.update(analysis_kwargs)
+        analyze_iv(iva, **_analysis_kwargs)
 
     return iva
 
-
-
-
-# These funcs will all be in sodetlib.util after normalize_datafiles is merged
-def map_band_chans(b1, c1, b2, c2, chans_per_band=512):
+@set_action()
+def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None):
     """
-    Returns an index mapping of length nchans1 from one set of bands and
-    channels to another. Note that unmapped indices are returned as -1, so this
-    must be handled before (or after) indexing or else you'll get weird
-    results.
+    Biases detectors to a specified Rfrac value
+
     Args
     ----
-        b1 (np.ndarray):
-            Array of length nchans1 containing the smurf band of each channel
-        c1 (np.ndarray):
-            Array of length nchans1 containing the smurf channel of each channel
-        b2 (np.ndarray):
-            Array of length nchans2 containing the smurf band of each channel
-        c2 (np.ndarray):
-            Array of length nchans2 containing the smurf channel of each channel
-        chans_per_band (int):
-            Lets just hope this never changes.
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Detconfig instance
+    rfrac : float
+        Target rfrac. Defaults to 0.5
+    bias_groups : list, optional
+        Bias groups to bias. Defaults to all of them.
+    iva : IVAnalysis, optional
+        IVAnalysis object. If this is passed, will use it to determine
+        bias voltages. Defaults to using value in device cfg.
     """
-    acs1 = b1 * chans_per_band + c1
-    acs2 = b2 * chans_per_band + c2
+    if bias_groups is None:
+        bias_groups = np.arange(12)
+    bias_groups = np.atleast_1d(bias_groups)
 
-    mapping = np.full_like(acs1, -1, dtype=int)
-    for i, ac in enumerate(acs1):
-        x = np.where(acs2 == ac)[0]
-        if len(x > 0):
-            mapping[i] = x[0]
+    if iva is None:
+        iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
 
-    return mapping
+    biases = S.get_tes_bias_bipolar_array()
 
+    Rfrac = (iva.R.T / iva.R_n).T
+    for bg in bias_groups:
+        m = (iva.bgmap == bg) & (5e-3 < iva.R_n) & (iva.R_n < 12e-3)
+        if not m.any():
+            continue
 
-def get_metadata(S, cfg):
-    """
-    Gets collection of metadata from smurf and detconfig instance that's
-    useful for pretty much everything. This should be included in all output
-    data files created by sodetlib.
-    """
-    return {
-        'tunefile': S.tune_file,
-        'high_low_current_ratio': S.high_low_current_ratio,
-        'R_sh': S.R_sh,
-        'pA_per_phi0': S.pA_per_phi0,
-        'rtm_bit_to_volt': S.rtm_bit_to_volt,
-        'bias_line_resistance': S.bias_line_resistance,
-        'chans_per_band': S.get_number_channels(),
-        'high_current_mode': get_current_mode_array(S),
-        'timestamp': time.time(),
-        'stream_id': cfg.stream_id,
-        'action': S.pub._action,
-        'action_timestamp': S.pub._action_ts,
-        'bgmap_file': cfg.dev.exp.get('bgmap_file'),
-        'iv_file': cfg.dev.exp.get('iv_file')
-    }
+        target_biases = []
+        for rc in np.where(m)[0]:
+            target_idx = np.argmin(np.abs(Rfrac[rc] - rfrac))
+            target_biases.append(iva.v_bias[target_idx])
+        biases[bg] = np.median(target_biases)
 
-
-def validate_and_save(fname, data, S=None, cfg=None, register=True,
-                      make_path=True):
-    """
-    Does some basic data validation for sodetlib data files to make sure
-    they are normalized based on the following  rules:
-        1. The 'meta' key exists storing metadata from smurf and cfg instances
-           such as the stream-id, pysmurf constants like high-low-current-ratio
-           etc., action and timestamp and more. See the get_metadata function
-           definition for more.
-        2. 'bands', and 'channels' arrays are defined, specifying the band/
-           channel combinations for data taking / analysis products.
-        3. 'sid' field exists to contain one or more session-ids for the
-           analysis.
-    Args
-    ----
-        fname (str):
-            Filename or full-path of datafile. If ``make_path`` is set to True,
-            this will be turned into a file-path using the ``make_filename``
-            function. If not, this will be treated as the save-file-path
-        data (dict):
-            Data to be written to disk. This should contain at least the keys
-            ``bands``, ``channels``, ``sid``, along with any other data
-            products. If the key ``meta`` does not already exist, metadata
-            will be populated using the smurf and det-config instances.
-        S (SmurfControl):
-            Pysmurf instance. This must be set if registering data file,
-            ``meta`` is not yet set, or ``make_path`` is True.
-        cfg (DetConfig):
-            det-config instance. This must be set if registering data file,
-            ``meta`` is not yet set, or ``make_path`` is True.
-        register (bool):
-            If True, will register the file with the pysmurf publisher
-        make_path (bool):
-            If true, will create a path by passing fname to the function
-            make_filename (putting it in the pysmurf output directory)
-    """
-    if register or make_path or 'meta' not in data:
-        if S is None or cfg is None:
-            raise ValueError("Pysmurf and cfg instances must be set")
-
-    _data = data.copy()
-    if 'meta' not in data:
-        meta = get_metadata(S, cfg)
-        _data['meta'] = meta
-
-    for k in ['channels', 'bands', 'sid']:
-        if k not in data:
-            raise ValueError(f"Key '{k}' is required in data")
-
-    if make_path and S is not None:
-        path = make_filename(S, fname)
-    else:
-        path = fname
-
-    np.save(path, data, allow_pickle=True)
-    if S is not None and register:
-        S.pub.register_file(path, 'sodetlib_data', format='npy')
-    return path
-
-
-
-
-
-
+    return biases
