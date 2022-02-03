@@ -43,8 +43,9 @@ def optimize_fracpp(
                 tk['fraction_full_scale'] * lms_freq / lms_meas, decimals=3
             )
             if frac_pp > 1:
+                su.cprint(f"Could not achieve desired n_phi0={n_phi0}."
+                          + f" Reducing target to {n_phi0-1}.")
                 n_phi0 -= 1
-                su.cprint(f"Could not achieve desired n_phi0. Reducing to {n_phi0}.")
                 lms_freq = n_phi0 * tk['reset_rate_khz'] * 1e3
                 frac_pp = np.round(
                     tk['fraction_full_scale'] * lms_freq / lms_meas, decimals=3

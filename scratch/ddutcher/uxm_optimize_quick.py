@@ -8,7 +8,7 @@ import os, sys
 import numpy as np
 import scipy.signal as signal
 import sodetlib.smurf_funcs.optimize_params as op
-from uc_tuner import uc_rough_tune, uc_fine_tune
+from uc_tuner import UCTuner
 import logging
 
 sys.path.append("/sodetlib/scratch/ddutcher")
@@ -70,7 +70,7 @@ def uxm_optimize(
         S.set_downsample_factor(20)
         S.set_mode_dc()
 
-        logger.info(f"Setting up band {opt_band}, the initialization band")
+        logger.info(f"\nSetting up band {opt_band}.")
 
         S.set_att_dc(opt_band, cfg.dev.bands[opt_band]["dc_att"])
         logger.info(f"band {opt_band} dc_att {S.get_att_dc(opt_band)}")
@@ -117,325 +117,99 @@ def uxm_optimize(
             lms_gain=cfg.dev.bands[opt_band]["lms_gain"],
         )
 
+        uctuner = UCTuner(S, cfg, band=opt_band, stream_time=stream_time,
+                          fmin=fmin, fmax=fmax, detrend=detrend)
         logger.info(f"taking {stream_time}s timestream")
 
-        # non blocking statement to start time stream and return the dat filename
-        dat_path = S.stream_data_on()
-        # collect stream data
-        time.sleep(stream_time)
-        # end the time stream
-        S.stream_data_off()
-        fs = S.get_sample_frequency()
-        wl_list_temp = []
-        timestamp, phase, mask, tes_bias = S.read_stream_data(
-            dat_path, return_tes_bias=True
-        )
+        uctuner.uc_tune(uc_attens=uctuner.current_uc_att, initial_attempt=True)
 
-        bands, channels = np.where(mask != -1)
-        phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-
-        for c, (b, ch) in enumerate(zip(bands, channels)):
-            if ch < 0:
-                continue
-            ch_idx = mask[b, ch]
-            nsamps = len(phase[ch_idx])
-            f, Pxx = signal.welch(phase[ch_idx], nperseg=nsamps, fs=fs, detrend=detrend)
-            Pxx = np.sqrt(Pxx)
-            fmask = (fmin < f) & (f < fmax)
-
-            wl = np.median(Pxx[fmask])
-            wl_list_temp.append(wl)
-
-        noise_param = wl_list_temp
-
-        wl_median = np.median(noise_param)
-        wl_length = len(noise_param)
-        channel_length = len(noise_param)
-
-        if wl_median > high_noise_thresh:
-            logger.info(
-                f"WL: {wl_median} with {wl_length} channels out of {channel_length}",
-            )
+        if uctuner.wl_median > high_noise_thresh:
+            logger.info(uctuner.status)
             raise ValueError(
-                f"wl_median={wl_median} is to high. "
+                f"wl_median={uctuner.wl_median} is to high. "
                 + "Something might be wrong, power level might be really off, please investigate"
             )
 
-        elif wl_median < low_noise_thresh:
+        elif uctuner.wl_median < low_noise_thresh:
             # Do one fine tune and stop.
-            logger.info(
-                f"WL: {wl_median} with {wl_length} channels out of {channel_length}\ncan be fine tuned",
-            )
+            logger.info(uctuner.status)
+            logger.info("Can be fine-tuned")
+            uctuner.fine_tune()
 
-            current_uc_att = S.get_att_uc(opt_band)
-            current_tone_power = S.amplitude_scale[opt_band]
-
-            estimate_att, current_tone_power, lowest_wl_index, wl_median = uc_fine_tune(
-                S=S,
-                cfg=cfg,
-                band=opt_band,
-                current_uc_att=current_uc_att,
-                current_tone_power=current_tone_power,
-                stream_time=stream_time,
-                fmin=fmin,
-                fmax=fmax,
-                detrend=detrend,
-            )
-
-        elif low_noise_thresh < wl_median < med_noise_thresh:
+        elif low_noise_thresh < uctuner.wl_median < med_noise_thresh:
             # Do a rough tune followed by a fine tune.
-            logger.info(
-                f"WL: {wl_median} with {wl_length} channels out of {channel_length}\ncan be rough-tuned",
-            )
+            logger.info(uctuner.status)
+            logger.info("Can be rough-tuned")
+            uctuner.rough_tune()
 
-            current_uc_att = S.get_att_uc(opt_band)
-            current_tone_power = S.amplitude_scale[opt_band]
-
-            (
-                estimate_att,
-                current_tone_power,
-                lowest_wl_index,
-                wl_median,
-            ) = uc_rough_tune(
-                S=S,
-                cfg=cfg,
-                band=opt_band,
-                current_uc_att=current_uc_att,
-                current_tone_power=current_tone_power,
-                stream_time=stream_time,
-                fmin=fmin,
-                fmax=fmax,
-                detrend=detrend,
-            )
-
-            # Adjust the tone powers so the attenuations can have some dynamic range.
-            if estimate_att < 16:
+            # If needed, adjust the tone powers so the attenuations can have
+            # some dynamic range.
+            if uctuner.estimate_att < 16:
                 logger.info(f"adjusting tone power and uc att")
-                new_tone_power = current_tone_power + 2
-                adjusted_uc_att = np.min([current_uc_att + 11, 30])
-                S.set_att_uc(opt_band, adjusted_uc_att)
-                S.find_freq(opt_band, tone_power=new_tone_power, make_plot=True)
-                S.setup_notches(
-                    opt_band, tone_power=new_tone_power, new_master_assignment=True
-                )
-                S.run_serial_gradient_descent(opt_band)
-                S.run_serial_eta_scan(opt_band)
-                current_uc_att = adjusted_uc_att
-                current_tone_power = new_tone_power
+                uctuner.increase_tone_power()
 
-            if estimate_att > 26:
+            if uctuner.estimate_att > 26:
                 logger.info(f"adjusting tone power and uc att")
-                new_tone_power = current_tone_power - 2
-                adjusted_uc_att = np.max([current_uc_att - 11, 0])
-                S.set_att_uc(opt_band, adjusted_uc_att)
-                S.find_freq(opt_band, tone_power=new_tone_power, make_plot=True)
-                S.setup_notches(
-                    opt_band, tone_power=new_tone_power, new_master_assignment=True
-                )
-                S.run_serial_gradient_descent(opt_band)
-                S.run_serial_eta_scan(opt_band)
-                current_uc_att = adjusted_uc_att
-                current_tone_power = new_tone_power
+                uctuner.decrease_tone_power()
 
-            estimate_att, current_tone_power, lowest_wl_index, wl_median = uc_fine_tune(
-                S=S,
-                cfg=cfg,
-                band=opt_band,
-                current_uc_att=current_uc_att,
-                current_tone_power=current_tone_power,
-                stream_time=stream_time,
-                fmin=fmin,
-                fmax=fmax,
-                detrend=detrend,
-            )
-            logger.info(f"achieved at uc att {estimate_att} drive {current_tone_power}")
+            uctuner.fine_tune()
 
-            step2_index = lowest_wl_index
-            if step2_index == 0 or step2_index == -1:
-                # Best noise was found at the edge of uc_att range explored; re-center and repeat.
-                logger.info(f"can be fine tuned")
-                (
-                    estimate_att,
-                    current_tone_power,
-                    lowest_wl_index,
-                    wl_median,
-                ) = uc_fine_tune(
-                    S=S,
-                    cfg=cfg,
-                    band=opt_band,
-                    current_uc_att=estimate_att,
-                    current_tone_power=current_tone_power,
-                    stream_time=stream_time,
-                    fmin=fmin,
-                    fmax=fmax,
-                    detrend=detrend,
-                )
-            logger.info(f"achieved at uc att {estimate_att} drive {current_tone_power}")
+            if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
+                # Best noise was found at the edge of uc_att range explored;
+                # re-center and repeat.
+                logger.info(uctuner.status)
+                logger.info(f"Can be fine-tuned")
+                uctuner.fine_tune()
 
-        elif med_noise_thresh < wl_median < high_noise_thresh:
+        elif med_noise_thresh < uctuner.wl_median < high_noise_thresh:
             # Do up to two rough tunes followed by one or more fine tunes.
-            logger.info(
-                f"WL: {wl_median} with {wl_length} channels out of {channel_length}\ncan be rough tuned",
-            )
+            logger.info(uctuner.status)
+            logger.info("Can be rough-tuned")
+            uctuner.rough_tune()
 
-            current_uc_att = S.get_att_uc(opt_band)
-            current_tone_power = S.amplitude_scale[opt_band]
-
-            (
-                estimate_att,
-                current_tone_power,
-                lowest_wl_index,
-                wl_median,
-            ) = uc_rough_tune(
-                S=S,
-                cfg=cfg,
-                band=opt_band,
-                current_uc_att=current_uc_att,
-                current_tone_power=current_tone_power,
-                stream_time=stream_time,
-                fmin=fmin,
-                fmax=fmax,
-                detrend=detrend,
-            )
-
-            if wl_median < low_noise_thresh:
+            if uctuner.wl_median < low_noise_thresh:
                 # Do one fine tune and stop.
-                logger.info(
-                    f"WL: {wl_median} with {wl_length} channels out of {channel_length}\ncan be fine tuned",
-                )
-
-                current_uc_att = S.get_att_uc(opt_band)
-                current_tone_power = S.amplitude_scale[opt_band]
-
-                (
-                    estimate_att,
-                    current_tone_power,
-                    lowest_wl_index,
-                    wl_median,
-                ) = uc_fine_tune(
-                    S=S,
-                    cfg=cfg,
-                    band=opt_band,
-                    current_uc_att=current_uc_att,
-                    current_tone_power=current_tone_power,
-                    stream_time=stream_time,
-                    fmin=fmin,
-                    fmax=fmax,
-                    detrend=detrend,
-                )
+                logger.info(uctuner.status)
+                logger.info("Can be fine-tuned")
+                uctuner.fine_tune()
 
             else:
                 # Do another rough tune.
-                logger.info(
-                    f"WL: {wl_median} with {wl_length} channels out of {channel_length}\ncan be rough tuned",
-                )
+                logger.info(uctuner.status)
+                logger.info("Can be rough-tuned")
+                uctuner.rough_tune()
 
-                current_uc_att = S.get_att_uc(opt_band)
-                current_tone_power = S.amplitude_scale[opt_band]
+                # If needed, adjust the tone powers so the attenuations can have
+                # some dynamic range.
+                if uctuner.estimate_att < 16:
+                    logger.info(f"adjusting tone power and uc att")
+                    uctuner.increase_tone_power()
 
-                (
-                    estimate_att,
-                    current_tone_power,
-                    lowest_wl_index,
-                    wl_median,
-                ) = uc_rough_tune(
-                    S=S,
-                    cfg=cfg,
-                    band=opt_band,
-                    current_uc_att=current_uc_att,
-                    current_tone_power=current_tone_power,
-                    stream_time=stream_time,
-                    fmin=fmin,
-                    fmax=fmax,
-                    detrend=detrend,
-                )
-                step1_index = lowest_wl_index
+                if uctuner.estimate_att > 26:
+                    logger.info(f"adjusting tone power and uc att")
+                    uctuner.decrease_tone_power()
 
-                # Adjust the tone powers so the attenuations can have some dynamic range.
-                if estimate_att < 16:
-                    logger.info("adjusting tone power and uc att")
-                    new_tone_power = current_tone_power + 2
-                    adjusted_uc_att = np.min([current_uc_att + 12, 30])
-                    S.set_att_uc(opt_band, adjusted_uc_att)
-                    S.find_freq(opt_band, tone_power=new_tone_power, make_plot=True)
-                    S.setup_notches(
-                        opt_band, tone_power=new_tone_power, new_master_assignment=True
-                    )
-                    S.run_serial_gradient_descent(opt_band)
-                    S.run_serial_eta_scan(opt_band)
-                    current_uc_att = adjusted_uc_att
-                    current_tone_power = new_tone_power
+                uctuner.fine_tune()
 
-                if estimate_att > 26:
-                    logger.info("adjusting tone power and uc att")
-                    new_tone_power = current_tone_power - 2
-                    adjusted_uc_att = np.max([current_uc_att - 11, 0])
-                    S.set_att_uc(opt_band, adjusted_uc_att)
-                    S.find_freq(opt_band, tone_power=new_tone_power, make_plot=True)
-                    S.setup_notches(
-                        opt_band, tone_power=new_tone_power, new_master_assignment=True
-                    )
-                    S.run_serial_gradient_descent(opt_band)
-                    S.run_serial_eta_scan(opt_band)
-                    current_uc_att = adjusted_uc_att
-                    current_tone_power = new_tone_power
-
-                (
-                    estimate_att,
-                    current_tone_power,
-                    lowest_wl_index,
-                    wl_median,
-                ) = uc_fine_tune(
-                    S=S,
-                    cfg=cfg,
-                    band=opt_band,
-                    current_uc_att=current_uc_att,
-                    current_tone_power=current_tone_power,
-                    stream_time=stream_time,
-                    fmin=fmin,
-                    fmax=fmax,
-                    detrend=detrend,
-                )
-                logger.info(
-                    f"achieved at uc att {estimate_att} drive {current_tone_power}",
-                )
-
-                step2_index = lowest_wl_index
-                if step2_index == 0 or step2_index == -1:
-                    # Best noise was found at the edge of uc_att range explored; re-center and repeat.
-                    logger.info(f"can be fine tuned")
-                    (
-                        estimate_att,
-                        current_tone_power,
-                        lowest_wl_index,
-                        wl_median,
-                    ) = uc_fine_tune(
-                        S=S,
-                        cfg=cfg,
-                        band=opt_band,
-                        current_uc_att=estimate_att,
-                        current_tone_power=current_tone_power,
-                        stream_time=stream_time,
-                        fmin=fmin,
-                        fmax=fmax,
-                        detrend=detrend,
-                    )
+                if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
+                    # Best noise was found at the edge of uc_att range explored;
+                    # re-center and repeat.
+                    logger.info(uctuner.status)
+                    logger.info(f"Can be fine-tuned")
+                    uctuner.fine_tune()
 
         else:
             # wl_median above high_noise_thresh
-            raise ValueError(f"WL={wl_median} is off, please investigate")
+            raise ValueError(f"WL={uctuner.wl_median:.1f} is off, please investigate")
             
-        logger.info(
-            f"WL: {wl_median} with {wl_length} channels out of {channel_length}",
-        )
-        logger.info(
-            f"achieved at uc att {estimate_att} drive {current_tone_power}",
-        )
+        logger.info(uctuner.status)
+        logger.info(f"achieved at uc att {uctuner.estimate_att} drive"
+                    + f" {uctuner.current_tone_power}.")
         logger.info(f"plotting directory is:\n{S.plot_dir}")
 
         cfg.dev.update_band(
             opt_band,
-            {"uc_att": estimate_att, "drive": current_tone_power},
+            {"uc_att": uctuner.estimate_att, "drive": uctuner.current_tone_power},
             update_file=True,
         )
 
