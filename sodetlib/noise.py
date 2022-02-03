@@ -4,6 +4,7 @@ from sodetlib.util import get_asd, cprint
 import sodetlib as sdl
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 
 def noise_model(freq, wl, n, f_knee):
