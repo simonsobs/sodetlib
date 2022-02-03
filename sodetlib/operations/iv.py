@@ -24,7 +24,7 @@ class IVAnalysis:
     run_kwargs : dict
         Dictionary of keyword arguments passed to the take_iv function.
     sid : int
-        Session id form the IV stream session
+        Session id from the IV stream session
     start_times : np.ndarray
         Array of start_times of each bias-step
     stop_times : np.ndarray
@@ -61,19 +61,16 @@ class IVAnalysis:
         at each bias-step.
     R : np.ndarray
         Array of shape (nchans, nbiases) containing the TES Resistance of each
-        channel at each biasstep
+        channel at each bias-step
     p_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the electrical power on the
-        TES (W) of each channel at each biasstep
+        TES (W) of each channel at each bias-step
     v_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the voltage across the TES
         for each channel at each bias-step (V)
     i_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the current across the TES
         for each channel at each bias-step (Amps)
-    R_n : np.ndarry
-        Array of shape (nchans) containing the normal resistance (Ohms) of the
-        TES
     R_n : np.ndarry
         Array of shape (nchans) containing the normal resistance (Ohms) of the
         TES
@@ -197,7 +194,7 @@ def compute_psats(iva, psat_level=0.9):
     p_sat : np.ndarray
         Array of length (nchan) with the p-sat computed for each channel (W)
     """
-    # calculates P_sat as P_TES at 90% R_n
+    # calculates P_sat as P_TES when Rfrac = psat_level
     # if the TES is at 90% R_n more than once, just take the first crossing
     for i in range(iva.nchans):
         if np.isnan(iva.R_n[i]):
@@ -207,15 +204,13 @@ def compute_psats(iva, psat_level=0.9):
         R = iva.R[i]
         R_n = iva.R_n[i]
         p_tes = iva.p_tes[i]
-        cross_idx = np.where(
-            np.logical_and(R/R_n - level >= 0,
-                           np.roll(R/R_n - level, 1) < 0)
-        )[0]
+        cross_idx = np.where(R/R_n > level)[0]
 
         if len(cross_idx) == 0:
             iva.p_sat[i] = np.nan
             continue
 
+        # Takes cross-index to be the first time Rfrac crosses psat_level
         cross_idx = cross_idx[0]
         if cross_idx == 0:
             iva.p_sat[i] = np.nan
@@ -309,10 +304,6 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
 
-    smooth_dist = 20
-    w_len = 2 * smooth_dist + 1
-    w = (1./float(w_len))*np.ones(w_len)  # window
-
     # Calculate phase response and bias_voltages / currents
     for i in range(iva.nbiases):
         # Start from back because analysis is easier low->high voltages
@@ -330,7 +321,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
 
     iva.i_bias = iva.v_bias / iva.meta['bias_line_resistance']
 
-    # Convert phase to uA
+    # Convert phase to Amps
     A_per_rad = iva.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
     iva.resp = (iva.resp.T * iva.polarity).T * A_per_rad
 
@@ -408,8 +399,8 @@ def plot_channel_iv(iva, rc):
     axes[1].set_ylabel("R (mOhms)")
     axes[2].plot(iva.v_bias, iva.p_tes[rc]*1e12, color='black')
     axes[2].set_ylabel("Pbias (pW)")
-    axes[3].plot(iva.v_bias, iva.si[rc], color='black')
-    axes[3].set_ylabel("S_i")
+    axes[3].plot(iva.v_bias, iva.si[rc]*1e-6, color='black')
+    axes[3].set_ylabel("Si (1/uV)")
 
     b, c, bg = iva.bands[rc], iva.channels[rc], iva.bgmap[rc]
     axes[0].set_title(f"Band: {b}, Chan: {c}, BG: {bg}", fontsize=18)
@@ -420,9 +411,9 @@ def plot_channel_iv(iva, rc):
 
 
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
-            high_current_mode=True, cool_wait=30, biases=None, bias_high=16,
-            bias_low=0, bias_step=0.025, wait_time=0.1, run_analysis=True,
-            analysis_kwargs=None):
+            high_current_mode=True, cool_wait=30, cool_voltage=None,
+            biases=None, bias_high=16, bias_low=0, bias_step=0.025,
+            wait_time=0.1, run_analysis=True, analysis_kwargs=None):
     """
     Takes an IV.
 
@@ -446,6 +437,9 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
         to avoid the bias-line filter.
     cool_wait : float
         Amout of time to wait at the first bias step after overbiasing.
+    cool_voltage : float
+        TES bias voltage to sit at during the cool_wait time while the cryostat
+        cools
     biases : np.ndarray, optional
         array of biases to use for IV.
         This should be in units of Low-Current-Mode volts. If you are running
@@ -494,7 +488,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     run_kwargs = {
         'bias_groups': bias_groups, 'overbias_voltage': overbias_voltage,
         'overbias_wait': overbias_wait, 'high_current_mode': high_current_mode,
-        'cool_wait': cool_wait,  'biases': biases,
+        'cool_wait': cool_wait, 'cool_voltage': cool_voltage,  'biases': biases,
         'bias_high': bias_high, 'bias_low': bias_low, 'bias_step': bias_step,
         'wait_time': wait_time, 'run_analysis': run_analysis,
         'analysis_kwargs': analysis_kwargs
@@ -506,7 +500,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     sid = sdl.stream_g3_on(S)
 
     if overbias_voltage > 0:
-        cool_voltage = np.max(biases)
+        if cool_voltage is None:
+            cool_voltage = np.max(biases)
         S.overbias_tes_all(
             bias_groups=bias_groups, overbias_wait=overbias_wait,
             tes_bias=cool_voltage, cool_wait=cool_wait,
@@ -541,9 +536,76 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
 
     return iva
 
+
+@set_action()
+def bias_to_rfrac_range(S, cfg, rfrac_range=(0.2, 0.6), bias_groups=None, iva=None,
+                  overbias_voltage=19.9, overbias_wait=5.0,
+                  Rn_range=(5e-3, 12e-3)):
+    """
+    Biases detectors to transition given an rfrac range. This function will choose
+    TES bias voltages for each bias-group that maximize the number of channels
+    that will be placed in the allowable rfrac-range.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Detconfig instance
+    rfrac_range : tuple
+        Range of allowable rfracs
+    bias_groups : list, optional
+        Bias groups to bias. Defaults to all of them.
+    iva : IVAnalysis, optional
+        IVAnalysis object. If this is passed, will use it to determine
+        bias voltages. Defaults to using value in device cfg.
+    overbias_voltage : float
+        Voltage to use to overbias detectors
+    overbias_wait : float
+        Time (sec) to wait at overbiased voltage
+    Rn_range : tuple
+        A "reasonable" range for the TES normal resistance. This will
+        be cut on when determining which IV's should be used to determine
+        the optimal bias-voltage.
+    """
+    if bias_groups is None:
+        bias_groups = np.arange(12)
+    bias_groups = np.atleast_1d(bias_groups)
+
+    if iva is None:
+        iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
+
+    biases = S.get_tes_bias_bipolar_array()
+
+    Rfrac = (iva.R.T / iva.R_n).T
+    in_range = (rfrac_range[0] < Rfrac) & (Rfrac < rfrac_range[1])
+
+    for bg in bias_groups:
+        m = (iva.bgmap == bg)
+        m = m & (Rn_range[0] < iva.R_n) & (iva.R_n < Rn_range[1])
+
+        if not m.any():
+            continue
+
+        nchans_in_range = np.sum(in_range[m, :], axis=0)
+        target_idx = np.argmax(nchans_in_range)
+        biases[bg] = iva.v_bias[target_idx]
+
+    S.log(f"Target biases: {biases}")
+    S.log("Overbiasing detectors")
+    sdl.set_current_mode(S, bias_groups, 1)
+    for bg in bias_groups:
+        S.set_tes_bias_bipolar(bg, overbias_voltage)
+    time.sleep(overbias_wait)
+    S.set_tes_bias_bipolar_array(biases)
+    sdl.set_current_mode(S, bias_groups, 0, const_current=False)
+
+    return biases
+
 @set_action()
 def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
-                  overbias_voltage=19.9, overbias_wait=5.0):
+                  overbias_voltage=19.9, overbias_wait=5.0,
+                  Rn_range=(5e-3, 12e-3)):
     """
     Biases detectors to a specified Rfrac value
 
@@ -560,6 +622,14 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     iva : IVAnalysis, optional
         IVAnalysis object. If this is passed, will use it to determine
         bias voltages. Defaults to using value in device cfg.
+    overbias_voltage : float
+        Voltage to use to overbias detectors
+    overbias_wait : float
+        Time (sec) to wait at overbiased voltage
+    Rn_range : tuple
+        A "reasonable" range for the TES normal resistance. This will
+        be cut on when determining which IV's should be used to determine
+        the optimal bias-voltage.
     """
     if bias_groups is None:
         bias_groups = np.arange(12)
@@ -572,7 +642,9 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 
     Rfrac = (iva.R.T / iva.R_n).T
     for bg in bias_groups:
-        m = (iva.bgmap == bg) & (5e-3 < iva.R_n) & (iva.R_n < 12e-3)
+        m = (iva.bgmap == bg)
+        m = m & (Rn_range[0] < iva.R_n) & (iva.R_n < Rn_range[1])
+
         if not m.any():
             continue
 
