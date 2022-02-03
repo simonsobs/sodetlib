@@ -24,7 +24,12 @@ dark_bias_lines:
 # data directory of the tune ile, coldramp file, and psat IV-data
 data_dir: None
 # the strategy to mapp measured frequencies to design frequencies
-mapping_strategy: map_by_res_index
+mapping_strategy: map_by_freq
+
+# Output control
+do_csv_output: True
+save_layout_plot: True
+show_layout_plot: True
 
 # # psat (saturation power measurements) input parameters
 # cold ramp bath temperature sweep filename - Will be deprecated soon
@@ -36,11 +41,10 @@ psat_save_plot: True
 # # SMuRF parameters - measured data input
 # the tune filename
 tunefile: 1632247315_tune.npy
-# output smurf data filename
+# output smurf data  control and filenames
 output_filename_smurf: smurf_pixel_freq_mapping.csv
+# Diagnostic plot output filename
 layout_plot_filename_smurf: smurf_layout.png
-# the mapping strategy to use
-mapping_strategy: map_by_res_index
 
 # # vna data - measured data input
 # in MHz, applies a shift to the VNA data when determining the smurf band and resonator index
@@ -51,6 +55,7 @@ path_south_side_vna: south_side_vna_farray.csv
 tune_data_vna_output_filename: tune_data_vna.csv
 # output vna data filename
 output_filename_vna: test_pixel_info_vna.csv
+# Diagnostic plot output filename
 layout_plot_filename_vna: vna_layout.png
 
 # # g3timestream data - measured data input
@@ -58,4 +63,5 @@ layout_plot_filename_vna: vna_layout.png
 timestream: freq_map.npy
 # output smurf data filename
 output_filename_g3: g3_pixel_freq_mapping.csv
+# Diagnostic plot output filename
 layout_plot_filename_g3: g3_layout.png

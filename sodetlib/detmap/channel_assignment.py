@@ -817,7 +817,7 @@ class OperateTuneData:
         self.update_tunes(tune_data_new=tune_data_new, var_str='layout',
                           tune_data_with=tune_data_with_layout_data, tune_data_without=tune_data_without_layout_data)
 
-    def plot_with_layout(self, plot_path=None, show_plot=True):
+    def plot_with_layout(self, plot_path=None, show_plot=False, save_plot=True):
         ax_frames_on = False
         bands_base_size_linw = 1.0
         bands_has_design_freq_alpha = 0.5
@@ -921,16 +921,18 @@ class OperateTuneData:
         for bandpass in ax_layouts.keys():
             if bandpass == 90:
                 va = 'top'
-                y = 1.035
+                y = 1.045
             else:
                 va = 'bottom'
-                y = -0.035
+                y = -0.08
             for pol in ax_layouts[bandpass].keys():
                 ax = ax_layouts[bandpass][pol]
                 ax.text(x=0.5, y=y, s=f"Bandpass {bandpass} GHz - Polarization '{pol}'",
                         transform=ax.transAxes, ha='center', va=va, alpha=0.8, size=8, color='black',
                         weight='bold',
                         bbox=dict(color='white', alpha=0.5, ls='-', lw=1.0, ec='black'))
+                ax.set_xlim([-66.0, 67.5])
+                ax.set_ylim([-55.50, 58.5])
 
         # # Plot the frequency Mapping data for each Band
         # threads of a rug plot
@@ -1006,7 +1008,7 @@ class OperateTuneData:
             legend_handles.append(plt.Line2D(range(12), range(12), color=color, ls='None', marker=marker,
                                              label=f"Band {band_num}"))
         # set legend
-        ax_legend.legend(handles=legend_handles, loc=10)
+        ax_legend.legend(handles=legend_handles, loc='upper center', fontsize=9)
 
         # # save/export and show this plot
         # set the plot path and directory.
@@ -1018,8 +1020,9 @@ class OperateTuneData:
         if not os.path.exists(self.plot_dir):
             os.mkdir(self.plot_dir)
         # save the plot
-        plt.savefig(plot_path)
-        print(f'Saved the OperateTuneData Diagnostic layout plot at: {plot_path}')
+        if save_plot:
+            plt.savefig(plot_path)
+            print(f'Saved the OperateTuneData Diagnostic layout plot at: {plot_path}')
         if show_plot:
             plt.show(block=True)
 

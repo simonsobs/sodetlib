@@ -130,8 +130,9 @@ def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferf
 
 
 def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: OperateTuneData, layout_data: dict,
-                                output_path_csv, layout_plot_path=None, do_csv_output=True, do_layout_plot=True,
-                                mapping_strategy='map_by_res_index') -> OperateTuneData:
+                                output_path_csv, layout_plot_path=None, do_csv_output=True,
+                                show_layout_plot=False, save_layout_plot=True,
+                                mapping_strategy='map_by_freq') -> OperateTuneData:
     """General process for and instance of OperateTuneData (tune_data) with metadata (design_data, layout_data).
 
     Writes a CSV file with combined tune and metadata, and returns an instance of OperateTuneData that is fully
@@ -160,8 +161,14 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
         If None is given, a default filename is chosen.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
-    do_layout_plot : bool, optional
-        True makes a plot output using OperateTuneData.plot_with_layout() method. False omits this step.
+    show_layout_plot: bool, optional
+        True displays an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not show a plot and is the default. If save_layout_plot is also False, the computationally
+        expensive plotting method is skipped.
+    save_layout_plot: bool, optional
+        True Saves an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not save a plot. By default, a plot is saved. If show_layout_plot is also False, the
+        computationally expensive plotting method is skipped.
     mapping_strategy : object: string, int, float, optional
         A variable used to select the strategy for mapping measured resonator frequency data to designed frequencies.
         This is mapping is not a one-to-one process and can be done in a number of ways.
@@ -191,8 +198,9 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
         # update the tune data to include the layout data.
         if layout_data is not None:
             tune_data.map_layout_data(layout_data=layout_data)
-            if do_layout_plot:
-                tune_data.plot_with_layout(plot_path=layout_plot_path)
+            if show_layout_plot or save_layout_plot:
+                tune_data.plot_with_layout(plot_path=layout_plot_path, show_plot=show_layout_plot,
+                                           save_plot=save_layout_plot)
     if do_csv_output:
         # write a CSV file of this data
         tune_data.write_csv(output_path_csv=output_path_csv)
@@ -201,8 +209,9 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
 
 def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_default_path,
                    waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
-                   dark_bias_lines=None, output_path_csv=None, do_csv_output=True,
-                   mapping_strategy='map_by_res_index') -> OperateTuneData:
+                   dark_bias_lines=None, output_path_csv=None, layout_plot_path=None,
+                   do_csv_output=True, show_layout_plot=False, save_layout_plot=True,
+                   mapping_strategy='map_by_freq') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is full populated with metadata.
 
     Parameters
@@ -231,8 +240,19 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
         A string for the and output path for a CSV file with combined tune and metadata. By default, the output
         directory is the same as that of the `tunefile` argument above. The default filename is prepended with 'smurf_'
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
+    layout_plot_path : object : str, optional
+        A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
+        If None is given, a default filename is chosen.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    show_layout_plot: bool, optional
+        True displays an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not show a plot and is the default. If save_layout_plot is also False, the computationally
+        expensive plotting method is skipped.
+    save_layout_plot: bool, optional
+        True Saves an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not save a plot. By default, a plot is saved. If show_layout_plot is also False, the
+        computationally expensive plotting method is skipped.
     mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
@@ -262,7 +282,9 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
     tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband,
                                       layout_position_path=layout_position_path)
     return add_metadata_and_get_output(tune_data=tune_data_smurf, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
+                                       do_csv_output=do_csv_output,
+                                       show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
                                        mapping_strategy=mapping_strategy)
 
 
@@ -272,7 +294,9 @@ def make_map_vna(tune_data_vna_output_filename,
                  shift_mhz=10.0,
                  design_file=designfile_default_path, waferfile=waferfile_default_path,
                  layout_position_path=mux_pos_to_mux_band_file_default_path, dark_bias_lines=None,
-                 output_path_csv=None, do_csv_output=True, mapping_strategy='map_by_res_index') -> OperateTuneData:
+                 output_path_csv=None, layout_plot_path=None,
+                 do_csv_output=True, show_layout_plot=False, save_layout_plot=True,
+                 mapping_strategy='map_by_freq') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a pair of arrays of frequency data from a VNA.
 
         Two array of frequency data (north and south sides of an array) are allowed as input for a single detector focal
@@ -323,8 +347,19 @@ def make_map_vna(tune_data_vna_output_filename,
         directory is the same that of the `tune_data_vna_output_filename` argument above. The default filename is
         prepended with 'vna_' with a suffix determined by `output_csv_default_filename` in
         sodetlib/sodetlib/detmap/detmap_config.py.
+    layout_plot_path : object : str, optional
+        A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
+        If None is given, a default filename is chosen.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    show_layout_plot: bool, optional
+        True displays an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not show a plot and is the default. If save_layout_plot is also False, the computationally
+        expensive plotting method is skipped.
+    save_layout_plot: bool, optional
+        True Saves an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not save a plot. By default, a plot is saved. If show_layout_plot is also False, the
+        computationally expensive plotting method is skipped.
     mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
@@ -372,14 +407,17 @@ def make_map_vna(tune_data_vna_output_filename,
                                     layout_position_path=layout_position_path)
 
     return add_metadata_and_get_output(tune_data=tune_data_vna, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
+                                       do_csv_output=do_csv_output,
+                                       show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
                                        mapping_strategy=mapping_strategy)
 
 
 def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=designfile_default_path,
                            waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
-                           dark_bias_lines=None, output_path_csv=None, do_csv_output=True,
-                           mapping_strategy='map_by_res_index') -> OperateTuneData:
+                           dark_bias_lines=None, output_path_csv=None,  layout_plot_path=None,
+                           do_csv_output=True, show_layout_plot=False, save_layout_plot=True,
+                           mapping_strategy='map_by_freq') -> OperateTuneData:
     """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is full populated with metadata.
 
     Parameters
@@ -408,8 +446,19 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
         A string for the and output path for a CSV file with combined tune and metadata. By default, the output
         directory is the same as that of the `timestream` argument above. The default filename is prepended with 'g3ts_'
         with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
+    layout_plot_path : object : str, optional
+        A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
+        If None is given, a default filename is chosen.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    show_layout_plot: bool, optional
+        True displays an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not show a plot and is the default. If save_layout_plot is also False, the computationally
+        expensive plotting method is skipped.
+    save_layout_plot: bool, optional
+        True Saves an interactive layout plot using OperateTuneData.plot_with_layout() method.
+        False, False does not save a plot. By default, a plot is saved. If show_layout_plot is also False, the
+        computationally expensive plotting method is skipped.
     mapping_strategy : object: str, int, float, optional
         See the docstring in the function add_metadata_and_get_output().
 
@@ -437,7 +486,9 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
                                      north_is_highband=north_is_highband,
                                      layout_position_path=layout_position_path)
     return add_metadata_and_get_output(tune_data=tune_data_g3ts, design_data=design_data, layout_data=layout_data,
-                                       output_path_csv=output_path_csv, do_csv_output=do_csv_output,
+                                       output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
+                                       do_csv_output=do_csv_output,
+                                       show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
                                        mapping_strategy=mapping_strategy)
 
 
