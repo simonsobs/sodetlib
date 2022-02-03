@@ -1,5 +1,5 @@
-Bias Steps
-==========
+Bias Steps and Bias Group Maps
+================================
 
 Bias steps are when we take small steps in the detector bias voltage and
 measure the detector response. These are a fantastic tool for calibrating
@@ -10,6 +10,51 @@ a bias-group mapping.
 Usage
 -------
 
+Generating a Bias Group Map
+``````````````````````````````
+To generate a bias-group map, use the function ``take_bgmap`` from the
+bias_steps module. This will run the bias-steps function with parameters
+optimal for generating a bias-group map, will create a bgmap file, and
+save the filepath to the device cfg. This function returns a bias
+step analysis object.
+
+.. code-block:: python
+
+  import sodetlib.operations as ops
+
+  bsa = ops.take_bgmap(S, cfg)
+
+To generate the bgmap, this function will set detectors to superconducting
+and play a series of small bias-steps. Because the detectors are
+superconducting, we expect a very clear bias-group correlation, and we expect
+the estimated resistance to be very small.
+By default, channels will be "unassigned" from the bgmap if the bg-correlation
+factor is less than 0.9 or if the estimated resistance is larger than 10 mOhms
+to avoid picking up crosstalk channels. 
+These cuts can be modified by setting the corresponding keyword arguments manually
+in the ``analysis_kwargs`` parameter.
+
+The bgmap file stores key metadata along with information about which channels
+were run to produce the map, the bias-group assignments of each channel,
+and the polarity of each channel, or whether the squid response  steps in the
+same or opposite direction of the bias current.
+
+To load a bgmap for a set of channels, you can use the ``load_bgmap`` function.
+
+.. code-block:: python
+
+  import sodetlib as sdl
+
+  sid = sdl.take_g3_data(S, 30)
+  am = sdl.load_session(cfg.stream_id, sid)
+
+  bgmap, polarity = sdl.load_bgmap(
+      am.ch_info.band, am.ch_info.channel, cfg.dev.exp['bgmap_file']
+  )
+
+
+Running Bias Steps
+````````````````````
 The sodetlib function ``take_bias_steps`` can be used to take bias steps and
 run the analysis to calculate the detector parameters mentioned above. The
 default parameters *should* be good enough for the full analysis, for example, 
@@ -171,7 +216,7 @@ take_bias_steps
 ``````````````````
 
 .. automodule:: sodetlib.operations.bias_steps
-    :members: take_bias_steps
+    :members: take_bgmap, take_bias_steps
 
 
 .. _BiasStepAnalysis:

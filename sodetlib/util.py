@@ -106,6 +106,28 @@ def pub_ocs_log(S, msg, log=True):
 
 
 def load_bgmap(bands, channels, bgmap_file):
+    """
+    Loads bias-group assignments and channel polarity for
+    set of channels.
+
+    Args
+    ----
+    bands : np.ndarray
+        Array of len <nchans> containing the smurf-band of each channel
+    channels : np.ndarray
+        Array of len <nchans> containing the smurf-channel of each channel
+    bgmap_file : str
+        Path to the bgmap file.
+
+    Returns
+    --------
+    bgmap : np.ndarray
+        Array of lenght <nchans> containing bias-group assignments of each
+        channel. Unassigned channels contain -1.
+    polarity : np.ndarray
+        Array of lenght <nchans> containing the polarity of each channel,
+        or whether the squid current steps up or down with bias-current.
+    """
     bgmap_full = np.load(bgmap_file, allow_pickle=True).item()
     idxs = map_band_chans(
         bands, channels, bgmap_full['bands'], bgmap_full['channels']
