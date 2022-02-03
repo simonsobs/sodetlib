@@ -29,8 +29,6 @@ mapping_strategy: map_by_res_index
 # # psat (saturation power measurements) input parameters
 # cold ramp bath temperature sweep filename - Will be deprecated soon
 cold_ramp_file: coldloadramp_example.csv
-# output smurf data filename
-output_filename_smurf: smurf_pixel_freq_mapping.csv
 psat_temp_k: 9.0
 psat_show_plot: False
 psat_save_plot: True
@@ -40,6 +38,7 @@ psat_save_plot: True
 tunefile: 1632247315_tune.npy
 # output smurf data filename
 output_filename_smurf: smurf_pixel_freq_mapping.csv
+layout_plot_filename_smurf: smurf_layout.png
 # the mapping strategy to use
 mapping_strategy: map_by_res_index
 
@@ -52,9 +51,11 @@ path_south_side_vna: south_side_vna_farray.csv
 tune_data_vna_output_filename: tune_data_vna.csv
 # output vna data filename
 output_filename_vna: test_pixel_info_vna.csv
+layout_plot_filename_vna: vna_layout.png
 
 # # g3timestream data - measured data input
 # the filename
 timestream: freq_map.npy
 # output smurf data filename
 output_filename_g3: g3_pixel_freq_mapping.csv
+layout_plot_filename_g3: g3_layout.png

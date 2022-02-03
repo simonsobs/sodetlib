@@ -130,7 +130,7 @@ def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferf
 
 
 def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: OperateTuneData, layout_data: dict,
-                                output_path_csv, do_csv_output=True,
+                                output_path_csv, layout_plot_path=None, do_csv_output=True, do_layout_plot=True,
                                 mapping_strategy='map_by_res_index') -> OperateTuneData:
     """General process for and instance of OperateTuneData (tune_data) with metadata (design_data, layout_data).
 
@@ -154,9 +154,14 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
         D for dark detectors which is 90ghz but has different property as optical
         ones, and NC for no-coupled resonators.
     output_path_csv : str
-        A string for the and output path for a CSV file with combined tune and metadata
+        A string for an output path for a CSV file with combined tune and metadata
+    layout_plot_path : object : str, optional
+        A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
+        If None is given, a default filename is chosen.
     do_csv_output : bool, optional
         True makes a CSV output file using OperateTuneData.write_csv() method. False omits this step.
+    do_layout_plot : bool, optional
+        True makes a plot output using OperateTuneData.plot_with_layout() method. False omits this step.
     mapping_strategy : object: string, int, float, optional
         A variable used to select the strategy for mapping measured resonator frequency data to designed frequencies.
         This is mapping is not a one-to-one process and can be done in a number of ways.
@@ -186,6 +191,8 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
         # update the tune data to include the layout data.
         if layout_data is not None:
             tune_data.map_layout_data(layout_data=layout_data)
+            if do_layout_plot:
+                tune_data.plot_with_layout(plot_path=layout_plot_path)
     if do_csv_output:
         # write a CSV file of this data
         tune_data.write_csv(output_path_csv=output_path_csv)

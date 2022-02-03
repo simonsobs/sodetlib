@@ -233,6 +233,8 @@ class OperateTuneData:
         self.tune_data_without_design_data = None
         self.tune_data_with_layout_data = None
         self.tune_data_without_layout_data = None
+        self.design_freqs_by_band = None
+        self.mapping_strategy = None
 
         # the directory for output plots
         if self.tune_path is None:
@@ -756,16 +758,25 @@ class OperateTuneData:
             mux_band_to_mux_pos_dict = None
         # choose a mapping strategy
         if mapping_strategy in {0, '0', 0.0, 'map_by_res_index'}:
+            self.mapping_strategy = 'map_by_res_index'
             tune_data_new, tune_data_with_design_data, tune_data_without_design_data = \
                 map_by_res_index(tune_data=self.tune_data, design_attributes=self.design_attributes,
                                  design_data=design_data, mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
         elif mapping_strategy in {1, 1.0, '1', 'map_by_freq'}:
+            self.mapping_strategy = 'map_by_freq'
             tune_data_new, tune_data_with_design_data, tune_data_without_design_data = \
                 map_by_freq(tune_data_side_band_res_index=self.tune_data_side_band_res_index,
                             design_attributes=self.design_attributes,
                             design_data=design_data, mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
         else:
             raise KeyError(f'Mapping Strategy: {mapping_strategy}, is not recognized.')
+        # some extra organization and data keeping
+        self.design_freqs_by_band = {}
+        for band_num in sorted(design_data.tune_data_side_band_res_index[None].keys()):
+            self.design_freqs_by_band[band_num] = []
+            for res_index in sorted(design_data.tune_data_side_band_res_index[None][band_num].keys()):
+                tune_datum_design = design_data.tune_data_side_band_res_index[None][band_num][res_index]
+                self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
         # we can make additional data structures when we have the design data imported into measured tunes
         self.imported_design_data = True
         # reset this instance's tune_data
@@ -805,6 +816,212 @@ class OperateTuneData:
         # reset this instance's tune_data
         self.update_tunes(tune_data_new=tune_data_new, var_str='layout',
                           tune_data_with=tune_data_with_layout_data, tune_data_without=tune_data_without_layout_data)
+
+    def plot_with_layout(self, plot_path=None, show_plot=True):
+        ax_frames_on = False
+        bands_base_size_linw = 1.0
+        bands_has_design_freq_alpha = 0.5
+        band_markers = {0: "*", 1: "v", 2: "s", 3: "<",
+                        4: "p", 5: "^", 6: "D", 7: ">"}
+        band_colors = {0: "seagreen", 1: "crimson", 2: "deepskyblue", 3: "darkgoldenrod",
+                       4: "fuchsia", 5: "rebeccapurple", 6: 'chartreuse', 7: 'mediumblue'}
+        # # Plot layout initialization
+        plot_x_inches = 18.0
+        plot_y_inches = 6.0
+        # figure boundaries in figure coordinates.
+        left = 0.01
+        bottom = 0.08
+        right = 0.99
+        top = 0.95
+        # x calculations for subplots
+        x_total = right - left
+        x_between_plots = 0.0
+        x_band_layout_ratio = 1.0
+        x_available_for_all = x_total - 4.0 * x_between_plots
+        x_available_for_bands = x_available_for_all / (1.0 + (1.0 / x_band_layout_ratio))
+        x_available_for_layouts = x_available_for_all - x_available_for_bands
+        x_available_for_band = x_available_for_bands / 2.0
+        x_available_for_layout = x_available_for_layouts / 3.0
+        # y calculations for subplots
+        y_total = top - bottom
+        y_extra_top_space_layouts = 0.04
+        y_between_bands = 0.04
+        y_between_layouts = 0.0
+        y_available_for_bands = y_total - 3.0 * y_between_bands
+        y_available_for_layouts = y_total - 1.0 * y_between_layouts - y_extra_top_space_layouts
+        y_available_for_band = y_available_for_bands / 4.0
+        y_available_for_layout = y_available_for_layouts / 2.0
+        # build the band specifications of axis position in figure coordinates.
+        plot_coord_bands = {}
+        bottom_band = top - y_available_for_band
+        for band_num in range(0, 4):
+            plot_coord_bands[band_num] = [left, bottom_band, x_available_for_band, y_available_for_band]
+            bottom_band -= y_available_for_band + y_between_bands
+        bottom_band = top - y_available_for_band
+        left_band = right - x_available_for_band
+        for band_num in range(4, 8):
+            plot_coord_bands[band_num] = [left_band, bottom_band, x_available_for_band, y_available_for_band]
+            bottom_band -= y_available_for_band + y_between_bands
+        # build the layout specifications of axis position in figure coordinates.
+        plot_coord_layouts = {90: {}, 150: {}}
+        bandpass = 90
+        left_layout = left + x_available_for_band + x_between_plots
+        bottom_layout = top - y_available_for_layout - y_extra_top_space_layouts
+        for pol in ['A', 'B', 'D']:
+            plot_coord_layouts[bandpass][pol] = [left_layout, bottom_layout, x_available_for_layout, y_available_for_layout]
+            left_layout += x_available_for_layout + x_between_plots
+        bandpass = 150
+        left_layout = left + x_available_for_band + x_between_plots
+        bottom_layout = bottom
+        for pol in ['A', 'B']:
+            plot_coord_layouts[bandpass][pol] = [left_layout, bottom_layout, x_available_for_layout, y_available_for_layout]
+            left_layout += x_available_for_layout + x_between_plots
+        # this unused polarization space for the 150 GHz band is used as the legend.
+        plot_coord_legend = [left_layout, bottom_layout, x_available_for_layout, y_available_for_layout]
+
+        # initialize the figure and axes
+        fig = plt.figure(figsize=(plot_x_inches, plot_y_inches))
+        ax_bands = {}
+        available_design_freq_by_band = {}
+        for band_num in plot_coord_bands.keys():
+            ax_bands[band_num] = fig.add_axes(plot_coord_bands[band_num], frameon=ax_frames_on)
+            ax_bands[band_num].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+            ax_bands[band_num].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
+            available_design_freq_by_band[band_num] = set(self.design_freqs_by_band[band_num])
+        ax_layouts = {90: {}, 150: {}}
+        for bandpass in plot_coord_layouts.keys():
+            for pol in plot_coord_layouts[bandpass].keys():
+                ax_layouts[bandpass][pol] = fig.add_axes(plot_coord_layouts[bandpass][pol], frameon=ax_frames_on)
+                ax_layouts[bandpass][pol].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+                ax_layouts[bandpass][pol].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+        ax_legend = fig.add_axes(plot_coord_legend, frameon=ax_frames_on)
+        ax_legend.tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+        ax_legend.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+
+        # # Plot the Layout data for each bandpass and polarization
+        # data plotting
+        no_layout_by_band = {band_num: [] for band_num in range(8)}
+        not_connected_by_band = {band_num: [] for band_num in range(8)}
+        for tune_datum in list(self):
+            det_x = tune_datum.det_x
+            det_y = tune_datum.det_y
+            pol = tune_datum.pol
+            bandpass = tune_datum.bandpass
+            band_num = tune_datum.smurf_band
+            if det_x is None:
+                no_layout_by_band[band_num].append(tune_datum)
+            elif bandpass == 'NC':
+                not_connected_by_band[band_num].append(tune_datum)
+            else:
+                ax = ax_layouts[bandpass][pol]
+                marker = band_markers[band_num]
+                color = band_colors[band_num]
+                ax.plot(det_x, det_y, ls='None', marker=marker, color=color, markersize=4)
+        # layout labels
+        for bandpass in ax_layouts.keys():
+            if bandpass == 90:
+                va = 'top'
+                y = 1.035
+            else:
+                va = 'bottom'
+                y = -0.035
+            for pol in ax_layouts[bandpass].keys():
+                ax = ax_layouts[bandpass][pol]
+                ax.text(x=0.5, y=y, s=f"Bandpass {bandpass} GHz - Polarization '{pol}'",
+                        transform=ax.transAxes, ha='center', va=va, alpha=0.8, size=8, color='black',
+                        weight='bold',
+                        bbox=dict(color='white', alpha=0.5, ls='-', lw=1.0, ec='black'))
+
+        # # Plot the frequency Mapping data for each Band
+        # threads of a rug plot
+        for tune_datum in list(self):
+            band_num = tune_datum.smurf_band
+            ax = ax_bands[band_num]
+            design_freq_mhz = tune_datum.design_freq_mhz
+            freq_mhz = tune_datum.freq_mhz
+            if tune_datum.design_freq_mhz is None:
+                ax.plot([freq_mhz, freq_mhz], [-0.1, 0.5], color='navy', linewidth=2.0 * bands_base_size_linw,
+                        ls='solid')
+            else:
+                available_design_freq_by_band[band_num].remove(design_freq_mhz)
+                ax.plot([freq_mhz, freq_mhz], [0.0, 0.4], color='firebrick', linewidth=1.0 * bands_base_size_linw,
+                        alpha=bands_has_design_freq_alpha)
+                ax.plot([freq_mhz, design_freq_mhz], [0.4, 0.6], color='black', linewidth=0.5 * bands_base_size_linw,
+                        alpha=bands_has_design_freq_alpha)
+                ax.plot([design_freq_mhz, design_freq_mhz], [0.6, 1.0], color='dodgerblue',
+                        linewidth=1.0 * bands_base_size_linw, alpha=bands_has_design_freq_alpha)
+        # per-band labels and data
+        for band_num in ax_bands.keys():
+            ax = ax_bands[band_num]
+            for unused_design_freq in available_design_freq_by_band[band_num]:
+                ax.plot([unused_design_freq, unused_design_freq], [1.1, 0.6], color='darkorchid',
+                        linewidth=2.0 * bands_base_size_linw, ls='solid')
+            if band_num < 4:
+                band_is_north = not self.north_is_highband
+            else:
+                band_is_north = self.north_is_highband
+            if band_is_north:
+                south_or_north_side_str = "North"
+            else:
+                south_or_north_side_str = "South"
+            ax.set_ylim([-0.1, 1.1])
+            if band_num % 2 == 0:
+                text_color = 'black'
+            else:
+                text_color = 'white'
+            ax.text(x=0.5, y=0.8, s=f'Band {band_num} - {south_or_north_side_str} of Array',
+                    transform=ax.transAxes, ha='center', va='center', alpha=0.8, size=7, color=text_color,
+                    weight='bold',
+                    bbox=dict(color=band_colors[band_num], alpha=1.0, ls='-', lw=1.0, ec='black'))
+            if band_num % 4 == 3:
+                ax.set_xlabel('Frequency (MHz)')
+            for tune_datum_nc in not_connected_by_band[band_num]:
+                freq_mhz_nc = tune_datum_nc.freq_mhz
+                ax.plot([freq_mhz_nc, freq_mhz_nc], [-0.1, 0.3], color='cyan', linewidth=2.0, ls='dashed')
+            for tune_datum_no_layout in no_layout_by_band[band_num]:
+                freq_mhz_no_layout = tune_datum_no_layout.freq_mhz
+                ax.plot([freq_mhz_no_layout, freq_mhz_no_layout], [-0.1, 0.3], color='lime', linewidth=2.0,
+                        ls='dotted')
+
+        # #  Figure Title and Legend
+        title_str = f"{os.path.basename(self.tune_path)}, North is Highband: {self.north_is_highband}, " + \
+            f"Mapping strategy: {self.mapping_strategy}"
+        fig.suptitle(title_str, y=0.99)
+        # band legend handles
+        legend_handles = [plt.Line2D(range(12), range(12), color='dodgerblue', linewidth=1.0, label="Design",
+                                     alpha=bands_has_design_freq_alpha),
+                          plt.Line2D(range(12), range(12), color='firebrick', linewidth=1.0, label="Measured",
+                                     alpha=bands_has_design_freq_alpha),
+                          plt.Line2D(range(12), range(12), color='navy', linewidth=2.0, label="Unmapped"),
+                          plt.Line2D(range(12), range(12), color='darkorchid', linewidth=2.0,
+                                     label="Unused Design"),
+                          plt.Line2D(range(12), range(12), color='cyan', linewidth=2.0, ls='dashed',
+                                     label="Not Connected"),
+                          plt.Line2D(range(12), range(12), color='lime', linewidth=2.0, ls='dotted',
+                                     label="No Layout")]
+        # layout handles
+        for band_num in range(8):
+            marker = band_markers[band_num]
+            color = band_colors[band_num]
+            legend_handles.append(plt.Line2D(range(12), range(12), color=color, ls='None', marker=marker,
+                                             label=f"Band {band_num}"))
+        # set legend
+        ax_legend.legend(handles=legend_handles, loc=10)
+
+        # # save/export and show this plot
+        # set the plot path and directory.
+        if plot_path is None:
+            plot_path = os.path.join(self.plot_dir, f'{self.mapping_strategy}_layout.png')
+        else:
+            self.plot_dir = os.path.dirname(plot_path)
+        # make the plot directory if it does not exist
+        if not os.path.exists(self.plot_dir):
+            os.mkdir(self.plot_dir)
+        # save the plot
+        plt.savefig(plot_path)
+        print(f'Saved the OperateTuneData Diagnostic layout plot at: {plot_path}')
+        if show_plot:
+            plt.show(block=True)
 
     def plot_with_psat(self, psat_by_temp, bandpass_target, temp_k, psat_min=0.0, psat_max=6.0e-12,
                        show_plot=False, save_plot=False):
