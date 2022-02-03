@@ -3,6 +3,7 @@ import time
 import typing
 import sodetlib as sdl
 
+
 from sodetlib.util import get_tracking_kwargs
 
 from pysmurf.client.base.smurf_control import SmurfControl
@@ -154,28 +155,70 @@ def setup_phase_delay(S: SmurfControl, cfg: DetConfig, bands, uc_att=20,
     S.pub.publish({'current_operation': 'setup_phase_delay'},
                   msgtype='session_data')
 
+    summary = {
+        'bands': [],
+        'ref_phase_delay_fine': [],
+        'ref_phase_delay': [],
+    }
     for b in bands:
         S.set_att_dc(b, dc_att)
         S.set_att_uc(b, uc_att)
         S.estimate_phase_delay(b, make_plot=True, show_plot=False)
-        rfd = S.get_ref_phase_delay(b)
-        rfdf = S.get_ref_phase_delay_fine(b)
+        rfd = float(S.get_ref_phase_delay(b))
+        rfdf = float(S.get_ref_phase_delay_fine(b))
+        summary['bands'].append(int(b))
+        summary['ref_phase_delay'].append(rfd)
+        summary['ref_phase_delay_fine'].append(rfdf)
         cfg.dev.bands[b].update({
             'ref_phase_delay':      rfd,
             'ref_phase_delay_fine': rfdf,
         })
 
     cfg.dev.dump(cfg.dev_file, clobber=True)
+    S.pub.publish({'setup_phase_delay': summary}, msgtype='session_data')
+    return True, summary
 
-    S.pub.publish(
-        {'setup_phase_delay': {'success': True}},
-        msgtype='session_data')
 
-    return True
+def estimate_uc_dc_atten(S, band, tone_power=None, ref_freq=-200,
+                         num_subbands=5, resp_range=(0.1, 0.3)):
+    att = 15
+    step = 7
+
+    if tone_power is None:
+        tone_power = S._amplitude_scale[band]
+
+    sb = S.get_closest_subband(ref_freq, band)
+    sbs = np.arange(sb, sb + num_subbands)
+
+    nread = 2
+
+    while True:
+        S.set_att_uc(band, att)
+        S.set_att_dc(band, att)
+
+        _, resp = S.full_band_ampl_sweep(band, sbs, tone_power, nread)
+        max_resp = np.max(np.abs(resp))
+        S.log(f"att: {att}, max_resp: {max_resp}")
+
+        if resp_range[0] < max_resp < resp_range[1]:
+            S.log(f"Estimated atten: {att}")
+            return att
+
+        if step == 0:
+            S.log(f"Cannot achieve resp in range {resp_range}!")
+            return att
+
+        if max_resp < resp_range[0]:
+            att -= step
+            step = step // 2
+        elif max_resp > resp_range[1]:
+            att += step
+            step = step // 2
 
 
 def setup_tune(S: SmurfControl, cfg: DetConfig, bands, tone_power=None,
-               show_plot=False, amp_cut=0.01, grad_cut=0.01):
+               show_plot=False, amp_cut=0.01, grad_cut=0.01,
+               estimate_attens=True):
     """
     Find freq, setup notches, and serial gradient descent and eta scan
 
@@ -200,8 +243,17 @@ def setup_tune(S: SmurfControl, cfg: DetConfig, bands, tone_power=None,
         # Lets just assume all tone-powers are the same for now
         tone_power = S._amplitude_scale[bands[0]]
 
-    S.freq_resp
+    # Temporary : 
+    summary = {}
+
     for band in bands:
+        # First try to choose attens that are good for tuning
+        if estimate_attens:
+            att = estimate_uc_dc_atten(S, band, tone_power=tone_power)
+            cfg.dev.update_band(band, {
+                'uc_att': att,
+                'dc_att': att,
+            })
         S.pub.publish({'current_operation': f'find_freq:band{band}'},
                       msgtype='session_data')
         S.find_freq(band, tone_power=tone_power, make_plot=True,
@@ -223,7 +275,7 @@ def setup_tune(S: SmurfControl, cfg: DetConfig, bands, tone_power=None,
 
     cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
-    return True
+    return True, summary
 
 
 def compute_tracking_quality(S, f, df, sync):
@@ -358,8 +410,11 @@ def setup_tracking_params(S: SmurfControl, cfg: DetConfig, bands,
     return True, summary
 
 
-def uxm_setup(S: SmurfControl, cfg: DetConfig, uc_att, dc_att, tone_power=None,
-              bands=None, id_hemt=8.0, id_50k=15.0):
+def uxm_setup(S: SmurfControl, cfg: DetConfig, bands=None, id_hemt=8.0,
+              id_50k=15.0, phase_delay_uc=20, phase_delay_dc=20,
+              tone_power=None, amp_cut=0.01, grad_cut=0.01, init_fracpp=0.44,
+              nphi0=5, reset_rate_khz=4, lms_gain=0, feedback_gain=2048,
+              show_plots=False):
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -383,29 +438,54 @@ def uxm_setup(S: SmurfControl, cfg: DetConfig, uc_att, dc_att, tone_power=None,
     S.set_mode_dc()
 
     # 1. setup amps
-    if not setup_amps(S, cfg, id_hemt=id_hemt, id_50k=id_50k):
+    summary = {'timestamps': []}
+    summary['timestamps'].append(('setup_amps', time.time()))
+    success, summary['setup_amps'] = setup_amps(
+        S, cfg, id_hemt=id_hemt, id_50k=id_50k
+    )
+    if not success:
         S.log("UXM Setup failed on setup amps step")
+        return False, summary
 
     # 2. Estimate phase delay
-    if not setup_phase_delay(S, cfg, bands):
+    summary['timestamps'].append(('setup_phase_delay', time.time()))
+    success, summary['setup_phase_delay'] = setup_phase_delay(
+        S, cfg, bands, uc_att=phase_delay_uc, dc_att=phase_delay_dc
+    )
+    if not success:
         S.log("UXM Setup failed on setup phase delay step")
+        return False, summary
 
     # 3. Find Freq
-    if not setup_tune(S, cfg, bands):
+    summary['timestamps'].append(('setup_tune', time.time()))
+    success, summary['setup_tune'] = setup_tune(
+        S, cfg, bands, tone_power=tone_power, show_plot=show_plots,
+        amp_cut=amp_cut, grad_cut=grad_cut
+    )
+    if not success:
         S.log("UXM Setup failed on setup tune step")
+        return False, summary
 
     # 4. tracking setup
-    if not setup_tracking_params(S, cfg, bands):
+    summary['timestamps'].append(('setup_tracking_params', time.time()))
+    success, summary['setup_tracking_params'] = setup_tracking_params(
+        S, cfg, bands, init_fracpp=init_fracpp, nphi0=nphi0,
+        reset_rate_khz=reset_rate_khz, lms_gain=lms_gain,
+        feedback_gain=feedback_gain, show_plots=show_plots
+    )
+    if not success:
         S.log("UXM Setup failed on setup tracking step")
+        return False, summary
 
     # 5. Noise Measurement
-    sid = sdl.take_g3_data(S, 30)
-    am = sdl.load_session(cfg, sid)
-    _, band_medians = sdl.get_wls_from_am(am)
+    summary['timestamps'].append(('noise', time.time()))
+    am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,
+                                                show_plot=show_plots,
+                                                save_plot=True)
     S.pub.publish({'noise_summary': {
-        'band_medians', band_medians
+        'band_medians': summary['noise']['noisedict']['band_medians'].tolist()
     }}, msgtype='session_data')
-    # Need to save noise plot here but want to wait until noise module is
-    # written
 
-    return True
+    summary['timestamps'].append(('end', time.time()))
+
+    return True, summary
