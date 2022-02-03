@@ -132,15 +132,11 @@ def uxm_optimize(
 
         elif uctuner.wl_median < low_noise_thresh:
             # Do one fine tune and stop.
-            logger.info(uctuner.status)
-            logger.info("Can be fine-tuned")
-            uctuner.fine_tune()
+            status_tune(logger, uctuner, "fine")
 
         elif low_noise_thresh < uctuner.wl_median < med_noise_thresh:
             # Do a rough tune followed by a fine tune.
-            logger.info(uctuner.status)
-            logger.info("Can be rough-tuned")
-            uctuner.rough_tune()
+            lstatus_tune(logger, uctuner, "rough")
 
             # If needed, adjust the tone powers so the attenuations can have
             # some dynamic range.
@@ -157,27 +153,19 @@ def uxm_optimize(
             if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
                 # Best noise was found at the edge of uc_att range explored;
                 # re-center and repeat.
-                logger.info(uctuner.status)
-                logger.info(f"Can be fine-tuned")
-                uctuner.fine_tune()
+                status_tune(logger, uctuner, "fine")
 
         elif med_noise_thresh < uctuner.wl_median < high_noise_thresh:
             # Do up to two rough tunes followed by one or more fine tunes.
-            logger.info(uctuner.status)
-            logger.info("Can be rough-tuned")
-            uctuner.rough_tune()
+            status_tune(logger, uctuner, "rough")
 
             if uctuner.wl_median < low_noise_thresh:
                 # Do one fine tune and stop.
-                logger.info(uctuner.status)
-                logger.info("Can be fine-tuned")
-                uctuner.fine_tune()
+                status_tune(logger, uctuner, "fine")
 
             else:
                 # Do another rough tune.
-                logger.info(uctuner.status)
-                logger.info("Can be rough-tuned")
-                uctuner.rough_tune()
+                status_tune(logger, uctuner, "rough")
 
                 # If needed, adjust the tone powers so the attenuations can have
                 # some dynamic range.
@@ -194,9 +182,7 @@ def uxm_optimize(
                 if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
                     # Best noise was found at the edge of uc_att range explored;
                     # re-center and repeat.
-                    logger.info(uctuner.status)
-                    logger.info(f"Can be fine-tuned")
-                    uctuner.fine_tune()
+                    status_tune(logger, uctuner, "fine")
 
         else:
             # wl_median above high_noise_thresh
@@ -212,6 +198,19 @@ def uxm_optimize(
             {"uc_att": uctuner.estimate_att, "drive": uctuner.current_tone_power},
             update_file=True,
         )
+
+
+def status_tune(logger, uctuner, rof):
+    ''' Declares rough/fine tunability and uctuner status, then tunes.
+    rof = string, either "rough" or "fine", indicating tuning type.'''
+    logger.info(uctuner.status)
+    logger.info(f"Can be {rof}-tuned")
+    if rof == "fine":
+        uctuner.fine_tune()
+    elif rof == "rough":
+        uctuner.rough_tune()
+    else:
+        raise ArgumentError(f'tune type must be "rough" or "fine"; was given "{rof}"')
 
 
 if __name__ == "__main__":
