@@ -176,9 +176,6 @@ class BiasStepAnalysis:
             self.meta = sdl.get_metadata(S, cfg)
             self.stream_id = cfg.stream_id
 
-            self.bgmap_full = np.load(self.meta['bgmap_file'], allow_pickle=True)
-
-
             if run_kwargs is None:
                 run_kwargs = {}
             self.run_kwargs = run_kwargs
@@ -189,7 +186,7 @@ class BiasStepAnalysis:
         saved_fields = [
             # Run data and metadata
             'bands', 'channels', 'sid', 'meta', 'run_kwargs',
-            'bgmap_full', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
+            'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
             'high_current_mode',
             # Bgmap data
             'bgmap', 'polarity',
