@@ -665,7 +665,7 @@ class BiasStepAnalysis:
 
         return fig, ax
 
-
+@set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
                high_current_mode=True, hcm_wait_time=0, analysis_kwargs=None):
@@ -811,9 +811,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
         time.sleep(hcm_wait_time)
 
-    bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
-    bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
     try:
+        bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
+        bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
+         
         bsa.start = time.time()
         if create_bg_map:
             bsa.bg_sweep_start = time.time()
