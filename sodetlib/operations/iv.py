@@ -481,7 +481,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     bias_groups = np.atleast_1d(bias_groups)
 
     if biases is None:
-        biases = np.arange(bias_high, bias_low - bias_step, bias_step)
+        biases = np.arange(bias_high, bias_low - bias_step, -bias_step)
     # Make sure biases is in decreasing order for run function
     biases = np.sort(biases)[::-1]
 
