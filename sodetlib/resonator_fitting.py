@@ -13,8 +13,8 @@ from matplotlib.gridspec import GridSpec
 def linear_resonator(f, f_0, Q, Q_e_real, Q_e_imag):
     '''
     Function for a resonator with asymmetry parameterized by the imaginary
-    part of `Q_e`. The real part of `Q_e` is what we typically refer to as
-    the coupled Q, `Q_c`.
+    part of ``Q_e``. The real part of ``Q_e`` is what we typically refer to as
+    the coupled Q, ``Q_c``.
     '''
     Q_e = Q_e_real + 1j*Q_e_imag
     return (1 - (Q * Q_e**(-1) /(1 + 2j * Q * (f - f_0) / f_0) ) )
@@ -37,8 +37,8 @@ def general_cable(f, delay, phi, f_min, A_mag, A_slope):
 def resonator_cable(f, f_0, Q, Q_e_real, Q_e_imag, delay, phi, f_min, A_mag,
                     A_slope):
     '''
-    Function that includes asymmetric resonator (`linear_resonator`) and cable
-    transfer functions (`general_cable`). Which most closely matches our full
+    Function that includes asymmetric resonator (``linear_resonator``) and cable
+    transfer functions (``general_cable``). Which most closely matches our full
     measured transfer function.
     '''
     resonator_term = linear_resonator(f, f_0, Q, Q_e_real, Q_e_imag)
@@ -49,16 +49,16 @@ def full_fit(freqs, real, imag):
     '''
     Fitting function that takes in frequency and real and imaginary parts of the
     transmission of a resonator (needs to trimmed down to only data for a
-    single resonator) and returns fitted parameters to the `resonator_cable`
+    single resonator) and returns fitted parameters to the ``resonator_cable``
     model.
 
     Args
     ----
-    freqs : (float ndarray)
+    freqs : float ndarray
         Frequencies that line up with complex transmission data.
-    real : (float ndarray)
+    real : float ndarray
         Real part of resonator complex transmission to be fit
-    imag : (float ndarray)
+    imag : float ndarray
         Imaginary part of resonator complex transmission to be fit.
 
     Returns
@@ -119,13 +119,13 @@ def get_qi(Q, Q_e_real):
 
     Args
     ----
-    Q : (float)
-        Total resonator quality factor output parameter of `full_fit`
-    Q_e_real : (float)
-        Resonator coupled quality factor output parameter of `full_fit`
+    Q : float
+        Total resonator quality factor output parameter of ``full_fit``
+    Q_e_real : float
+        Resonator coupled quality factor output parameter of ``full_fit``
     Returns
     -------
-    Qi : (float)
+    Qi : float
         Resonator internal quality factor.
     '''
     Qi = (Q**-1 - Q_e_real**-1)**-1
@@ -137,13 +137,13 @@ def get_br(Q, f_0):
 
     Args
     ----
-    Q : (float)
-        Total resonator quality factor output parameter of `full_fit`
-    f_0 : (float)
-        Resonance frequency output parameter of `full_fit` in Hz.
+    Q : float
+        Total resonator quality factor output parameter of ``full_fit``
+    f_0 : float
+        Resonance frequency output parameter of ``full_fit`` in Hz.
     Returns
     -------
-    br : (float)
+    br : float
         Resonator bandwidth in Hz.
     '''
     br = f_0/Q
@@ -157,17 +157,17 @@ def reduced_chi_squared(ydata, ymod, n_param=9, sd=None):
 
     Args
     ----
-    ydata : (float ndarray)
+    ydata : float ndarray
         complex data to calculate reduced chi squared on.
-    ymod : (float ndarray)
+    ymod : float ndarray
         model fit result of ydata at same x-locations as ydata is sampled.
-    n_param : (int)
+    n_param : int
         Number of parameters in the fit.
-    sd : (float ndarray)
+    sd : float ndarray
         standard deviation of data
     Returns
     -------
-    br : (float)
+    br : float
         Resonator bandwidth in Hz.
     '''
     if sd is None:
@@ -186,15 +186,25 @@ def fit_tune(tunefile):
 
     Args
     ----
-    tunefile : (str, filepath)
-    Full directories of one tunning file.
+    tunefile : str, filepath
+        Full directories of one tunning file.
     Returns
     -------
-    dres : (dictionary)
-    a dictionary containing all of the fit results for all resonances in the
-        provided tunefile. The keys are organized as {band: resonator_index:
-        model_params (dict), abs_chan (str), find_freq_ctime (str),
-        S21_mag (float ndarray), chi2 (float), derived_params (dict)}
+    dres : dict
+        a dictionary containing all of the fit results for all resonances in the provided tunefile. The keys are organized as::
+        
+          {band: smurf band
+              {resonator_index: index ordered by ascending frequency
+                  {model_params : dict - 9 parameters of resonator_cable
+                   abs_chan : int - smurf_band*512 + smurf_channel
+                   find_freq_ctime : str - ctime find_freq was taken
+                   S21_mag : float ndarray - array of fit S21 magnitude
+                   chi2 : float - chi-squared goodness of fit
+                   derived_params : 
+                       {Qi : float - internal quality factor
+                        br : float - resonator bandwidth
+                        depth : float - dip depth in S21 magnitude
+         }}}}
     """
     dres = {}
     data = np.load(tunefile,allow_pickle=True).item()
@@ -242,17 +252,17 @@ def get_resfit_plot_txt(resfit_dict, band, rix):
 
     Args
     ----
-    resfit_dict : (dict)
-        Dictionary with fit results output from `fit_tune`
-    band : (int)
+    resfit_dict : dict
+        Dictionary with fit results output from ``fit_tune``
+    band : int
         Smurf band of channel to get plot text for.
-    rix : (int)
+    rix : int
         Resonator index in tunefile (sorted by frequency order of setup_notches
         channels) of channel to get plot text for.
 
     Returns
     -------
-    text : (str)
+    text : str
         text block to add to resonator fit channel plot.
     '''
     mparams = resfit_dict[band][rix]['model_params']
@@ -270,17 +280,17 @@ def get_resfit_plot_txt(resfit_dict, band, rix):
 def plot_channel_fit(tunefile, fit_dict, band, channel):
     '''
     Function for plotting single channel eta_scan data from a tunefile with
-    a fit to an asymmetric resonator model `resonator_cable`.
+    a fit to an asymmetric resonator model ``resonator_cable``.
 
     Args
     ----
-    tunefile : (str, filepath)
+    tunefile : str, filepath
         path to tunefile to plot fit result against.
-    fit_dict : (dict)
-        fit results dictionary from `fit_tune`
-    band : (int)
+    fit_dict : dict
+        fit results dictionary from ``fit_tune``
+    band : int
         smurf band of resonator to plot
-    channel : (int)
+    channel : int
         smurf channel of resonator to plot
     '''
     chans = np.asarray([fit_dict[band][ix]['abs_chan']%512\
@@ -340,13 +350,13 @@ def plot_channel_fit(tunefile, fit_dict, band, channel):
 def plot_fit_summary(fit_dict, plot_style=None):
     '''
     Function for plotting single channel eta_scan data from a tunefile with
-    a fit to an asymmetric resonator model `resonator_cable`.
+    a fit to an asymmetric resonator model ``resonator_cable``.
 
     Args
     ----
-    fit_dict : (dict)
-        fit results dictionary from `fit_tune`
-    plot_style : (dict)
+    fit_dict : dict
+        fit results dictionary from ``fit_tune``
+    plot_style : dict
         keyword arguments to pass to the histogram plotting for formatting.
     '''
     Qis = []
