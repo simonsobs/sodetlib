@@ -410,9 +410,9 @@ def plot_channel_iv(iva, rc):
 
 
 
-def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
+def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
-            biases=None, bias_high=16, bias_low=0, bias_step=0.025,
+            biases=None, bias_high=18, bias_low=0, bias_step=0.025,
             wait_time=0.1, run_analysis=True, analysis_kwargs=None):
     """
     Takes an IV.
@@ -537,10 +537,9 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=2.0,
     return iva
 
 
-@set_action()
-def bias_to_rfrac_range(S, cfg, rfrac_range=(0.2, 0.6), bias_groups=None, iva=None,
-                  overbias_voltage=19.9, overbias_wait=5.0,
-                  Rn_range=(5e-3, 12e-3)):
+def bias_to_rfrac_range(
+        S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
+        overbias_voltage=19.9, overbias_wait=5.0, Rn_range=(5e-3, 12e-3)):
     """
     Biases detectors to transition given an rfrac range. This function will choose
     TES bias voltages for each bias-group that maximize the number of channels
@@ -602,7 +601,6 @@ def bias_to_rfrac_range(S, cfg, rfrac_range=(0.2, 0.6), bias_groups=None, iva=No
 
     return biases
 
-@set_action()
 def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
                   overbias_voltage=19.9, overbias_wait=5.0,
                   Rn_range=(5e-3, 12e-3)):
