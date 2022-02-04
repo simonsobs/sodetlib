@@ -176,9 +176,6 @@ class BiasStepAnalysis:
             self.meta = sdl.get_metadata(S, cfg)
             self.stream_id = cfg.stream_id
 
-            self.bgmap_full = np.load(self.meta['bgmap_file'], allow_pickle=True)
-
-
             if run_kwargs is None:
                 run_kwargs = {}
             self.run_kwargs = run_kwargs
@@ -189,7 +186,7 @@ class BiasStepAnalysis:
         saved_fields = [
             # Run data and metadata
             'bands', 'channels', 'sid', 'meta', 'run_kwargs',
-            'bgmap_full', 'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
+            'bg_sweep_start', 'bg_sweep_stop', 'start', 'stop',
             'high_current_mode',
             # Bgmap data
             'bgmap', 'polarity',
@@ -668,7 +665,7 @@ class BiasStepAnalysis:
 
         return fig, ax
 
-
+@set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
                high_current_mode=True, hcm_wait_time=0, analysis_kwargs=None):
@@ -802,21 +799,22 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     initial_filter_disable = S.get_filter_disable()
     initial_dc_biases = S.get_tes_bias_bipolar_array()
 
-    S.set_downsample_factor(1)
-    S.set_filter_disable(1)
-
-    dc_biases = initial_dc_biases
-    if high_current_mode:
-        dc_biases = dc_biases / S.high_low_current_ratio
-        step_voltage /= S.high_low_current_ratio
-
-        sdl.set_current_mode(S, bgs, 1)
-        S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
-        time.sleep(hcm_wait_time)
-
-    bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
-    bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
     try:
+        S.set_downsample_factor(1)
+        S.set_filter_disable(1)
+
+        dc_biases = initial_dc_biases
+        if high_current_mode:
+            dc_biases = dc_biases / S.high_low_current_ratio
+            step_voltage /= S.high_low_current_ratio
+
+            sdl.set_current_mode(S, bgs, 1)
+            S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
+            time.sleep(hcm_wait_time)
+
+        bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
+        bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
+         
         bsa.start = time.time()
         if create_bg_map:
             bsa.bg_sweep_start = time.time()
@@ -829,12 +827,12 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
         bsa.stop = time.time()
     finally:
-        sdl.stream_g3_off(S)
         if high_current_mode:
             sdl.set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
+        sdl.stream_g3_off(S)
 
     if run_analysis:
         S.log("Running bias step analysis")
