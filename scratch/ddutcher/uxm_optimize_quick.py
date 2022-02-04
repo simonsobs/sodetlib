@@ -24,10 +24,6 @@ def uxm_optimize(
     low_noise_thresh=120,
     med_noise_thresh=150,
     high_noise_thresh=250,
-    stream_time=20.0,
-    fmin=5,
-    fmax=50,
-    detrend="constant",
 ):
     """
     Optimize tone power and uc atten for the specified bands.
@@ -48,14 +44,9 @@ def uxm_optimize(
     high_noise_thresh : float
         If white noise above this, raise ValueError. Inspect manually.
 
-    Other Parameters
-    ----------------
-    stream_time, fmin, fmax, detrend:
-        Used for noise taking and white noise calculation.
-
     See also
     --------
-    uc_tuner.uc_rough_tune, uc_tuner.uc_fine_tune
+    uc_tuner.UCTuner
     """
     logger.info(f"plotting directory is:\n{S.plot_dir}")
 
@@ -64,6 +55,7 @@ def uxm_optimize(
 
     bands = np.atleast_1d(bands)
     for opt_band in bands:
+        # Do initial setup steps.
         S.all_off()
         S.set_rtm_arb_waveform_enable(0)
         S.set_filter_disable(0)
@@ -117,14 +109,14 @@ def uxm_optimize(
             lms_gain=cfg.dev.bands[opt_band]["lms_gain"],
         )
 
-        uctuner = UCTuner(S, cfg, band=opt_band, stream_time=stream_time,
-                          fmin=fmin, fmax=fmax, detrend=detrend)
-        logger.info(f"taking {stream_time}s timestream")
+        uctuner = UCTuner(S, cfg, band=opt_band)
 
         uctuner.uc_tune(uc_attens=uctuner.current_uc_att, initial_attempt=True)
+        logger.info(f"UC attens: {uctuner.uc_attens}")
+        logger.info(f"Noise levels: {uctuner.wl_list}")
+        logger.info(f"Number of active channels: {uctuner.wl_length}")
 
         if uctuner.wl_median > high_noise_thresh:
-            logger.info(uctuner.status)
             raise ValueError(
                 f"wl_median={uctuner.wl_median} is to high. "
                 + "Something might be wrong, power level might be really off, please investigate"
@@ -136,17 +128,21 @@ def uxm_optimize(
 
         elif low_noise_thresh < uctuner.wl_median < med_noise_thresh:
             # Do a rough tune followed by a fine tune.
-            lstatus_tune(logger, uctuner, "rough")
+            status_tune(logger, uctuner, "rough")
 
             # If needed, adjust the tone powers so the attenuations can have
             # some dynamic range.
             if uctuner.estimate_att < 16:
-                logger.info(f"adjusting tone power and uc att")
                 uctuner.increase_tone_power()
+                logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
+                            + f" and uc_att to {uctuner.current_att_uc}"
+                )
 
             if uctuner.estimate_att > 26:
-                logger.info(f"adjusting tone power and uc att")
                 uctuner.decrease_tone_power()
+                logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
+                            + f" and uc_att to {uctuner.current_att_uc}"
+                )
 
             uctuner.fine_tune()
 
@@ -170,12 +166,16 @@ def uxm_optimize(
                 # If needed, adjust the tone powers so the attenuations can have
                 # some dynamic range.
                 if uctuner.estimate_att < 16:
-                    logger.info(f"adjusting tone power and uc att")
                     uctuner.increase_tone_power()
+                    logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
+                                + f" and uc_att to {uctuner.current_att_uc}"
+                    )
 
                 if uctuner.estimate_att > 26:
-                    logger.info(f"adjusting tone power and uc att")
                     uctuner.decrease_tone_power()
+                    logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
+                                + f" and uc_att to {uctuner.current_att_uc}"
+                    )
 
                 uctuner.fine_tune()
 
@@ -203,7 +203,6 @@ def uxm_optimize(
 def status_tune(logger, uctuner, rof):
     ''' Declares rough/fine tunability and uctuner status, then tunes.
     rof = string, either "rough" or "fine", indicating tuning type.'''
-    logger.info(uctuner.status)
     logger.info(f"Can be {rof}-tuned")
     if rof == "fine":
         uctuner.fine_tune()
@@ -211,15 +210,17 @@ def status_tune(logger, uctuner, rof):
         uctuner.rough_tune()
     else:
         raise ArgumentError(f'tune type must be "rough" or "fine"; was given "{rof}"')
+    logger.info(f"UC attens: {uctuner.uc_attens}")
+    logger.info(f"Noise levels: {uctuner.wl_list}")
+    logger.info(f"Number of active channels: {uctuner.wl_length}")
 
 
 if __name__ == "__main__":
     import argparse
     from sodetlib.det_config import DetConfig
-    # Seed a new parse for this file with the parser from the SMuRF controller class
+
     cfg = DetConfig()
 
-    # set up the parser for this Script
     parser = argparse.ArgumentParser(
         description="Parser for uxm_optimize_quick.py script."
     )
@@ -238,37 +239,6 @@ if __name__ == "__main__":
         help="The SMuRF bands to optimize on.",
     )
 
-    # optional arguments
-    parser.add_argument(
-        "--stream-time",
-        dest="stream_time",
-        type=float,
-        default=20.0,
-        help="float, optional, default is 20.0. The amount of time to sleep in seconds while "
-        + "streaming SMuRF data for analysis.",
-    )
-    parser.add_argument(
-        "--fmin",
-        dest="fmin",
-        type=float,
-        default=5.0,
-        help="float, optional, default is 5.0. The lower frequency (Hz) bound used "
-        + "when creating a mask of white noise levels. Suggested value of 5.0",
-    )
-    parser.add_argument(
-        "--fmax",
-        dest="fmax",
-        type=float,
-        default=50.0,
-        help="float, optional, default is 50.0. The upper frequency (Hz) bound used "
-        + "when creating a mask of white noise levels Suggested value of 50.0",
-    )
-    parser.add_argument(
-        "--detrend",
-        dest="detrend",
-        default="constant",
-        help="str, optional, default is 'constant'. Passed to scipy.signal.welch.",
-    )
     parser.add_argument(
         "--loglevel",
         type=str.upper,
@@ -309,11 +279,7 @@ if __name__ == "__main__":
         S=S,
         cfg=cfg,
         bands=args.bands,
-        stream_time=args.stream_time,
-        fmin=args.fmin,
-        fmax=args.fmax,
         low_noise_thresh=low_noise_thresh,
         med_noise_thresh=med_noise_thresh,
         high_noise_thresh=high_noise_thresh,
-        detrend=args.detrend,
     )
