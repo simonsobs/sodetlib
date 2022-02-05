@@ -373,9 +373,44 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     if save:
         iva.save(update_cfg=update_cfg)
 
+def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
+    """
+    Plots Stacked Rfrac curves of each channel.
+    """
+    fig, ax = plt.subplots()
+    Rfrac = (iva.R.T / iva.R_n).T
+    for i, rf in enumerate(Rfrac):
+        bg = iva.bgmap[i]
+
+        if not Rn_range[0] < iva.R_n[i] < Rn_range[1]:
+            continue
+
+        if bg == -1:
+            continue
+
+        ax.plot(iva.v_bias, rf, alpha=0.1, color=f'C{bg}')
+    ax.set(ylim=(0, 1.1))
+    ax.set_xlabel("Bias Voltage (V)", fontsize=14)
+    ax.set_ylabel("$R_\mathrm{frac}$", fontsize=14)
+    return fig, ax
+
+def plot_Rn_hist(iva, range=(0, 10)):
+    """
+    Plots summary of channel normal resistances.
+    """
+    fig, ax = plt.subplots()
+    hist = ax.hist(iva.R_n*1000, range=range, bins=40)
+    chans_pictured = int(np.sum(hist[0]))
+    txt = f"{chans_pictured} / {iva.nchans} channels pictured"
+    ax.text(0.05, 0.05, txt, bbox={'facecolor': 'wheat', 'alpha': 0.8},
+            transform=ax.transAxes)
+    ax.set_xlabel("$R_n$ (m$\Omega$)", fontsize=14)
+    return fig, ax
+
 
 def plot_channel_iv(iva, rc):
     """
+
     Plots anlayzed IV results for a given channel.
 
     Args
@@ -536,10 +571,12 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     return iva
 
 
+
 sdl.set_action()
 def bias_to_rfrac_range(
         S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
-        overbias_voltage=19.9, overbias_wait=5.0, Rn_range=(5e-3, 12e-3)):
+        overbias_voltage=19.9, overbias_wait=5.0, Rn_range=(5e-3, 12e-3),
+        math_only=False):
     """
     Biases detectors to transition given an rfrac range. This function will choose
     TES bias voltages for each bias-group that maximize the number of channels
@@ -566,6 +603,9 @@ def bias_to_rfrac_range(
         A "reasonable" range for the TES normal resistance. This will
         be cut on when determining which IV's should be used to determine
         the optimal bias-voltage.
+    math_only : bool
+        If this is set, will not actually over-bias voltages, and will
+        just return the target biases.
 
     Returns
     ----------
@@ -597,7 +637,13 @@ def bias_to_rfrac_range(
         target_idx = np.argmax(nchans_in_range)
         biases[bg] = iva.v_bias[target_idx]
 
-    S.log(f"Target biases: {biases}")
+    if math_only:
+        return biases
+
+    S.log(f"Target biases: ")
+    for bg in bias_groups:
+        S.log(f"BG {bg}: {biases[bg]:.2f}")
+
     S.log("Overbiasing detectors")
     sdl.set_current_mode(S, bias_groups, 1)
     for bg in bias_groups:
@@ -612,7 +658,7 @@ def bias_to_rfrac_range(
 sdl.set_action()
 def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
                   overbias_voltage=19.9, overbias_wait=5.0,
-                  Rn_range=(5e-3, 12e-3)):
+                  Rn_range=(5e-3, 12e-3), math_only=False):
     """
     Biases detectors to a specified Rfrac value
 
@@ -637,6 +683,9 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         A "reasonable" range for the TES normal resistance. This will
         be cut on when determining which IV's should be used to determine
         the optimal bias-voltage.
+    math_only : bool
+        If this is set, will not actually over-bias voltages, and will
+        just return the target biases.
 
     Returns
     ----------
@@ -668,9 +717,12 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
             target_biases.append(iva.v_bias[target_idx])
         biases[bg] = np.median(target_biases)
 
+    if math_only:
+        return biases
+
     S.log(f"Target biases: ")
     for bg in bias_groups:
-        S.log(f"BG {bg}: {biases[bg]}")
+        S.log(f"BG {bg}: {biases[bg]:.2f}")
 
     S.log("Overbiasing detectors")
     sdl.set_current_mode(S, bias_groups, 1)
