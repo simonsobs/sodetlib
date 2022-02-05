@@ -3,7 +3,6 @@ import time
 from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
-from pysmurf.client.util.pub import set_action
 
 np.seterr(all="ignore")
 
@@ -409,11 +408,11 @@ def plot_channel_iv(iva, rc):
     return fig, axes
 
 
-
+sdl.set_action()
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
-            wait_time=0.1, run_analysis=True, analysis_kwargs=None):
+            wait_time=0.1, run_analysis=True, **analysis_kwargs):
     """
     Takes an IV.
 
@@ -473,9 +472,6 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         raise AttributeError('No tunefile loaded in current '
                              'pysmurf session. Load active tunefile.')
 
-    if analysis_kwargs is None:
-        analysis_kwargs = {}
-
     if bias_groups is None:
         bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
@@ -497,35 +493,37 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if high_current_mode:
         biases /= S.high_low_current_ratio
 
-    sid = sdl.stream_g3_on(S)
+    try:
+        sid = sdl.stream_g3_on(S)
 
-    if overbias_voltage > 0:
-        if cool_voltage is None:
-            cool_voltage = np.max(biases)
-        S.overbias_tes_all(
-            bias_groups=bias_groups, overbias_wait=overbias_wait,
-            tes_bias=cool_voltage, cool_wait=cool_wait,
-            high_current_mode=high_current_mode,
-            overbias_voltage=overbias_voltage
-        )
+        if overbias_voltage > 0:
+            if cool_voltage is None:
+                cool_voltage = np.max(biases)
+            S.overbias_tes_all(
+                bias_groups=bias_groups, overbias_wait=overbias_wait,
+                tes_bias=cool_voltage, cool_wait=cool_wait,
+                high_current_mode=high_current_mode,
+                overbias_voltage=overbias_voltage
+            )
 
-    S.log("Starting TES Bias Ramp", S.LOG_USER)
-    bias_group_bool = np.zeros((S._n_bias_groups))
-    bias_group_bool[bias_groups] = 1
-    start_times = np.zeros_like(biases)
-    stop_times = np.zeros_like(biases)
-    for i, bias in enumerate(biases):
-        S.log(f"Setting bias to {bias:4.3f}")
-        S.set_tes_bias_bipolar_array(bias * bias_group_bool)
-        start_times[i] = time.time()
-        time.sleep(wait_time)
-        stop_times[i] = time.time()
+        S.log("Starting TES Bias Ramp", S.LOG_USER)
+        bias_group_bool = np.zeros((S._n_bias_groups))
+        bias_group_bool[bias_groups] = 1
+        start_times = np.zeros_like(biases)
+        stop_times = np.zeros_like(biases)
+        for i, bias in enumerate(biases):
+            S.log(f"Setting bias to {bias:4.3f}")
+            S.set_tes_bias_bipolar_array(bias * bias_group_bool)
+            start_times[i] = time.time()
+            time.sleep(wait_time)
+            stop_times[i] = time.time()
 
-    # Turns off biases
-    for bg in bias_groups:
-        S.set_tes_bias_bipolar(bg, 0)
+    finally:
+        # Turn off biases and streaming on error
+        for bg in bias_groups:
+            S.set_tes_bias_bipolar(bg, 0)
 
-    sdl.stream_g3_off(S)
+        sdl.stream_g3_off(S)
 
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
@@ -537,6 +535,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     return iva
 
 
+sdl.set_action()
 def bias_to_rfrac_range(
         S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
         overbias_voltage=19.9, overbias_wait=5.0, Rn_range=(5e-3, 12e-3)):
@@ -601,6 +600,8 @@ def bias_to_rfrac_range(
 
     return biases
 
+
+sdl.set_action()
 def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
                   overbias_voltage=19.9, overbias_wait=5.0,
                   Rn_range=(5e-3, 12e-3)):
@@ -662,3 +663,4 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     sdl.set_current_mode(S, bias_groups, 0, const_current=False)
 
     return biases
+
