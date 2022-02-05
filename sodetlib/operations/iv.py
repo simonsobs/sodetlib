@@ -25,9 +25,9 @@ class IVAnalysis:
     sid : int
         Session id from the IV stream session
     start_times : np.ndarray
-        Array of start_times of each bias-step
+        Array of start_times of each bias point
     stop_times : np.ndarray
-        Array of stop_times of each bias-step
+        Array of stop_times of each bias point
 
 
     Attributes
@@ -37,7 +37,7 @@ class IVAnalysis:
     biases_cmd : np.ndarray
         Array of commanded biases voltages (in low-current-mode units)
     nbiases : int
-        Number of biases commanded throughout the IV
+        Number of bias points commanded throughout the IV
     bias_groups : np.ndarray
         Array containing the bias-groups included in this IV
     am : AxisManager
@@ -50,26 +50,26 @@ class IVAnalysis:
     channels : np.ndarray
         Array of shape (nchans) containing the smurf-channel of each channel
     v_bias : np.ndarray
-        Array of shape (nbiases) containing the bias voltage at each bias step
+        Array of shape (nbiases) containing the bias voltage at each bias point
         (in low-current-mode Volts)
     i_bias : np.ndarray
         Array of shape (nbiases) containing the commanded bias-current
         at each step (Amps)
     resp : np.ndarray
         Array of shape (nchans, nbiases) containing the squid response (Amps)
-        at each bias-step.
+        at each bias point
     R : np.ndarray
         Array of shape (nchans, nbiases) containing the TES Resistance of each
-        channel at each bias-step
+        channel at each bias point
     p_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the electrical power on the
-        TES (W) of each channel at each bias-step
+        TES (W) of each channel at each bias point
     v_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the voltage across the TES
-        for each channel at each bias-step (V)
+        for each channel at each bias point (V)
     i_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the current across the TES
-        for each channel at each bias-step (Amps)
+        for each channel at each bias point (Amps)
     R_n : np.ndarry
         Array of shape (nchans) containing the normal resistance (Ohms) of the
         TES
@@ -79,7 +79,8 @@ class IVAnalysis:
     p_sat : np.ndarray
         Array of shape (nchans) containing the electrical power (W) at which
         Rfrac crosses the 90% threshold (or whatever arg is passed to the
-        analysis fn)
+        analysis fn). Note that this is only truly the saturation power in
+        the absence of optical power.
     si : np.ndarray
         Array of shape (nchans, nbiases) containing the responsivity (1/V)
         of the TES for each bis-step
@@ -456,7 +457,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         This should be in units of Low-Current-Mode volts. If you are running
         in high-current-mode this will automatically be adjusted for you!!
     wait_time : float
-        Amount of time to wait at each bias-step.
+        Amount of time to wait at each bias point.
     run_analysis : bool
         If True, will automatically run analysis, save it, and update device
         cfg. (unless otherwise specified in analysis_kwargs)
@@ -565,6 +566,13 @@ def bias_to_rfrac_range(
         A "reasonable" range for the TES normal resistance. This will
         be cut on when determining which IV's should be used to determine
         the optimal bias-voltage.
+
+    Returns
+    ----------
+    biases : np.ndarray
+        Array of Smurf bias voltages. Note that this includes all smurf
+        bias lines (all 15 of them), but only voltages for the requested
+        bias-groups will have been modified.
     """
     if bias_groups is None:
         bias_groups = np.arange(12)
@@ -629,6 +637,13 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         A "reasonable" range for the TES normal resistance. This will
         be cut on when determining which IV's should be used to determine
         the optimal bias-voltage.
+
+    Returns
+    ----------
+    biases : np.ndarray
+        Array of Smurf bias voltages. Note that this includes all smurf
+        bias lines (all 15 of them), but only voltages for the requested
+        bias-groups will have been modified.
     """
     if bias_groups is None:
         bias_groups = np.arange(12)
@@ -653,7 +668,10 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
             target_biases.append(iva.v_bias[target_idx])
         biases[bg] = np.median(target_biases)
 
-    S.log(f"Target biases: {biases}")
+    S.log(f"Target biases: ")
+    for bg in bias_groups:
+        S.log(f"BG {bg}: {biases[bg]}")
+
     S.log("Overbiasing detectors")
     sdl.set_current_mode(S, bias_groups, 1)
     for bg in bias_groups:
