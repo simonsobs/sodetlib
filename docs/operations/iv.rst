@@ -20,8 +20,9 @@ current at each point in the transition.
 
 Taking IVs
 -------------
-
-To take an IV, use the ``take_iv`` function in the ``sodetlib/operations/iv`` module.
+After you have a bias-group map from the ``take_bgmap`` function, you can
+start taking IVs. To take an IV, use the ``take_iv`` function in the
+``sodetlib/operations/iv`` module.
 
 .. code-block:: python
 
@@ -34,7 +35,7 @@ To take a good IV it important that:
  - The detectors start off properly overbiased. 
 
  - Each step allows detectors to settle for a good measurement. The default
-   runs in high-curren-mode to avoid the bias-line filter, with wait-times of
+   runs in high-current-mode to avoid the bias-line filter, with wait-times of
    0.1 sec to achieve this.
 
  - Steps in bias voltage are small enough to avoid tracking phase-skips. Large
@@ -43,15 +44,15 @@ To take a good IV it important that:
    for reliably in analysis so it is important for current steps to be small.
 
 The default parameters of the take_iv function were chosen to satisfy these conditions,
-however depending on your assembly you may need to tweek the parameters such as
+however depending on your assembly you may need to tweak the parameters such as
 ``overbias_voltage``, ``overbias_wait``, ``bias_high``, ``bias_step``, and
-``wait_time``. See the the :ref:`IV_API` for the take_iv function for more details.
+``wait_time``. See the :ref:`IV_API` for the take_iv function for more details.
 
 
 The ``take_iv`` function returns an instance of the ``IVAnalysis`` class,
 containing all the important information about the run-conditions of the IV,
 and the analysis products if ``run_analysis`` is set to ``True``.
-By default, this function will save the output filepath of the IVAnalysis object
+By default, this function will save the output file-path of the IVAnalysis object
 to the device config under the key ``iv_file``.
 This can easily be loaded again by running:
 
@@ -72,6 +73,13 @@ given readout-channel.
    bias values in the IVAnalysis object are **all** in low-current-mode
    units, so that biases can be easily compared and used without knowing
    which mode the IV was taken in.
+
+.. note::
+  
+   The bias-group map file is important for IVs in order to know the detector
+   polarity, or whether the detector response increases or decreases as you
+   increase the bias voltage. This is important so we can assume the IV
+   curves are oriented the correct way in the analysis and not upside-down.
 
 
 
@@ -116,21 +124,21 @@ Rn's can be set using the ``Rn_range`` parameter, and defaults to
 Biasing to Rfrac
 ----------------------
 
-The functino ``bias_to_rfrac`` is a lot like the function ``bias_to_rfrac_range``,
-except that it takes a single Rfrac value (defaulting to 0.5), and determines
-the bias-voltage by taking the median of what voltage is required for each 
-channel to achieve that Rfrac. This is generally less useful than
-``bias_to_rfrac_range``.
+The function ``bias_to_rfrac`` is a lot like the function
+``bias_to_rfrac_range``, except that it takes a single Rfrac value (defaulting
+to 0.5), and determines the bias-voltage by taking the median of what voltage
+is required for each channel to achieve that Rfrac. 
+
+Checking Resistances
+-----------------------
+
+After biasing it is important to verify that the detectors are at the correct
+values of Rfrac so you can confidently take data. This can be done by with the
+:ref:`take_bias_steps` function, and then plotting the estimated resistances
+stored in the ``bsa.R0`` variable.
 
 API
 ----
 .. automodule:: sodetlib.operations.iv
     :noindex:
     :members: bias_to_rfrac_range, bias_to_rfrac
-
-
-
-
-
-
-
