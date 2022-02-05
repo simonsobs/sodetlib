@@ -28,6 +28,17 @@ from sodetlib.detmap.design_mapping import design_pickle_to_csv, operate_tune_da
 from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_column_names
 
 
+def get_mux_band_to_mux_pos_dict(layout_position_path):
+    mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=layout_position_path)
+    # initialize the mux_band_to_mux_pos_dict, True and False keys denote the is_north
+    mux_band_to_mux_pos_dict = {True: {}, False: {}}
+    for mux_band, mux_pos, is_north in zip(mux_layout_position_by_column['mux_band_num'],
+                                           mux_layout_position_by_column['mux_pos_num'],
+                                           mux_layout_position_by_column['is_north']):
+        mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
+    return mux_band_to_mux_pos_dict
+
+
 class OperateTuneData:
     """For storing and operating on measurements of resonator frequencies across a single focal plane module.
 
@@ -235,6 +246,9 @@ class OperateTuneData:
         self.tune_data_without_layout_data = None
         self.design_freqs_by_band = None
         self.mapping_strategy = None
+        self.simulated_lost = None
+        self.simulated_found = None
+        self.simulated_to_design = None
 
         # the directory for output plots
         if self.tune_path is None:
@@ -534,6 +548,25 @@ class OperateTuneData:
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
+    def from_simulated(self, simulated_lost, simulated_found, simulated_to_design):
+        self.tune_path = 'simulated'
+        self.simulated_lost = simulated_lost
+        self.simulated_found = simulated_found
+        self.simulated_to_design = simulated_to_design
+        self.tune_data = set()
+        for smurf_band in simulated_found.keys():
+            if smurf_band < 4:
+                is_highband = False
+                is_north = not self.north_is_highband
+            else:
+                is_highband = True
+                is_north = self.north_is_highband
+            for res_index, freq_mhz in list(enumerate(simulated_found[smurf_band])):
+                self.tune_data.add(TuneDatum(freq_mhz=freq_mhz, smurf_band=smurf_band,
+                                             res_index=res_index, is_north=is_north, is_highband=is_highband))
+        # do a data organization and validation
+        self.tune_data_organization_and_validation()
+
     def return_pandas_dataframe(self):
         """ Get a pandas.DataFrame from the tune_data.
 
@@ -746,16 +779,13 @@ class OperateTuneData:
         if layout_position_path is not None:
             self.layout_position_path = layout_position_path
         # get positional layout data for the mux chips if it is available
-        if self.layout_position_path is not None:
-            mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=self.layout_position_path)
-            # initialize the mux_band_to_mux_pos_dict, True and False keys denote the is_north
-            mux_band_to_mux_pos_dict = {True: {}, False: {}}
-            for mux_band, mux_pos, is_north in zip(mux_layout_position_by_column['mux_band_num'],
-                                                   mux_layout_position_by_column['mux_pos_num'],
-                                                   mux_layout_position_by_column['is_north']):
-                mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
-        else:
+        if self.layout_position_path is None:
             mux_band_to_mux_pos_dict = None
+        elif isinstance(layout_position_path, dict):
+            mux_band_to_mux_pos_dict = layout_position_path
+        else:
+            mux_band_to_mux_pos_dict = get_mux_band_to_mux_pos_dict(layout_position_path)
+
         # choose a mapping strategy
         if mapping_strategy in {0, '0', 0.0, 'map_by_res_index'}:
             self.mapping_strategy = 'map_by_res_index'
