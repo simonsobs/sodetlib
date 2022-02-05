@@ -21,14 +21,13 @@ current at each point in the transition.
 Taking IVs
 -------------
 After you have a bias-group map from the ``take_bgmap`` function, you can
-start taking IVs. To take an IV, use the ``take_iv`` function in the
-``sodetlib/operations/iv`` module.
+start taking IVs. To take an IV, use the ``take_iv`` function.
 
 .. code-block:: python
 
-   from sodetlib.operations import iv
+    import sodetlib.operations as ops
 
-   iva = iv.take_iv(S, cfg)
+    iva = ops.take_iv(S, cfg)
 
 To take a good IV it important that:
 
@@ -58,9 +57,9 @@ This can easily be loaded again by running:
 
 .. code-block:: python
 
-   from sodetlib.operations import iv
+   from sodetlib.operations.iv import IVAnalysis
 
-   iva = iv.IVAnalysis.load(cfg.dev.exp['iv_file'])
+   iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
 
 Using the ``analyze_iv`` function, you can re-analyze the iv object, or pass
 it to the ``plot_channel_iv`` function to plot the analysis products of a
@@ -110,9 +109,9 @@ to (0.3, 0.6) based on the target operating resistances for SO MF detectors.
 
 .. code-block:: python
 
-   from sodetlib.operations import iv
+   import sodetlib.operations as ops
 
-   iv.bias_to_rfrac_range(S, cfg)
+   ops.bias_to_rfrac_range(S, cfg)
 
 The overbiasing options ``overbias_voltage`` and ``overbias_wait`` can be
 specified as keyword arguments.
