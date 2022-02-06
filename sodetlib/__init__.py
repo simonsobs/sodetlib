@@ -16,3 +16,6 @@ except:
 
 from sodetlib.util import *
 from sodetlib.stream import *
+
+from sodetlib import noise
+
