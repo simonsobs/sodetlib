@@ -85,7 +85,7 @@ def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
         vgmin_50k : (float)
             Min 50k gate voltage (V)
     """
-    S.pub.publish({'current_operation': 'setup_amps'}, msgtype='session_data')
+    sdl.pub_ocs_log(S, "Starting setup_amps")
 
     S.set_50k_amp_gate_voltage(-0.8)
     S.set_hemt_gate_voltage(-0.8)
@@ -102,14 +102,14 @@ def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
     }
 
     if not find_gate_voltage(S, id_hemt, vgmin_hemt, 0, 'hemt'):
-        S.log("Failed determining hemt gate voltage")
-        S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
+        sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
+        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
         S.C.write_ps_en(0)
         return False, summary
 
     if not find_gate_voltage(S, id_50k, vgmin_50k, 0, '50K'):
-        S.log("Failed determining 50k gate voltage")
-        S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
+        sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
+        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
         S.C.write_ps_en(0)
         return False, summary
 
@@ -123,7 +123,7 @@ def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
     }, update_file=True)
 
     summary = {'success': True, **biases}
-    S.pub.publish({'setup_amps_summary': summary}, msgtype='session_data')
+    sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
     return True, summary
 
 
@@ -143,8 +143,7 @@ def setup_phase_delay(S, cfg, bands, uc_att=20, dc_att=20):
         dc_att : (int)
             DC atten to use for phase-delay estimation
     """
-    S.pub.publish({'current_operation': 'setup_phase_delay'},
-                  msgtype='session_data')
+    sdl.pub_ocs_log(S, f"Estimating phase delay for bands {bands}")
 
     summary = {
         'bands': [],
@@ -166,7 +165,7 @@ def setup_phase_delay(S, cfg, bands, uc_att=20, dc_att=20):
         })
 
     cfg.dev.dump(cfg.dev_file, clobber=True)
-    S.pub.publish({'setup_phase_delay': summary}, msgtype='session_data')
+    sdl.pub_ocs_data(S, {'setup_phase_delay': summary})
     return True, summary
 
 
@@ -261,6 +260,7 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
         ``estimate_uc_dc_atten`` function for more details.
     """
     bands = np.atleast_1d(bands)
+    sdl.pub_ocs_log(S, f"Starting setup_tune for bands {bands}")
 
     if tone_power is None:
         # Lets just assume all tone-powers are the same for now
@@ -270,6 +270,7 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
     summary = {}
 
     for band in bands:
+        sdl.pub_ocs_log(S, f"Find Freq: band {band}")
         # First try to choose attens that are good for tuning
         if estimate_attens:
             att = estimate_uc_dc_atten(S, band, tone_power=tone_power)
@@ -277,22 +278,17 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
                 'uc_att': att,
                 'dc_att': att,
             })
-        S.pub.publish({'current_operation': f'find_freq:band{band}'},
-                      msgtype='session_data')
         S.find_freq(band, tone_power=tone_power, make_plot=True,
                     save_plot=True, show_plot=show_plots, amp_cut=amp_cut,
                     grad_cut=grad_cut)
         # Probably want to check for number of resonances here and send to ocs
 
     for band in bands:
-        S.pub.publish({'current_operation': f'setup_notches:band{band}'},
-                      msgtype='session_data')
+        sdl.pub_ocs_log(S, f"Setup Notches: band {band}")
         S.setup_notches(band, tone_power=tone_power, new_master_assignment=True)
-        # Probably want to check for number of resonances here and send to ocs
 
     for band in bands:
-        S.pub.publish({'current_operation': f'serial_ops:band{band}'},
-                      msgtype='session_data')
+        sdl.pub_ocs_log(S, f"Serial grad descent and eta scan: band {band}")
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
@@ -331,10 +327,7 @@ def setup_tracking_params(S, cfg, bands, init_fracpp=0.44, nphi0=5,
         'num_good_chans': [None for _ in range(8)]
     }
     for band in bands:
-        S.pub.publish(
-            {'current_operation': f'setup_tracking_params:band{band}'},
-            msgtype='session_data'
-        )
+        sdl.pub_ocs_log(S, f"Setting up trackng params: band {band}")
         tk = sdl.get_tracking_kwargs(
             S, cfg, band, kwargs={
                 'lms_freq_hz':         None,
@@ -374,10 +367,7 @@ def setup_tracking_params(S, cfg, bands, init_fracpp=0.44, nphi0=5,
         ## for that?
         num_good_chans = np.sum(r2 > 0.95)
         summary['num_good_chans'][band] = int(num_good_chans)
-        S.pub.publish(
-            {'setup_tracking_params_summary': summary},
-            msgtype='session_data'
-        )
+        sdl.pub_ocs_data(S, {'setup_tracking_params_summary': summary})
 
         # Update det config
         cfg.dev.update_band(band, {
