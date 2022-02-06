@@ -75,7 +75,29 @@ def _encode_data(data):
 
 
 def pub_ocs_data(S, data):
+    """
+    Passes data to the OCS pysmurf controller to be set in session.data.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    data : dict
+        Dictionary containing data to send to ocs. This will update the
+        session.data object of the active pysmurf-controller agent operation
+        with the supplied data.
+    """
     S.pub.publish(_encode_data(data), msgtype='session_data')
+
+
+def pub_ocs_log(S, msg, log=True):
+    """
+    Passes a string to the OCS pysmurf controller to be logged to be passed
+    around the OCS network.
+    """
+    if log:
+        S.log(msg)
+    S.pub.publish(msg, msgtype='session_log')
 
 
 
