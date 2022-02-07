@@ -383,10 +383,11 @@ def setup_tracking_params(S, cfg, bands, init_fracpp=0.44, nphi0=5,
     return True, summary
 
 
-def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, phase_delay_uc=20,
-              phase_delay_dc=20, tone_power=None, amp_cut=0.01, grad_cut=0.01,
-              init_fracpp=0.44, nphi0=5, reset_rate_khz=4, lms_gain=0,
-              feedback_gain=2048, show_plots=False):
+def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
+              phase_delay_uc=20, phase_delay_dc=20, tone_power=None,
+              amp_cut=0.01, grad_cut=0.01, init_fracpp=0.44, nphi0=5,
+              reset_rate_khz=4, lms_gain=0, feedback_gain=2048,
+              show_plots=False):
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -408,6 +409,11 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, phase_delay_uc=20,
     S.set_filter_disable(0)
     S.set_downsample_factor(20)
     S.set_mode_dc()
+    for band in bands:
+        S.set_synthesis_scale(band, synthesis_scale)
+    cfg.dev.update_experiment({'synthesis_scale': synthesis_scale},
+                             update_file=True)
+
 
     # 1. setup amps
     summary = {'timestamps': []}
@@ -451,10 +457,9 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, phase_delay_uc=20,
 
     # 5. Noise Measurement
     summary['timestamps'].append(('noise', time.time()))
-    am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,
-                                                show_plot=show_plots,
-                                                save_plot=True)
-    noise_summary = {'band_medians': summary['noise']}
+    am, summary['noise'] = sdl.noise.take_noise(
+        S, cfg, 30, show_plot=show_plots, save_plot=True
+    )
     sdl.pub_ocs_data(S, {'noise_summary': {
         'band_medians': summary['noise']['noisedict']['band_medians']
     }})
