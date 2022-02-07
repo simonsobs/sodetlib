@@ -8,8 +8,8 @@ def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=50):
     Scans through bias voltage for hemt or 50K amplifier to get the correct
     gate voltage for a target current.
 
-    Parameters
-    -----------
+    Args
+    -----
     S: pysmurf.client.SmurfControl
         PySmurf control object
     target_Id: float
@@ -25,7 +25,7 @@ def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=50):
 
     Returns
     --------
-    success (bool):
+    success : bool
         Returns a boolean signaling whether voltage scan has been successful.
         The set voltages can be read with S.get_amplifier_biases().
     """
@@ -63,7 +63,8 @@ def find_gate_voltage(S, target_Id, vg_min, vg_max, amp_name, max_iter=50):
     return False
 
 
-def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
+def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1,
+               update_cfg=True):
     """
 
     Initial setup for 50k and hemt amplifiers. Determines gate voltages
@@ -72,18 +73,20 @@ def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
 
     Args
     -----
-        S : (SmurfControl)
-            Pysmurf instance
-        cfg : (DetConfig)
-            DetConfig instance
-        id_hemt : (float)
-            Target hemt drain current (mA)
-        id_50k : (float)
-            Target 50k drain current (mA)
-        vgmin_hemt : (float)
-            Min hemt gate voltage (V)
-        vgmin_50k : (float)
-            Min 50k gate voltage (V)
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    id_hemt : float
+        Target hemt drain current (mA)
+    id_50k : float
+        Target 50k drain current (mA)
+    vgmin_hemt : float
+        Min hemt gate voltage (V)
+    vgmin_50k : float
+        Min 50k gate voltage (V)
+    update_cfg : bool
+        If true, will update the device cfg and save the file.
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
@@ -115,33 +118,36 @@ def setup_amps(S, cfg, id_hemt=8.0, id_50k=15.0, vgmin_hemt=-1, vgmin_50k=-1):
 
     # Update device cfg
     biases = S.get_amplifier_biases()
-    cfg.dev.update_experiment({
-        'amp_50k_Id':  id_50k,
-        'amp_hemt_Id': id_hemt,
-        'amp_50k_Vg':  biases['50K_Vg'],
-        'amp_hemt_Vg': biases['hemt_Vg'],
-    }, update_file=True)
+    if update_cfg:
+        cfg.dev.update_experiment({
+            'amp_50k_Id':  id_50k,
+            'amp_hemt_Id': id_hemt,
+            'amp_50k_Vg':  biases['50K_Vg'],
+            'amp_hemt_Vg': biases['hemt_Vg'],
+        }, update_file=True)
 
     summary = {'success': True, **biases}
     sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
     return True, summary
 
 
-def setup_phase_delay(S, cfg, bands, uc_att=20, dc_att=20):
+def setup_phase_delay(S, cfg, bands, uc_att=20, dc_att=20, update_cfg=True):
     """
     Sets uc and dc attens to reasonable values and runs estimate phase delay
     for desired bands.
 
     Args
     -----
-        S : (SmurfControl)
-            Pysmurf instance
-        cfg : (DetConfig)
-            DetConfig instance
-        uc_att : (int)
-            UC atten to use for phase-delay estimation
-        dc_att : (int)
-            DC atten to use for phase-delay estimation
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    uc_att : int
+        UC atten to use for phase-delay estimation
+    dc_att : int
+        DC atten to use for phase-delay estimation
+    update_cfg : bool
+        If true, will update the device cfg and save the file.
     """
     sdl.pub_ocs_log(S, f"Estimating phase delay for bands {bands}")
 
@@ -159,12 +165,14 @@ def setup_phase_delay(S, cfg, bands, uc_att=20, dc_att=20):
         summary['bands'].append(int(b))
         summary['ref_phase_delay'].append(rfd)
         summary['ref_phase_delay_fine'].append(rfdf)
-        cfg.dev.bands[b].update({
-            'ref_phase_delay':      rfd,
-            'ref_phase_delay_fine': rfdf,
-        })
+        if update_cfg:
+            cfg.dev.bands[b].update({
+                'ref_phase_delay':      rfd,
+                'ref_phase_delay_fine': rfdf,
+            })
 
-    cfg.dev.dump(cfg.dev_file, clobber=True)
+    if update_cfg:
+        cfg.dev.dump(cfg.dev_file, clobber=True)
     sdl.pub_ocs_data(S, {'setup_phase_delay': summary})
     return True, summary
 
@@ -179,10 +187,7 @@ def estimate_uc_dc_atten(S, band, tone_power=None, ref_freq=-200,
 
     For simplicity, this searches over the parameter space where uc and dc
     attens are equal, instead of searching over the full 2d space.
-
-    For further optimization of attens with respect to median white noise, run
-    the ``optimize_attens`` function from the
-    ``sodetlib/operations/optimize.py`` module.
+For further optimization of attens with respect to median white noise, run the ``optimize_attens`` function from the ``sodetlib/operations/optimize.py`` module.
 
     Args
     -----
@@ -195,11 +200,11 @@ def estimate_uc_dc_atten(S, band, tone_power=None, ref_freq=-200,
         smurf-instance from the pysmurf-cfg file.
     ref_freq : float, optional
         Frequency relative to the band-center to measure the response
-        amplitude. Defaults to -200 MHz. 
+        amplitude. Defaults to -200 MHz.
     resp_range : Tuple[float], optional
         Range of allowable response amplitudes. Defaults to (0.1, 0.3).
-    """
-    att, step = 15, 7
+    update_cfg : bool
+        If true, will update the device cfg and save the file.  """ att, step = 15, 7
 
     if tone_power is None:
         tone_power = S._amplitude_scale[band]
@@ -207,8 +212,7 @@ def estimate_uc_dc_atten(S, band, tone_power=None, ref_freq=-200,
     sb = S.get_closest_subband(ref_freq, band)
 
     # Just look at 5 subbands after specified freq.
-    sbs = np.arange(sb, sb + 5) 
-
+    sbs = np.arange(sb, sb + 5)
     nread = 2
 
     while True:
@@ -236,18 +240,18 @@ def estimate_uc_dc_atten(S, band, tone_power=None, ref_freq=-200,
 
 
 def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
-               grad_cut=0.01, estimate_attens=True):
+               grad_cut=0.01, estimate_attens=True, update_cfg=True):
     """
     Find freq, setup notches, and serial gradient descent and eta scan
 
     Args
     -----
-    S : (SmurfControl)
+    S : SmurfControl
         Pysmurf instance
-    cfg : (DetConfig)
+    cfg : DetConfig
         DetConfig instance
     tone_power : int, optional
-        Tone power to use. Defaults to what exists in the 
+        Tone power to use. Defaults to what exists in the pysmurf-cfg file.
     show_plots : bool
         If true, will show find_freq plots. Defaults to False
     amp_cut : float
@@ -258,6 +262,8 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
         If True, will try to find reasonable uc / dc attens for
         each band before running fund_freq. See the
         ``estimate_uc_dc_atten`` function for more details.
+    update_cfg : bool
+        If true, will update the device cfg and save the file.
     """
     bands = np.atleast_1d(bands)
     sdl.pub_ocs_log(S, f"Starting setup_tune for bands {bands}")
@@ -274,10 +280,11 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
         # First try to choose attens that are good for tuning
         if estimate_attens:
             att = estimate_uc_dc_atten(S, band, tone_power=tone_power)
-            cfg.dev.update_band(band, {
-                'uc_att': att,
-                'dc_att': att,
-            })
+            if update_cfg:
+                cfg.dev.update_band(band, {
+                    'uc_att': att,
+                    'dc_att': att,
+                })
         S.find_freq(band, tone_power=tone_power, make_plot=True,
                     save_plot=True, show_plot=show_plots, amp_cut=amp_cut,
                     grad_cut=grad_cut)
@@ -292,32 +299,35 @@ def setup_tune(S, cfg, bands, tone_power=None, show_plots=False, amp_cut=0.01,
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
 
-    cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
+    if update_cfg:
+        cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
     return True, summary
 
 
 def setup_tracking_params(S, cfg, bands, init_fracpp=0.44, nphi0=5,
                           reset_rate_khz=4, lms_gain=0, feedback_gain=2048,
-                          show_plots=False):
+                          show_plots=False, update_cfg=True):
     """
     Setups up tracking parameters by determining correct frac-pp and lms-freq
     for each band.
 
     Args
     -----
-    S : (SmurfControl)
+    S : SmurfControl
         Pysmurf instance
-    cfg : (DetConfig)
+    cfg : DetConfig
         DetConfig instance
-    bands : (np.ndarray, int)
+    bands : np.ndarray, int
         Band or list of bands to run on
-    init_fracpp : (float, optional)
+    init_fracpp : float, optional
         Initial frac-pp value to use for tracking estimates
     nphi0 : int
         Number of phi0 periods to track on
     reset_rate_khz : float
         Flux ramp reset rate in khz
+    update_cfg : bool
+        If true, will update the device cfg and save the file.
     """
 
     bands = np.atleast_1d(bands)
@@ -370,24 +380,23 @@ def setup_tracking_params(S, cfg, bands, init_fracpp=0.44, nphi0=5,
         sdl.pub_ocs_data(S, {'setup_tracking_params_summary': summary})
 
         # Update det config
-        cfg.dev.update_band(band, {
-            'frac_pp':            frac_pp,
-            'lms_freq_hz':        lms_freq,
-            'flux_ramp_rate_khz': reset_rate_khz,
-            'lms_gain': lms_gain,
-            'feedback_gain': feedback_gain,
-
-
-        }, update_file=True)
+        if update_cfg:
+            cfg.dev.update_band(band, {
+                'frac_pp':            frac_pp,
+                'lms_freq_hz':        lms_freq,
+                'flux_ramp_rate_khz': reset_rate_khz,
+                'lms_gain': lms_gain,
+                'feedback_gain': feedback_gain,
+            }, update_file=True)
 
     return True, summary
 
 
 def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
               phase_delay_uc=20, phase_delay_dc=20, tone_power=None,
-              amp_cut=0.01, grad_cut=0.01, init_fracpp=0.44, nphi0=5,
-              reset_rate_khz=4, lms_gain=0, feedback_gain=2048,
-              show_plots=False):
+              amp_cut=0.01, grad_cut=0.01, estimate_attens=True,
+              init_fracpp=0.44, nphi0=5, reset_rate_khz=4, lms_gain=0,
+              feedback_gain=2048, show_plots=False, update_cfg=True):
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -399,6 +408,47 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
         3. Setup tune
         4. setup tracking
         5. Measure noise
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    id_hemt : float
+        Target hemt drain current (mA)
+    id_50k : float
+        Target 50k drain current (mA)
+    synthesis_scale : int
+        Synthesis scale to use for all bands. Defaults to 1.
+    phase_delay_uc : int
+        UC atten to use for phase-delay estimation
+    phase_delay_dc : int
+        DC atten to use for phase-delay estimation
+    tone_power : int, optional
+        Tone power to use. Defaults to what exists in the pysmurf-cfg file.
+    amp_cut : float
+        Amplitude cut for peak-finding in find_freq
+    grad_cut : float
+        Gradient cut for peak-finding in find_freq
+    estimate_attens : bool
+        If True, will try to find reasonable uc / dc attens for
+        each band before running fund_freq. See the
+        ``estimate_uc_dc_atten`` function for more details.
+    init_fracpp : float, optional
+        Initial frac-pp value to use for tracking estimates
+    nphi0 : int
+        Number of phi0 periods to track on
+    reset_rate_khz : float
+        Flux ramp reset rate in khz
+    lms_gain : int
+        LMS gain to use in tracking. Defaults to 0
+    feedback_gain : int
+        Feedback gain to used for tracking. Defaults to 2048
+    show_plots : bool
+        If true, will show find_freq plots. Defaults to False
+    update_cfg : bool
+        If true, will update the device cfg and save the file.
     """
     if bands is None:
         bands = np.arange(8)
@@ -411,15 +461,16 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
     S.set_mode_dc()
     for band in bands:
         S.set_synthesis_scale(band, synthesis_scale)
-    cfg.dev.update_experiment({'synthesis_scale': synthesis_scale},
-                             update_file=True)
 
+    if update_cfg:
+        cfg.dev.update_experiment({'synthesis_scale': synthesis_scale},
+                                  update_file=True)
 
     # 1. setup amps
     summary = {'timestamps': []}
     summary['timestamps'].append(('setup_amps', time.time()))
     success, summary['setup_amps'] = setup_amps(
-        S, cfg, id_hemt=id_hemt, id_50k=id_50k
+        S, cfg, id_hemt=id_hemt, id_50k=id_50k, update_cfg=update_cfg
     )
     if not success:
         S.log("UXM Setup failed on setup amps step")
@@ -428,7 +479,8 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
     # 2. Estimate phase delay
     summary['timestamps'].append(('setup_phase_delay', time.time()))
     success, summary['setup_phase_delay'] = setup_phase_delay(
-        S, cfg, bands, uc_att=phase_delay_uc, dc_att=phase_delay_dc
+        S, cfg, bands, uc_att=phase_delay_uc, dc_att=phase_delay_dc,
+        update_cfg=update_cfg
     )
     if not success:
         S.log("UXM Setup failed on setup phase delay step")
@@ -437,8 +489,9 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
     # 3. Find Freq
     summary['timestamps'].append(('setup_tune', time.time()))
     success, summary['setup_tune'] = setup_tune(
-        S, cfg, bands, tone_power=tone_power, show_plot=show_plots,
-        amp_cut=amp_cut, grad_cut=grad_cut
+        S, cfg, bands, tone_power=tone_power, show_plots=show_plots,
+        amp_cut=amp_cut, grad_cut=grad_cut, update_cfg=update_cfg,
+        estimate_attens=estimate_attens
     )
     if not success:
         S.log("UXM Setup failed on setup tune step")
@@ -449,7 +502,8 @@ def uxm_setup(S, cfg, bands=None, id_hemt=8.0, id_50k=15.0, synthesis_scale=1,
     success, summary['setup_tracking_params'] = setup_tracking_params(
         S, cfg, bands, init_fracpp=init_fracpp, nphi0=nphi0,
         reset_rate_khz=reset_rate_khz, lms_gain=lms_gain,
-        feedback_gain=feedback_gain, show_plots=show_plots
+        feedback_gain=feedback_gain, show_plots=show_plots,
+        update_cfg=update_cfg
     )
     if not success:
         S.log("UXM Setup failed on setup tracking step")
