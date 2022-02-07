@@ -784,7 +784,7 @@ class OperateTuneData:
         elif isinstance(layout_position_path, dict):
             mux_band_to_mux_pos_dict = layout_position_path
         else:
-            mux_band_to_mux_pos_dict = get_mux_band_to_mux_pos_dict(layout_position_path)
+            mux_band_to_mux_pos_dict = get_mux_band_to_mux_pos_dict(self.layout_position_path)
 
         # choose a mapping strategy
         if mapping_strategy in {0, '0', 0.0, 'map_by_res_index'}:
