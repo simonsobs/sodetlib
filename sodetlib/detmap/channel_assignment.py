@@ -1041,16 +1041,16 @@ class OperateTuneData:
         ax_legend.legend(handles=legend_handles, loc='upper center', fontsize=9)
 
         # # save/export and show this plot
-        # set the plot path and directory.
-        if plot_path is None:
-            plot_path = os.path.join(self.plot_dir, f'{self.mapping_strategy}_layout.png')
-        else:
-            self.plot_dir = os.path.dirname(plot_path)
-        # make the plot directory if it does not exist
-        if not os.path.exists(self.plot_dir):
-            os.mkdir(self.plot_dir)
         # save the plot
         if save_plot:
+            # set the plot path and directory.
+            if plot_path is None:
+                plot_path = os.path.join(self.plot_dir, f'{self.mapping_strategy}_layout.png')
+            else:
+                self.plot_dir = os.path.dirname(plot_path)
+            # make the plot directory if it does not exist
+            if not os.path.exists(self.plot_dir):
+                os.mkdir(self.plot_dir)
             plt.savefig(plot_path)
             print(f'Saved the OperateTuneData Diagnostic layout plot at: {plot_path}')
         if show_plot:
