@@ -190,9 +190,9 @@ def freq_rug_plot(freq_array_smurf, freq_array_design, f_array_adjusted=None, ti
     # 'threads' of the rug plot
     ax.tick_params(axis="y", labelleft=False)
     artists = []
-    for xdata, color, y_min, y_max, label in [(freq_array_design, 'firebrick', 0.4, 1.0, '         Design'),
+    for xdata, color, y_min, y_max, label in [(freq_array_design, 'dodgerblue', 0.4, 1.0, '         Design'),
                                               (f_array_adjusted, 'darkgoldenrod', 0.2, 0.8, 'Output Measured'),
-                                              (freq_array_smurf, 'dodgerblue', 0.0, 0.6, ' Input Measured')]:
+                                              (freq_array_smurf, 'firebrick', 0.0, 0.6, ' Input Measured')]:
         if xdata is not None:
             if len(xdata) < 400:
                 linewidth = 2.0
@@ -223,7 +223,7 @@ def freq_rug_plot(freq_array_smurf, freq_array_design, f_array_adjusted=None, ti
     if title is not None:
         ax.set_title(title)
 
-    plt.show()
+    plt.show(block=True)
 
 
 def find_nearest_index(array, value):

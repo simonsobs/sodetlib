@@ -2,6 +2,9 @@ import os
 import getpass
 import numpy as np
 from numpy import random
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import matplotlib.cm as cm
 from multiprocessing.pool import Pool
 from sodetlib.detmap.detmap_config import abs_path_metadata_files_default, metadata_designfile_default, \
     metadata_waferfile_default, metadata_mux_pos_to_mux_band_file_default
@@ -98,11 +101,17 @@ def full_model_sim(design_tune_data_arrays, sigma_mhz, spread, offset_mhz, lost_
     tune_data_model.map_layout_data(layout_data=wafer_data)
     mapped_correctly, mapped_incorrectly = compare_strategy(tune_data_model=tune_data_model,
                                                             simulated_to_design=simulated_to_design)
+    fraction_mapped_correctly = {band_num: float(len(mapped_correctly[band_num])) / float(len(simulated_found[band_num]))
+                                 for band_num in mapped_correctly.keys()}
     results_summary = {band_num: {'sigma_mhz': sigma_mhz, 'spread': spread, 'offset_mhz': offset_mhz,
                                   'num_lost': len(simulated_lost[band_num]),
-                                  'fraction_mapped_correctly':
-                                      float(len(mapped_correctly[band_num])) / float(len(simulated_found[band_num]))}
+                                  'fraction_mapped_correctly': fraction_mapped_correctly[band_num]}
                        for band_num in mapped_correctly.keys()}
+    # for band_num in results_summary.keys():
+    #     if results_summary[band_num]['fraction_mapped_correctly'] == 0.0 and results_summary[band_num]['num_lost'] == 0:
+    #         print(f'band_num: {band_num}')
+    #         tune_data_model.plot_with_layout(show_plot=True, save_plot=False)
+    #         break
     return results_summary
 
 
@@ -135,19 +144,27 @@ class TuneDataModelEngine:
         self.mux_band_to_mux_pos_dict = get_mux_band_to_mux_pos_dict(self.layout_position_path)
 
         self.results = None
+        self.sigma_mhz_range = None
+        self.spread_range = None
+        self.offset_range = None
+        self.lost_resonators_per_band_range = None
 
     def simulate(self, number_of_models: int,
-                 sigma_mhz_range=(0.002, 0.0001),
-                 spread_range=(0.99, 1.02), offset_range=(-30, 30),
+                 sigma_mhz_range=(0.0001, 3.1),
+                 spread_range=(0.995, 1.01), offset_range=(-30, 30),
                  lost_resonators_per_band_range=(0, 20)):
+        self.sigma_mhz_range = sigma_mhz_range
+        self.spread_range = spread_range
+        self.offset_range = offset_range
+        self.lost_resonators_per_band_range = lost_resonators_per_band_range
         model_kwargs = [{'design_tune_data_arrays': self.design_tune_data_arrays,
-                         'sigma_mhz': random.uniform(low=sigma_mhz_range[0],
-                                                     high=sigma_mhz_range[1]),
-                         'spread': random.uniform(low=spread_range[0],
-                                                  high=spread_range[1]),
-                         'offset_mhz': random.uniform(low=offset_range[0],
-                                                      high=offset_range[1]),
-                         'lost_resonators_per_band_range': lost_resonators_per_band_range,
+                         'sigma_mhz': random.uniform(low=self.sigma_mhz_range[0],
+                                                     high=self.sigma_mhz_range[1]),
+                         'spread': random.uniform(low=self.spread_range[0],
+                                                  high=self.spread_range[1]),
+                         'offset_mhz': random.uniform(low=self.offset_range[0],
+                                                      high=self.offset_range[1]),
+                         'lost_resonators_per_band_range': self.lost_resonators_per_band_range,
                          'design_tune_data': self.design_data,
                          'wafer_data': self.wafer,
                          'mux_band_to_mux_pos_dict': self.mux_band_to_mux_pos_dict,
@@ -160,7 +177,64 @@ class TuneDataModelEngine:
                 self.results = p.map(full_model_sim_arg_to_kwargs, model_kwargs)
         print("Simulation complete")
 
+    def plot(self):
+        num_lost = []
+        fraction_mapped_correctly = []
+        sigma_mhz = []
+
+        for a_result in self.results:
+            for band in a_result.keys():
+                results_this_band = a_result[band]
+                num_lost.append(results_this_band['num_lost'])
+                fraction_mapped_correctly.append(results_this_band['fraction_mapped_correctly'])
+                sigma_mhz.append(results_this_band['sigma_mhz'])
+        # initialize the plot
+        left = 0.05
+        bottom = 0.08
+        right = 0.99
+        top = 0.99
+        x_total = right - left
+        y_total = top - bottom
+
+        y_between_plots = 0.1
+
+        y_scatter = y_total * 0.7
+
+        y_colorbar = y_total - y_scatter - y_between_plots
+
+        coord_scatter = [left, top - y_scatter, x_total, y_scatter]
+        coord_colorbar = [left, bottom, x_total, y_colorbar]
+        fig = plt.figure(figsize=(16, 6))
+        ax_scatter = fig.add_axes(coord_scatter, frameon=False)
+        ax_colorbar = fig.add_axes(coord_colorbar, frameon=False)
+        ax_colorbar.tick_params(axis='x',  # changes apply to the x-axis
+                                which='both',  # both major and minor ticks are affected
+                                bottom=False,  # ticks along the bottom edge are off
+                                top=False,  # ticks along the top edge are off
+                                labelbottom=False)
+        ax_colorbar.tick_params(axis='y',  # changes apply to the x-axis
+                                which='both',  # both major and minor ticks are affected
+                                left=False,  # ticks along the bottom edge are off
+                                right=False,  # ticks along the top edge are off
+                                labelleft=False)
+
+        # set the color scale
+        norm = colors.Normalize(vmin=self.sigma_mhz_range[0], vmax=self.sigma_mhz_range[1])
+        cmap = plt.get_cmap('gist_rainbow_r')
+        scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap)
+        color_vals = [scalar_map.to_rgba(a_sigma_mhz) for a_sigma_mhz in sigma_mhz]
+        fig.colorbar(scalar_map, ax=ax_colorbar, orientation='horizontal', fraction=1.0)
+
+        ax_scatter.scatter(fraction_mapped_correctly, num_lost, ls='None', marker='o', alpha=0.4, c=color_vals,
+                           vmin=self.sigma_mhz_range[0], vmax=self.sigma_mhz_range[1])
+        ax_scatter.set_xlabel('Fraction Mapped Correctly')
+        ax_scatter.set_ylabel('Number of Resonator lost at Random')
+        fig.suptitle('Sigma of Normal per resonator error (kHz)', x=0.5, y=0.0, ha='center', va='bottom',
+                     fontsize=11)
+        plt.show(block=True)
+
 
 if __name__ == '__main__':
     tune_data_model_engine = TuneDataModelEngine()
     tune_data_model_engine.simulate(number_of_models=100)
+    tune_data_model_engine.plot()

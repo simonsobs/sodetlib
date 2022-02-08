@@ -5,6 +5,7 @@ Reads in a YAML file, see example/example.yaml for an example for both SMuRF and
 
 """
 import os
+import sys
 import yaml
 from sodetlib.detmap.example.download_example_data import sample_data_init
 
@@ -44,7 +45,10 @@ def dir_name_join(path):
     folders_list = path.split('/')
     new_path = ''
     for single_folder in folders_list:
-        new_path = os.path.join(new_path, single_folder)
+        if single_folder == '' and sys.platform != 'win32':
+            new_path += '/'
+        else:
+            new_path = os.path.join(new_path, single_folder)
     return new_path
 
 
