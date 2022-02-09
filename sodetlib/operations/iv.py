@@ -444,7 +444,7 @@ def plot_channel_iv(iva, rc):
     return fig, axes
 
 
-sdl.set_action()
+@sdl.set_action()
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
