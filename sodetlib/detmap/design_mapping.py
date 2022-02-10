@@ -74,15 +74,10 @@ def design_pickle_to_csv(design_file_path, design_filename_csv,
             f.write(f'{row_str[:-1]}\n')
 
 
-def add_design_data(meas_datum, des_datum, design_attributes, is_north, mux_band_to_mux_pos_dict):
+def add_design_data(meas_datum, des_datum, design_attributes, is_north):
     # we can extract specific parameters from the design_datum and build a dictionary
     design_dict = {design_key: des_datum.__getattribute__(design_key)
                    for design_key in design_attributes}
-    # set the mux_layout_position is available
-    if mux_band_to_mux_pos_dict is not None:
-        mux_band = design_dict['mux_band']
-        if mux_band in mux_band_to_mux_pos_dict[is_north].keys():
-            design_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[is_north][mux_band]
     # move the design frequency to the appropriate attribute
     design_dict['design_freq_mhz'] = des_datum.freq_mhz
     # get a mutable dictionary for the tune datum
@@ -94,7 +89,7 @@ def add_design_data(meas_datum, des_datum, design_attributes, is_north, mux_band
     return tune_datum_with_design_data
 
 
-def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_pos_dict):
+def map_by_res_index(tune_data, design_attributes, design_data):
     # make a new set to hold the tune data that is updated with design data
     tune_data_new = set()
     # track TuneDatums that are mapped to a design record
@@ -102,7 +97,7 @@ def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_
     # track TuneDatums that are *not* mapped to a design record
     tune_data_without_design_data = set()
     # is_highband has no meaning for design data
-    design_tune_data_by_band_channel = design_data.tune_data_side_band_res_index[None]
+    design_tune_data = design_data.tune_data_side_band_res_index
     # loop overall the data
     for tune_datum in tune_data:
         # pull these properties out to access the design data
@@ -110,19 +105,13 @@ def map_by_res_index(tune_data, design_attributes, design_data, mux_band_to_mux_
         is_highband = tune_datum.is_highband
         smurf_band = tune_datum.smurf_band
         res_index = tune_datum.res_index
-        # the high-band resonators were never fabricated, highband is really a positional designation for SMuRF
-        if is_highband:
-            design_band = smurf_band - 4
-        else:
-            design_band = smurf_band
         # see if there is design data available for this band-channel pair
-        if design_band in design_tune_data_by_band_channel.keys() and \
-                res_index in design_tune_data_by_band_channel[design_band].keys():
-            design_datum = design_tune_data_by_band_channel[design_band][res_index]
+        if is_north in design_tune_data.keys() and smurf_band in design_tune_data[is_north].keys() and \
+                res_index in design_tune_data[is_north][smurf_band].keys():
+            design_datum = design_tune_data[is_north][smurf_band][res_index]
             tune_datum_with_design_data = add_design_data(meas_datum=tune_datum, des_datum=design_datum,
                                                           design_attributes=design_attributes,
-                                                          is_north=is_north,
-                                                          mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
+                                                          is_north=is_north)
             # add this to the new data set
             tune_data_new.add(tune_datum_with_design_data)
             # track which datums have designs info
@@ -485,7 +474,7 @@ def res_refit_and_map(f_array_design: Union[list, tuple, np.array, dict],
     return measured_oto_list, design_oto_list, smurf_processed_to_tune_datum, meas_unmapped
 
 
-def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, mux_band_to_mux_pos_dict,
+def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data,
                 ignore_smurf_neg_one=False, trim_at_mhz: Union[None, float, int] = 10.0,
                 show_plots=False, verbose=True,
                 design_random_remove=False):
@@ -496,7 +485,13 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
     # track TuneDatums that are *not* mapped to a design record
     tune_data_without_design_data = set()
     # one set of design frequencies is all that is needed for both sides of the UFM
-    design_tune_data_band_res_index = design_data.tune_data_side_band_res_index[None]
+    design_tune_data = design_data.tune_data_side_band_res_index
+    design_tune_data_band_res_index = {}
+    for is_north in design_tune_data.keys():
+        design_this_side = {band_num: design_tune_data[is_north][band_num]
+                            for band_num in design_tune_data[is_north].keys()}
+        design_tune_data_band_res_index.update(design_this_side)
+
     freq_array_design, tune_data_by_freq_design = \
         smurf_band_res_index_to_freq(tune_data_band_index=design_tune_data_band_res_index)
     # loop over both sides of the UFM
@@ -590,9 +585,7 @@ def map_by_freq(tune_data_side_band_res_index, design_attributes, design_data, m
                 meas_datum = smurf_processed_to_tune_datum[meas]
                 des_datum = design_to_design_datums[des]
                 tune_datum_with_design_data = add_design_data(meas_datum=meas_datum, des_datum=des_datum,
-                                                              design_attributes=design_attributes,
-                                                              is_north=is_north,
-                                                              mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
+                                                              design_attributes=design_attributes, is_north=is_north)
                 # add this to the new data set
                 tune_data_new.add(tune_datum_with_design_data)
                 # track which datums have designs info

@@ -41,9 +41,10 @@ def bond_pad_to_wafer_row_parse(single_row, dark_bias_lines=None):
         is_optical = True
 
     bandpass_str = single_row['dtsignaldescription']
+
     if bandpass_str == 'NC':
         if pol == 'D':
-            bandpass = 'D'
+            bandpass = 90
         else:
             bandpass = 'NC'
     elif 'ghz' == bandpass_str[-3:]:

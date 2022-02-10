@@ -1,13 +1,19 @@
 """
 A Developmental Environment for Testing New features.
 """
+from getpass import getuser
 from sodetlib.detmap.example.download_example_data import sample_data_init
 from sodetlib.detmap.detmap_config import get_config
 from sodetlib.detmap.makemap import make_map_smurf, psat_map
+if getuser() in {'chw3k5', 'cwheeler'}:
+    # this only happens on Caleb's computers
+    import matplotlib as mpl
+    # an interactive backend to render the plots, allows for zooming/panning and other interactions
+    mpl.use(backend='TkAgg')
 
 
 sample_data_init(del_dir=False)
-config = get_config()
+config = get_config(array_name='Mv6')
 
 
 tune_data_smurf = make_map_smurf(tunefile=config['tunefile'], north_is_highband=config['north_is_highband'],)

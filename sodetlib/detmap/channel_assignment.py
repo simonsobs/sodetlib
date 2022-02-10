@@ -3,19 +3,14 @@ Author: Caleb Wheeler, written by reading code originally writen by Kaiwen Zheng
 
 This file handles the data structures, reading, and analysis of resonator frequency to smurf band-channel index pairs.
 """
+import copy
 import os.path
 from copy import deepcopy
-from getpass import getuser
 from operator import attrgetter, itemgetter
 
 import numpy as np
 import pandas
 import pandas as pd
-if getuser() in {'chw3k5', 'cwheeler'}:
-    # this only happens on Caleb's computers
-    import matplotlib as mpl
-    # an interactive backend to render the plots, allows for zooming/panning and other interactions
-    mpl.use(backend='TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
@@ -32,11 +27,19 @@ def get_mux_band_to_mux_pos_dict(layout_position_path):
     mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=layout_position_path)
     # initialize the mux_band_to_mux_pos_dict, True and False keys denote the is_north
     mux_band_to_mux_pos_dict = {True: {}, False: {}}
+    thru_mux_pos = set()
     for mux_band, mux_pos, is_north in zip(mux_layout_position_by_column['mux_band_num'],
                                            mux_layout_position_by_column['mux_pos_num'],
                                            mux_layout_position_by_column['is_north']):
-        mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
-    return mux_band_to_mux_pos_dict
+        if is_north == 'TRUE':
+            is_north = True
+        elif is_north == 'FALSE':
+            is_north = False
+        if mux_band == -1:
+            thru_mux_pos.add(mux_pos)
+        else:
+            mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
+    return mux_band_to_mux_pos_dict, thru_mux_pos
 
 
 class OperateTuneData:
@@ -710,6 +713,13 @@ class OperateTuneData:
 
         self.design_file_path is set via the __init__() method and this method is called automatically in __init__().
         """
+        # get positional layout data for the mux chips if it is available
+        if self.layout_position_path is None:
+            raise ValueError(f'self.layout_position_path is required to set for design data on initialization of ' +
+                             f'OperateTuneData(), this instance was set to the default value of "None"')
+        else:
+            mux_band_to_mux_pos_dict, thru_mux_pos = get_mux_band_to_mux_pos_dict(self.layout_position_path)
+
         if self.design_file_path is None:
             raise ValueError(f'Design file not specified, i.e. self.design_file_path is None')
         # determine if this is a pickle file from the file's extension
@@ -732,8 +742,7 @@ class OperateTuneData:
             _all_data_upper_band_bounds_mhz = emulate_smurf_bands(shift_mhz=0.0, smurf_bands=None)
         # counter for the smurf channel, initialize a counter used to determine channel number
         channel_count_by_band = {smurf_band: 0 for smurf_band in real_band_bounds_mhz.keys()}
-        # set the data in the standard format for this class
-        self.tune_data = set()
+        design_tune_data_dicts = []
         for row_dict in sorted(data_by_row, key=itemgetter('freq_mhz')):
             # determine the smurf band
             for smurf_band in sorted(real_band_bounds_mhz.keys()):
@@ -742,71 +751,86 @@ class OperateTuneData:
                     row_dict['smurf_band'] = smurf_band
                     # the design data file is outdated, bands 4-7 are is a repeat of 0-3, there is no highband design
                     if smurf_band < 4:
-                            # this would happen automatically,
-                        # but we are explicitly stating here "that is_highband has no meaning for design data"
-                        row_dict['is_highband'] = None
                         # set the smurf channel
                         row_dict['res_index'] = channel_count_by_band[smurf_band]
+                        # Set the low band state
+                        row_dict['is_highband'] = False
+                        # add this datum
+                        design_tune_data_dicts.append(row_dict)
                         # iterate the counter
                         channel_count_by_band[smurf_band] += 1
-                        # add this datum
-                        self.tune_data.add(TuneDatum(**row_dict))
                         # no need to keep searching when we find what we are looking for
                         break
                     elif 3 < smurf_band:
                         # ignore the highband design, those resonators were never fabricated
                         break
+
             else:
                 # Force a smurf band to be set, this happens when the break statement was not reached
                 raise KeyError(f"Design frequency {row_dict['freq_mhz']} MHz, was not found to be withing the " +
                                f"the real smurf bands, {real_band_bounds_mhz}, this should not be possible! " +
                                f"Check the design file: {self.design_file_path}")
-
-        # the highband design resonators are simply a copy of the low band design, now we do that in software
-        for tune_datum_low_band in list(self.tune_data):
-            tune_datum_high_band_copy = tune_datum_low_band.dict()
+        # reprocess the data to be specific to an array topology, self.north_is_highband, and self.layout_position_path
+        # Note: the highband design resonators are simply a copy of the low band design, now we do that in software
+        for design_tune_data_dict_low_band in list(design_tune_data_dicts):
+            tune_datum_high_band_copy = copy.deepcopy(design_tune_data_dict_low_band)
             tune_datum_high_band_copy['smurf_band'] = tune_datum_high_band_copy['smurf_band'] + 4
-            # This would happen automatically,
-            # but we are explicitly stating here "that is_highband has no meaning for design data"
-            tune_datum_high_band_copy['is_highband'] = None
-            self.tune_data.add(TuneDatum(**tune_datum_high_band_copy))
+            tune_datum_high_band_copy['is_highband'] = True
+            design_tune_data_dicts.append(tune_datum_high_band_copy)
+        # set the data in the standard format for this class
+        self.tune_data = set()
+        for design_tune_data_dict in list(design_tune_data_dicts):
+            is_highband = design_tune_data_dict['is_highband']
+            mux_band = design_tune_data_dict['mux_band']
+            # set the is_north
+            if is_highband:
+                if self.north_is_highband:
+                    is_north = True
+                else:
+                    is_north = False
+            else:
+                if self.north_is_highband:
+                    is_north = False
+                else:
+                    is_north = True
+            design_tune_data_dict['is_north'] = is_north
+            # set the mux_position
+            if mux_band in mux_band_to_mux_pos_dict[is_north].keys():
+                design_tune_data_dict['mux_layout_position'] = mux_band_to_mux_pos_dict[is_north][mux_band]
+                # record this TuneDatum
+                self.tune_data.add(TuneDatum(**design_tune_data_dict))
 
+            else:
+                # this happens for thru chips, this data is not kept
+                pass
         # do a data organization and validation
         self.tune_data_organization_and_validation()
+        # some extra organization and data keeping
+        self.design_freqs_by_band = {}
+        for is_north in sorted(self.tune_data_side_band_res_index.keys()):
+            for band_num in sorted(self.tune_data_side_band_res_index[is_north].keys()):
+                self.design_freqs_by_band[band_num] = []
+                for res_index in sorted(self.tune_data_side_band_res_index[is_north][band_num].keys()):
+                    tune_datum_design = self.tune_data_side_band_res_index[is_north][band_num][res_index]
+                    self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
 
-    def map_design_data(self, design_data, layout_position_path=None, mapping_strategy='map_by_res_index'):
-        # the layout_position_path can be set in this method or the __init__() method
-        if layout_position_path is not None:
-            self.layout_position_path = layout_position_path
-        # get positional layout data for the mux chips if it is available
-        if self.layout_position_path is None:
-            mux_band_to_mux_pos_dict = None
-        elif isinstance(layout_position_path, dict):
-            mux_band_to_mux_pos_dict = layout_position_path
-        else:
-            mux_band_to_mux_pos_dict = get_mux_band_to_mux_pos_dict(self.layout_position_path)
-
+    def map_design_data(self, design_data, mapping_strategy='map_by_res_index'):
         # choose a mapping strategy
         if mapping_strategy in {0, '0', 0.0, 'map_by_res_index'}:
             self.mapping_strategy = 'map_by_res_index'
             tune_data_new, tune_data_with_design_data, tune_data_without_design_data = \
                 map_by_res_index(tune_data=self.tune_data, design_attributes=self.design_attributes,
-                                 design_data=design_data, mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
+                                 design_data=design_data)
         elif mapping_strategy in {1, 1.0, '1', 'map_by_freq'}:
             self.mapping_strategy = 'map_by_freq'
             tune_data_new, tune_data_with_design_data, tune_data_without_design_data = \
                 map_by_freq(tune_data_side_band_res_index=self.tune_data_side_band_res_index,
                             design_attributes=self.design_attributes,
-                            design_data=design_data, mux_band_to_mux_pos_dict=mux_band_to_mux_pos_dict)
+                            design_data=design_data)
         else:
             raise KeyError(f'Mapping Strategy: {mapping_strategy}, is not recognized.')
-        # some extra organization and data keeping
-        self.design_freqs_by_band = {}
-        for band_num in sorted(design_data.tune_data_side_band_res_index[None].keys()):
-            self.design_freqs_by_band[band_num] = []
-            for res_index in sorted(design_data.tune_data_side_band_res_index[None][band_num].keys()):
-                tune_datum_design = design_data.tune_data_side_band_res_index[None][band_num][res_index]
-                self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
+        # some data used for plotting
+        self.design_freqs_by_band = design_data.design_freqs_by_band
         # we can make additional data structures when we have the design data imported into measured tunes
         self.imported_design_data = True
         # reset this instance's tune_data
@@ -1177,6 +1201,7 @@ class OperateTuneData:
             print(f'Plot saved at: {plot_filename}')
         if show_plot:
             plt.show()
+        plt.close(fig=fig)
 
 
 def from_tune_datums(tune_data, north_is_highband, is_smurf: bool, imported_design_data: bool) -> OperateTuneData:

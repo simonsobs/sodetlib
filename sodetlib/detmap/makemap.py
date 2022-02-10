@@ -90,7 +90,8 @@ def assign_channel_from_vna(north_is_highband: bool, path_north_side_vna=None, p
     return upper_res_tune_data + lower_res_tune_data
 
 
-def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferfile_default_path,
+def get_formatted_metadata(north_is_highband:bool, design_file=designfile_default_path,
+                           waferfile=waferfile_default_path, layout_position_path=mux_pos_to_mux_band_file_default_path,
                            dark_bias_lines=None) -> (OperateTuneData, dict):
     """Read in design metadata for a detector array and return instances data class OperateTuneData.
 
@@ -123,13 +124,14 @@ def get_formatted_metadata(design_file=designfile_default_path, waferfile=waferf
         ones, and NC for no-coupled resonators.
     """
     # get the design file for the resonators
-    design_data = OperateTuneData(design_file_path=design_file)
+    design_data = OperateTuneData(design_file_path=design_file, north_is_highband=north_is_highband,
+                                  layout_position_path=layout_position_path)
     # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
-    layout_data = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
-    return design_data, layout_data
+    wafer_layout_data = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
+    return design_data, wafer_layout_data
 
 
-def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: OperateTuneData, layout_data: dict,
+def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: OperateTuneData, wafer_layout_data: dict,
                                 output_path_csv, layout_plot_path=None, do_csv_output=True,
                                 show_layout_plot=False, save_layout_plot=True,
                                 mapping_strategy='map_by_freq') -> OperateTuneData:
@@ -196,8 +198,8 @@ def add_metadata_and_get_output(tune_data: OperateTuneData, design_data: Operate
     if design_data is not None:
         tune_data.map_design_data(design_data=design_data, mapping_strategy=mapping_strategy)
         # update the tune data to include the layout data.
-        if layout_data is not None:
-            tune_data.map_layout_data(layout_data=layout_data)
+        if wafer_layout_data is not None:
+            tune_data.map_layout_data(layout_data=wafer_layout_data)
             if show_layout_plot or save_layout_plot:
                 tune_data.plot_with_layout(plot_path=layout_plot_path, show_plot=show_layout_plot,
                                            save_plot=save_layout_plot)
@@ -273,15 +275,17 @@ def make_map_smurf(tunefile, north_is_highband: bool, design_file=designfile_def
     See sodetlib/sodetlib/detmap/examples/demo_full.ipynb for useage in a more general example that read inputs from a
     yaml file and downloads a sample data set for experimentation.
     """
-    design_data, layout_data = get_formatted_metadata(design_file=design_file, waferfile=waferfile,
-                                                      dark_bias_lines=dark_bias_lines)
+    design_data, wafer_layout_data = get_formatted_metadata(north_is_highband=north_is_highband,
+                                                            design_file=design_file, waferfile=waferfile,
+                                                            layout_position_path=layout_position_path,
+                                                            dark_bias_lines=dark_bias_lines)
     if output_path_csv is None:
         # put the output in the dame directory as the tune file.
         output_path_csv = os.path.join(os.path.dirname(tunefile), f'smurf_{output_csv_default_filename}')
     # get the tune file data from smurf
-    tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband,
-                                      layout_position_path=layout_position_path)
-    return add_metadata_and_get_output(tune_data=tune_data_smurf, design_data=design_data, layout_data=layout_data,
+    tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=north_is_highband)
+    return add_metadata_and_get_output(tune_data=tune_data_smurf, design_data=design_data,
+                                       wafer_layout_data=wafer_layout_data,
                                        output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
                                        do_csv_output=do_csv_output,
                                        show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
@@ -388,11 +392,10 @@ def make_map_vna(tune_data_vna_output_filename,
         output_path_csv = os.path.join(os.path.dirname(tune_data_vna_output_filename),
                                        f'vna_{output_csv_default_filename}')
 
-    # # Metadata
-    # get the design file for the resonators
-    design_data = OperateTuneData(design_file_path=design_file)
-    # get the UFM layout metadata (mux_layout_position and bond_pad mapping)
-    layout_data = get_layout_data(waferfile, dark_bias_lines=dark_bias_lines, plot=False)
+    design_data, wafer_layout_data = get_formatted_metadata(north_is_highband=north_is_highband,
+                                                            design_file=design_file, waferfile=waferfile,
+                                                            layout_position_path=layout_position_path,
+                                                            dark_bias_lines=dark_bias_lines)
 
     # parse/get date from a Vector Network Analyzer
     if not os.path.exists(tune_data_vna_output_filename):
@@ -403,10 +406,9 @@ def make_map_vna(tune_data_vna_output_filename,
         # write this data to skip this step next time and simply read in these results
         tune_data_raw_vna.write_csv(output_path_csv=tune_data_vna_output_filename)
     # reload the tune data from the csv file, for constant behavior on first run or many runs
-    tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename,
-                                    layout_position_path=layout_position_path)
-
-    return add_metadata_and_get_output(tune_data=tune_data_vna, design_data=design_data, layout_data=layout_data,
+    tune_data_vna = OperateTuneData(tune_path=tune_data_vna_output_filename, north_is_highband=north_is_highband)
+    return add_metadata_and_get_output(tune_data=tune_data_vna, design_data=design_data,
+                                       wafer_layout_data=wafer_layout_data,
                                        output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
                                        do_csv_output=do_csv_output,
                                        show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
@@ -476,16 +478,18 @@ def make_map_g3_timestream(timestream, north_is_highband: bool, design_file=desi
 
     See sodetlib/sodetlib/detmap/examples/demo_simple.ipynb for a basic example like the one above.
     """
-    design_data, layout_data = get_formatted_metadata(design_file=design_file, waferfile=waferfile,
-                                                      dark_bias_lines=dark_bias_lines)
+    design_data, wafer_layout_data = get_formatted_metadata(north_is_highband=north_is_highband,
+                                                            design_file=design_file, waferfile=waferfile,
+                                                            layout_position_path=layout_position_path,
+                                                            dark_bias_lines=dark_bias_lines)
     if output_path_csv is None:
         # put the output in the dame directory as the tune file.
         output_path_csv = os.path.join(os.path.dirname(timestream), f'g3ts_{output_csv_default_filename}')
     # get the tune file data from smurf
     tune_data_g3ts = OperateTuneData(tune_path=timestream, is_g3timestream=True,
-                                     north_is_highband=north_is_highband,
-                                     layout_position_path=layout_position_path)
-    return add_metadata_and_get_output(tune_data=tune_data_g3ts, design_data=design_data, layout_data=layout_data,
+                                     north_is_highband=north_is_highband)
+    return add_metadata_and_get_output(tune_data=tune_data_g3ts, design_data=design_data,
+                                       wafer_layout_data=wafer_layout_data,
                                        output_path_csv=output_path_csv, layout_plot_path=layout_plot_path,
                                        do_csv_output=do_csv_output,
                                        show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,

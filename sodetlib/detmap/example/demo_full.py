@@ -1,15 +1,11 @@
 import os
 import numpy as np
 from sodetlib.detmap.makemap import make_map_smurf, make_map_vna, make_map_g3_timestream, psat_map
-from sodetlib.detmap.detmap_config import get_config, abs_path_detmap, abs_path_metadata_files_default,\
-    metadata_waferfile_default, metadata_designfile_default, metadata_mux_pos_to_mux_band_file_default
+from sodetlib.detmap.detmap_config import get_config, abs_path_detmap
 
 
-config = get_config(config_ymal_path=os.path.join(abs_path_detmap, 'example', 'example.yaml'),
-                    metadata_dir=abs_path_metadata_files_default,
-                    metadata_waferfile=metadata_waferfile_default,
-                    metadata_designfile=metadata_designfile_default,
-                    metadata_mux_pos_to_mux_band_file=metadata_mux_pos_to_mux_band_file_default,
+config = get_config(array_name='Mv6',
+                    config_ymal_path=os.path.join(abs_path_detmap, 'example', 'example.yaml'),
                     output_data_dir=os.path.join(abs_path_detmap, 'output'))
 
 # read the tunefile and initialize the data instance for SMuRF tunefile
@@ -41,6 +37,10 @@ tune_data_vna = make_map_vna(tune_data_vna_output_filename=config['tune_data_vna
                              save_layout_plot=config['save_layout_plot'],
                              show_layout_plot=config['show_layout_plot'],
                              mapping_strategy=config['mapping_strategy'])
+
+config = get_config(array_name='Sv5',
+                    config_ymal_path=os.path.join(abs_path_detmap, 'example', 'example.yaml'),
+                    output_data_dir=os.path.join(abs_path_detmap, 'output'))
 
 tune_data_g3 = make_map_g3_timestream(timestream=config['timestream'],
                                       north_is_highband=config['north_is_highband'],

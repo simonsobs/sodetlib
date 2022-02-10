@@ -7,6 +7,8 @@ Reads in a YAML file, see example/example.yaml for an example for both SMuRF and
 import os
 import sys
 import yaml
+import warnings
+from sodetlib.detmap.meta_select import get_metadata_filenames
 from sodetlib.detmap.example.download_example_data import sample_data_init
 
 
@@ -52,7 +54,8 @@ def dir_name_join(path):
     return new_path
 
 
-def get_config(config_ymal_path=os.path.join(abs_path_detmap, 'example', 'example.yaml'),
+def get_config(array_name=None,
+               config_ymal_path=os.path.join(abs_path_detmap, 'example', 'example.yaml'),
                metadata_dir=abs_path_metadata_files_default,
                metadata_waferfile=metadata_waferfile_default,
                metadata_designfile=metadata_designfile_default,
@@ -62,10 +65,27 @@ def get_config(config_ymal_path=os.path.join(abs_path_detmap, 'example', 'exampl
     with open(config_ymal_path) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
+    if array_name is not None:
+        if any([metadata_dir != abs_path_metadata_files_default, metadata_designfile != metadata_designfile_default,
+                metadata_mux_pos_to_mux_band_file != metadata_mux_pos_to_mux_band_file_default]):
+            warnings.warn("Warning...........Any metadata file name set with get_config is over written when the " +
+                          "'array_name' key word argument is not None!")
+        metadata_designfile, metadata_waferfile, metadata_mux_pos_to_mux_band_file = \
+            get_metadata_filenames(array_name=array_name)
+
     # set the path for each metadata file
     waferfile_path = os.path.join(metadata_dir, metadata_waferfile)
     design_file_path = os.path.join(metadata_dir, metadata_designfile)
     mux_pos_num_to_mux_band_num_path = os.path.join(metadata_dir, metadata_mux_pos_to_mux_band_file)
+    # a check if the metadata_mux_pos_to_mux_band_file exists, if not use the default name and raise a warning
+    if not os.path.exists(mux_pos_num_to_mux_band_num_path):
+        if array_name is None:
+            array_name_msg = ''
+        else:
+            array_name_msg = f', this was pared from array name {array_name}'
+        warnings.warn(f"Warning...........The mux_pos_num_to_mux_band_num_path: {mux_pos_num_to_mux_band_num_path} " +
+                      f"does not exist{array_name_msg}. Using the default file {mux_pos_to_mux_band_file_default_path}")
+        mux_pos_num_to_mux_band_num_path = os.path.join(metadata_dir, mux_pos_to_mux_band_file_default_path)
 
     # the tunefile and psat data directory
     if config['data_dir'] is None or config['data_dir'].lower().strip() == 'none':
