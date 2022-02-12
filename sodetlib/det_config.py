@@ -175,7 +175,7 @@ class DeviceConfig:
                     b[k] = None
             band[k] = v
         if update_file and self.source_file is not None:
-            self.dump(self.source_file, clobber=True)
+            self.update_file()
 
     def update_bias_group(self, bg_index, data, update_file=False):
         """
@@ -195,7 +195,7 @@ class DeviceConfig:
                     _bg[k] = None
             bg[k] = v
         if update_file and self.source_file is not None:
-            self.dump(self.source_file, clobber=True)
+            self.update_file()
 
     def update_experiment(self, data, update_file=False):
         """
@@ -209,7 +209,14 @@ class DeviceConfig:
         for k, v in data.items():
             self.exp[k] = v
         if update_file and self.source_file is not None:
-            self.dump(self.source_file, clobber=True)
+            self.update_file()
+
+    def update_file(self):
+        """
+        Updates the device cfg file.1
+        """
+        self.dump(self.source_file, clobber=True)
+
 
     def apply_to_pysmurf_instance(self, S, load_tune=True):
         """
