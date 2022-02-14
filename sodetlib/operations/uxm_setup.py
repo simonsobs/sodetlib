@@ -182,9 +182,6 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
         'band_delay_us': [],
     }
     for b in bands:
-        if modify_attens:
-            S.set_att_dc(b, exp['phase_delay_dc_att'])
-            S.set_att_uc(b, exp['phase_delay_uc_att'])
         summary['bands'].append(int(b))
         band_delay_us, _ = S.estimate_phase_delay(b, make_plot=True, show_plot=False)
         band_delay_us = float(band_delay_us)
@@ -457,7 +454,10 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
         If true, will show find_freq plots. Defaults to False
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    modify_attens : 
+    modify_attens : bool
+        If true, will run estimate_uc_dc_atten to find a set of
+        attenuations that will work for estimate_phase_delay and
+        find_freq.
     """
     if bands is None:
         bands = np.arange(8)
@@ -482,6 +482,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
 
     summary = {}
     summary['timestamps'] = []
+
     #############################################################
     # 2. Setup amps
     #############################################################
