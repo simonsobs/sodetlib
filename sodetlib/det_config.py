@@ -33,6 +33,39 @@ class YamlReps:
 
 YamlReps.setup_reps()
 
+# Default values for device cfg entries
+exp_defaults = {
+    # General stuff
+    'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
+
+    # Amp stuff
+    "amp_50k_init_Vg": -0.5, "amp_hemt_init_Vg": -1.0, "amp_50k_Id": 8.0,
+    "amp_hemt_Id": 15.0, "amp_50k_Vg": None, "amp_hemt_Vg": None,
+    "amp_enable_wait_time": 10.0, "amp_step_wait_time": 0.2,
+    "amp_hemt_Id_tolerance": 0.2, "amp_50k_Id_tolerance": 0.2,
+
+    # Find freq
+    'res_amp_cut': 0.01, 'res_grad_cut': 0.01,
+
+    # Tracking stuff
+    "flux_ramp_rate_khz": 4, "init_frac_pp": 0.4, "nphi0": 5, 
+    "f_ptp_range": (40, 150), "df_ptp_range": (0, 40), "r2_min": 0.9,
+    "min_good_tracking_frac": 0.8,
+
+    # Misc files
+    "tunefile": None, "bgmap_file": None, "iv_file": None,
+    "res_fit_file": None,
+}
+band_defaults = {
+    # General
+    "band_delay_us": None, "uc_att": None, "dc_att": None, 
+    "attens_optimized": False, "tone_power": 12,
+
+    # Band-specific tracking stuff
+    "lms_gain": 0, "feedback_gain": 2048, "frac_pp": None, "lms_freq_hz": None,
+}
+bg_defaults = {}
+
 
 class DeviceConfig:
     """
@@ -62,9 +95,9 @@ class DeviceConfig:
             List of 8 band configuration dictionaries.
     """
     def __init__(self):
-        self.bands = [{} for _ in range(8)]
-        self.bias_groups = [{} for _ in range(12)]
-        self.exp = {}
+        self.bands = [band_defaults.copy() for _ in range(8)]
+        self.bias_groups = [bg_defaults.copy() for _ in range(12)]
+        self.exp = exp_defaults.copy()
         self.source_file = None
 
     @classmethod
@@ -79,7 +112,8 @@ class DeviceConfig:
                 self._load_amc(amc_index, v)
             if k.lower().startswith('band'):  # Key formatted like Band[i]
                 band_index = int(k[5])
-                self.bands[band_index] = v
+                self.bands[band_index].update(v)
+
 
         # Loads bias groups from config file
         for i, bg in enumerate(self.bias_groups):
@@ -87,7 +121,7 @@ class DeviceConfig:
                 self.bias_groups[i][k] = vlist[i]
 
         # Loads experiment config data
-        self.exp = data['experiment']
+        self.exp.update(data['experiment'])
         return self
 
     @classmethod
@@ -99,11 +133,16 @@ class DeviceConfig:
             filename (path): path to device-config file.
         """
         filename = os.path.abspath(os.path.expandvars(filename))
-        with open(filename) as f:
-            data = yaml.safe_load(f)
-        self = cls.from_dict(data)
-        self.source_file = filename
-        return self
+        if not os.path.exists(filename):
+            # Just return default device cfg
+            self = cls()
+            self.source_file = filename
+            return self
+        else:
+            with open(filename) as f:
+                data = yaml.safe_load(f)
+            self = cls.from_dict(data)
+            return self
 
     def _load_amc(self, amc_index, data):
         """Loads amc data all at once"""
