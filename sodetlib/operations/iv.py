@@ -82,7 +82,7 @@ class IVAnalysis:
         the absence of optical power.
     si : np.ndarray
         Array of shape (nchans, nbiases) containing the responsivity (1/V)
-        of the TES for each bis-step
+        of the TES for each bias-step
     idxs : np.ndarray
         Array of shape (nchans, 3) containing:
             1. Last index of the SC branch
