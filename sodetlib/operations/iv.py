@@ -29,7 +29,6 @@ class IVAnalysis:
     stop_times : np.ndarray
         Array of stop_times of each bias point
 
-
     Attributes
     -----------
     meta : dict
@@ -70,10 +69,10 @@ class IVAnalysis:
     i_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the current across the TES
         for each channel at each bias point (Amps)
-    R_n : np.ndarry
+    R_n : np.ndarray
         Array of shape (nchans) containing the normal resistance (Ohms) of the
         TES
-    R_L : np.ndarry
+    R_L : np.ndarray
         Array of shape (nchans) containing the non-TES resistance (Ohms).
         Should be shunt resistance + parasitic resistance
     p_sat : np.ndarray
