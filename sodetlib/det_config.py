@@ -39,8 +39,8 @@ exp_defaults = {
     'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
 
     # Amp stuff
-    "amp_50k_init_Vg": -0.5, "amp_hemt_init_Vg": -1.0, "amp_50k_Id": 8.0,
-    "amp_hemt_Id": 15.0, "amp_50k_Vg": None, "amp_hemt_Vg": None,
+    "amp_50k_init_Vg": -0.5, "amp_hemt_init_Vg": -1.0, "amp_hemt_Id": 8.0,
+    "amp_50k_Id": 15.0, "amp_50k_Vg": None, "amp_hemt_Vg": None,
     "amp_enable_wait_time": 10.0, "amp_step_wait_time": 0.2,
     "amp_hemt_Id_tolerance": 0.2, "amp_50k_Id_tolerance": 0.2,
 
@@ -48,8 +48,8 @@ exp_defaults = {
     'res_amp_cut': 0.01, 'res_grad_cut': 0.01,
 
     # Tracking stuff
-    "flux_ramp_rate_khz": 4, "init_frac_pp": 0.4, "nphi0": 5, 
-    "f_ptp_range": (40, 150), "df_ptp_range": (0, 40), "r2_min": 0.9,
+    "flux_ramp_rate_khz": 4, "init_frac_pp": 0.4, "nphi0": 5,
+    "f_ptp_range": [40, 150], "df_ptp_range": [0, 40], "r2_min": 0.9,
     "min_good_tracking_frac": 0.8,
 
     # Misc files
@@ -58,7 +58,7 @@ exp_defaults = {
 }
 band_defaults = {
     # General
-    "band_delay_us": None, "uc_att": None, "dc_att": None, 
+    "band_delay_us": None, "uc_att": None, "dc_att": None,
     "attens_optimized": False, "tone_power": 12,
 
     # Band-specific tracking stuff
@@ -95,10 +95,13 @@ class DeviceConfig:
             List of 8 band configuration dictionaries.
     """
     def __init__(self):
+        self.load_defaults()
+        self.source_file = None
+
+    def load_defaults(self):
         self.bands = [band_defaults.copy() for _ in range(8)]
         self.bias_groups = [bg_defaults.copy() for _ in range(12)]
         self.exp = exp_defaults.copy()
-        self.source_file = None
 
     @classmethod
     def from_dict(cls, data):
@@ -135,13 +138,16 @@ class DeviceConfig:
         filename = os.path.abspath(os.path.expandvars(filename))
         if not os.path.exists(filename):
             # Just return default device cfg
+            print(f"File {filename} doesn't exist! Creating it wth default params")
             self = cls()
             self.source_file = filename
+            self.update_file()
             return self
         else:
             with open(filename) as f:
                 data = yaml.safe_load(f)
             self = cls.from_dict(data)
+            self.source_file = filename
             return self
 
     def _load_amc(self, amc_index, data):
@@ -173,6 +179,8 @@ class DeviceConfig:
             """Converts np dtypes to python types for yaml files"""
             if hasattr(val, 'dtype'):
                 return val.item()
+            elif isinstance(val, tuple):
+                return list(val)
             else:
                 return val
 
