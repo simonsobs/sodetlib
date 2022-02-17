@@ -55,7 +55,7 @@ def reload_amps(S, cfg):
 
 @sdl.set_action()
 def reload_tune(S, cfg, bands, setup_notches=False,
-                new_master_assignment=False, tunefile=None):
+                new_master_assignment=False, tunefile=None, update_cfg=True):
     """
     Reloads an existing tune, runs setup-notches and serial grad descent
     and eta scan.
@@ -94,6 +94,10 @@ def reload_tune(S, cfg, bands, setup_notches=False,
 
         S.run_serial_gradient_descent(band)
         S.run_serial_eta_scan(band)
+
+    if setup_notches and update_cfg:
+        # Update tunefile
+        cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
     return True, None
 
