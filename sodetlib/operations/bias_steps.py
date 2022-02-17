@@ -850,7 +850,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
         bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
-         
+
         bsa.start = time.time()
         if create_bg_map or (nsweep_steps is not None):
             bsa.bg_sweep_start = time.time()
@@ -863,12 +863,12 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
         bsa.stop = time.time()
     finally:
+        sdl.stream_g3_off(S)
         if high_current_mode:
             sdl.set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
-        sdl.stream_g3_off(S)
 
     if run_analysis:
         S.log("Running bias step analysis")
