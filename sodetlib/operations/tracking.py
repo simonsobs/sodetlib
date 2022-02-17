@@ -24,14 +24,16 @@ def compute_tracking_quality(S, f, df, sync):
     sync_idxs = S.make_sync_flag(sync)
     seg_size = np.min(np.diff(sync_idxs))
     nstacks = len(sync_idxs) - 1
+    sig = f + df
 
     fstack = np.zeros((seg_size, len(f[0])))
     for i in range(nstacks):
-        fstack += (f+df)[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
+        fstack += (sig)[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
 
     # calculates quality of estimate wrt real data
-    y_real = (f+df)[sync_idxs[0]:sync_idxs[-1], :]
+    y_real = (sig)[sync_idxs[0]:sync_idxs[0] + nstacks * seg_size, :]
     y_est = np.vstack([fstack for _ in range(nstacks)])
+
     # Force these to be the same len in case all segments are not the same size
     y_est = y_est[:len(y_real)]
 
@@ -378,6 +380,8 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         path = sdl.make_filename(S, 'tracking_results.png', plot=True)
         fig.savefig(path)
         S.pub.register_file(path, 'tracking_summary', plot=True, format='png')
+        if not show_plots:
+            plt.close(fig)
     finally:
         if is_interactive:
             plt.ion()
@@ -472,6 +476,8 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         path = sdl.make_filename(S, 'tracking_results.png', plot=True)
         fig.savefig(path)
         S.pub.register_file(path, 'tracking_summary', plot=True, format='png')
+        if not show_plots:
+            plt.close(fig)
     finally:
         if is_interactive:
             plt.ion()

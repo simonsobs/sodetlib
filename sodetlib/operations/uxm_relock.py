@@ -33,7 +33,7 @@ def reload_amps(S, cfg):
 
     tol_hemt, tol_50k = exp['amp_hemt_Id_tolerance'], exp['amp_50k_Id_tolerance']
     in_range_hemt = np.abs(biases['hemt_Id'] - exp['amp_hemt_Id']) < tol_hemt
-    in_range_50k = np.abs(biases['50k_Id'] - exp['amp_50k_Id']) < tol_50k
+    in_range_50k = np.abs(biases['50K_Id'] - exp['amp_50k_Id']) < tol_50k
 
     if not (in_range_50k and in_range_hemt):
         S.log("Hemt or 50K Amp drain current not within tolerance")
@@ -47,14 +47,14 @@ def reload_amps(S, cfg):
         sdl.pub_ocs_data(S, {'amp_summary': summary})
         return False, summary
 
-    summary['success'] = True 
+    summary['success'] = True
     sdl.pub_ocs_log(S, 'Succuessfully to set amp voltages')
     sdl.pub_ocs_data(S, {'amp_summary': summary})
     return True, summary
 
 
 @sdl.set_action()
-def reload_tune(S, cfg, bands, setup_notches=True,
+def reload_tune(S, cfg, bands, setup_notches=False,
                 new_master_assignment=False, tunefile=None):
     """
     Reloads an existing tune, runs setup-notches and serial grad descent
@@ -82,7 +82,9 @@ def reload_tune(S, cfg, bands, setup_notches=True,
     S.load_tune(tunefile)
 
     for band in bands:
-        S.set_att_uc(band)
+        bcfg = cfg.dev.bands[band]
+        S.set_att_uc(band, bcfg['uc_att'])
+        S.set_att_dc(band, bcfg['dc_att'])
         sdl.pub_ocs_log(S, f"Relocking tune: Band {band}")
         if setup_notches:
             S.log(f"Setup notches, new_master_assignment={new_master_assignment}")
@@ -97,116 +99,6 @@ def reload_tune(S, cfg, bands, setup_notches=True,
 
 
 @sdl.set_action()
-def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
-                          show_plots=False, disable_bad_chans=True):
-    """
-    Sets up tracking for smurf. This assumes you already have optimized
-    lms_freq and frac-pp for each bands in the device config. This function
-    will chose the flux-ramp fraction-full-scale by averaging the optimized
-    fractions across the bands you're running on.
-
-    This function also allows you to set reset_rate_khz and nphi0. The
-    fraction-full-scale, and lms frequencies of each band will be automatically
-    adjusted based on their pre-existing optimized values.
-
-    Additional keyword args specified will be passed to S.tracking_setup.
-
-    Args
-    -----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        Det config instance
-    reset_rate_khz : float, optional
-        Flux Ramp Reset Rate to set (kHz), defaults to the value in the dev cfg
-    nphi0 : int, optional
-        Number of phi0's to ramp through. Defaults to the value that was used
-        during setup.
-    disable_bad_chans : bool
-        If true, will disable tones for bad-tracking channels
-
-    Returns
-    --------
-    res : dict
-        Dictionary of results of all tracking-setup calls, with the bands number
-        as key.
-    """
-    bands = np.atleast_1d(bands)
-    nbands = len(bands)
-    exp = cfg.dev.exp
-
-    # Arrays containing the optimized tracking parameters for each band
-    frac_pp0 = np.zeros(nbands)
-    lms_freq0 = np.zeros(nbands)  # Hz
-    reset_rate_khz0 = exp['flux_ramp_rate_khz']  # This is assumed to be the same for each band
-    init_nphi0 = exp['nphi0']
-
-    for i, b in enumerate(bands):
-        bcfg = cfg.dev.bands[b]
-        frac_pp0[i] = bcfg['frac_pp']
-        lms_freq0[i] = bcfg['lms_freq_hz'] 
-
-    # Choose frac_pp to be the mean of all running bands.
-    # This is the frac-pp at the flux-ramp-rate used for optimization
-    fpp0 = np.mean(frac_pp0)
-
-    # Adjust fpp, lms_freq, and flux-ramp-rate depending on desired
-    # flux-ramp-rate and nphi0
-    fpp, lms_freqs = fpp0, lms_freq0
-    if nphi0 is not None:
-        fpp *= nphi0 / init_nphi0
-        lms_freqs *= fpp / fpp0
-    if reset_rate_khz is not None:
-        lms_freqs *= reset_rate_khz / reset_rate_khz0
-    else:
-        reset_rate_khz = reset_rate_khz0
-
-    # Runs tracking setup
-    summary = {
-        'bands': bands,
-        'tracking_results': []
-    }
-    tk = sdl.get_tracking_kwargs(S, cfg, bands[0])
-    tk['show_plot'] = show_plots
-    tk['reset_rate_khz'] = reset_rate_khz
-    tk['fraction_full_scale'] = fpp
-    success = True
-    for i, band in enumerate(bands):
-        tk.update({'lms_freq_hz': lms_freqs[i]})
-        f, df, sync = S.tracking_setup(band, **tk)
-
-        r2 = sdl.compute_tracking_quality(S, f, df, sync)
-        f_ptp = np.ptp(f, axis=0)
-        df_ptp = np.ptp(df, axis=0)
-
-        # Cuts
-        f_ptp_range = exp['f_ptp_range']
-        df_ptp_range = exp['df_ptp_range']
-        good_chans = (r2 > exp['r2_min'])  \
-            & (f_ptp_range[0] < f_ptp) & (f_ptp < f_ptp_range[1])  \
-            & (df_ptp_range[0] < df_ptp) & (df_ptp < df_ptp_range[1])
-        num_good = np.sum(good_chans)
-        num_tot = len(good_chans)
-
-        summary['tracking_results'].append({
-            'f': f, 'df': df, 'sync': sync, 'r2': r2, 'good_chans': good_chans
-        })
-
-        S.log(f"Band {band}: {num_good} / {num_tot} good tracking chans")
-        if num_good / num_tot < exp['min_good_tracking_frac']:
-            S.log(f"Not enough good channels on band {band}!!")
-            S.log(f"Something is probably wrong")
-            success = False
-
-        if disable_bad_chans:
-            asa = S.get_amplitude_scale_array(band)
-            asa[~good_chans] = 0
-            S.set_amplitude_scale_array(asa)
-
-    return success, summary
-
-
-@sdl.set_action()
 def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
                setup_notches=False, new_master_assignment=False,
                reset_rate_khz=None, nphi0=None):
@@ -214,7 +106,7 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     Relocks resonators by running the following steps
 
         1. Reset state (all off, disable waveform, etc.)
-        2. Set amps and check tolerance 
+        2. Set amps and check tolerance
         3. load tune, setup_notches, serial grad descent and eta scan
         6. Tracking setup
         7. Measure noise
@@ -298,7 +190,6 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
 
     summary['tracking_setup_results'] = relock_tracking_setup(
         S, cfg, bands, show_plots=show_plots,
-        disable_bad_chans=disable_bad_chans,
         reset_rate_khz=reset_rate_khz, nphi0=nphi0
     )
 

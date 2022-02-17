@@ -152,7 +152,7 @@ def get_metadata(S, cfg):
     data files created by sodetlib.
     """
     return {
-        'tunefile': getattr(S, 'tune_file', None)
+        'tunefile': getattr(S, 'tune_file', None),
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,
