@@ -67,7 +67,7 @@ def _encode_data(data):
     if isinstance(data, list):
         return [_encode_data(d) for d in data]
     elif isinstance(data, dict):
-        return {k: _encode_data(d) for k, d in data.items()}
+        return {str(k): _encode_data(d) for k, d in data.items()}
     elif isinstance(data, np.ndarray):
         return data.tolist()
     else:
@@ -152,7 +152,7 @@ def get_metadata(S, cfg):
     data files created by sodetlib.
     """
     return {
-        'tunefile': S.tune_file,
+        'tunefile': getattr(S, 'tune_file', None)
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,
@@ -635,44 +635,3 @@ def set_current_mode(S, bgs, mode, const_current=True):
         S._caput(S.C.writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
-
-
-def compute_tracking_quality(S, f, df, sync):
-    """
-    Computes the tracking quality parameter from tracking_setup results.
-
-    Args
-    ------
-    S : SmurfControl
-        Pysmurf instance
-    f : np.ndarray
-        Array of the tracked frequency for each channel, as returned by
-        tracking_setup
-    df : np.ndarray
-        Array of the tracked frequency error for each channel, as returned
-        by tracking_setup
-    sync : np.ndarray
-        Array containing tracking sync flags, as returned by tracking_setup
-    """
-    sync_idxs = S.make_sync_flag(sync)
-    seg_size = np.min(np.diff(sync_idxs))
-    nstacks = len(sync_idxs) - 1
-
-    fstack = np.zeros((seg_size, len(f[0])))
-    for i in range(nstacks):
-        fstack += f[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
-
-
-    # calculates quality of estimate wrt real data
-    y_real = f[sync_idxs[0]:sync_idxs[-1], :]
-    y_est = np.vstack([fstack for _ in range(nstacks)])
-    # Force these to be the same len in case all segments are not the same size
-    y_est = y_est[:len(y_real)]
-
-    with np.errstate(invalid='ignore'):
-        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
-        ssres = np.sum((y_real - y_est)**2, axis=0)
-        r2 = 1 - ssres/sstot
-
-    return r2
-

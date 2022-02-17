@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import sodetlib as sdl
+from sodetlib.operations.tracking import relock_tracking_setup
 
 
 @sdl.set_action()
@@ -294,13 +295,12 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     # 4. Tracking Setup
     #############################################################
     summary['timestamps'].append(('tracking_setup', time.time()))
-    success, summary['tracking_setup'] = relock_tracking_setup(
+
+    summary['tracking_setup_results'] = relock_tracking_setup(
         S, cfg, bands, show_plots=show_plots,
         disable_bad_chans=disable_bad_chans,
         reset_rate_khz=reset_rate_khz, nphi0=nphi0
     )
-    if not success:
-        return False, summary
 
     #############################################################
     # 5. Noise

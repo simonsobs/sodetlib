@@ -1,6 +1,9 @@
 import numpy as np
 import time
 import sodetlib as sdl
+from sodetlib.operations import tracking
+
+import matplotlib.pyplot as plt
 
 
 def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
@@ -45,8 +48,9 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
         Id = amp_biases[f"{amp_name}_Id"]
         delta = target_Id - Id
 
+        S.log(delta)
         # Check if Id is within tolerance
-        if np.abs(delta)/target_Id < id_tolerance:
+        if np.abs(delta) < id_tolerance:
             return True
 
         if amp_name == 'hemt':
@@ -133,7 +137,7 @@ def setup_amps(S, cfg, update_cfg=True):
         return False, summary
 
     success = find_gate_voltage(
-        S, exp['amp_50k_Id'], '50k', wait_time=exp['amp_step_wait_time'],
+        S, exp['amp_50k_Id'], '50K', wait_time=exp['amp_step_wait_time'],
         id_tolerance=exp['amp_50k_Id_tolerance'])
     if not success:
         sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
@@ -235,7 +239,7 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
         S.set_att_uc(band, att)
         S.set_att_dc(band, att)
 
-        _, resp = S.full_band_ampl_sweep(band, sbs, cfg.dev.exp['tone_power'], nread)
+        _, resp = S.full_band_ampl_sweep(band, sbs, cfg.dev.bands[band]['tone_power'], nread)
         max_resp = np.max(np.abs(resp))
         S.log(f"att: {att}, max_resp: {max_resp}")
 
@@ -322,113 +326,6 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     return True, summary
 
 
-def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False,
-                          disable_bad_chans=True):
-    """
-    Setups up tracking parameters by determining correct frac-pp and lms-freq
-    for each band.
-
-    Args
-    -----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        DetConfig instance
-    bands : np.ndarray, int
-        Band or list of bands to run on
-    init_fracpp : float, optional
-        Initial frac-pp value to use for tracking estimates
-    nphi0 : int
-        Number of phi0 periods to track on
-    reset_rate_khz : float
-        Flux ramp reset rate in khz
-    update_cfg : bool
-        If true, will update the device cfg and save the file.
-    """
-
-    bands = np.atleast_1d(bands)
-
-    exp = cfg.dev.exp
-    summary = {
-        'success': None,
-        'tracking_results': {}
-    }
-    success = True
-    for band in bands:
-        sdl.pub_ocs_log(S, f"Setting up trackng params: band {band}")
-        tk = sdl.get_tracking_kwargs(
-            S, cfg, band, kwargs={
-                'lms_freq_hz':         None,
-                'show_plot':           False,
-                'meas_lms_freq':       True,
-                'fraction_full_scale': exp['init_frac_pp'],
-                'reset_rate_khz':      exp['flux_ramp_rate_khz'],
-                'lms_gain': exp['lms_gain'],
-                'feedback_gain': exp['feedback_gain'],
-            }
-        )
-        f, df, sync = S.tracking_setup(band, **tk)
-        r2 = sdl.compute_tracking_quality(S, f, df, sync)
-
-        # Cut all but good chans to calc fpp / lms-freq
-        asa_init = S.get_amplitude_scale_array(band)
-        asa_good = asa_init.copy()
-        asa_good[r2 < 0.95] = 0
-        S.set_amplitude_scale_array(band, asa_good)
-
-        # Calculate trracking parameters
-        S.tracking_setup(band, **tk)
-        lms_meas = S.lms_freq_hz[band]
-        lms_freq = exp['nphi0'] * tk['reset_rate_khz'] * 1e3
-        frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
-
-        # Re-enables all channels and re-run tracking setup with correct params
-        S.set_amplitude_scale_array(band, asa_init)
-        tk['meas_lms_freq'] = False
-        tk['fraction_full_scale'] = frac_pp
-        tk['lms_freq_hz'] = lms_freq
-        tk['show_plot'] = show_plots
-        f, df, sync = S.tracking_setup(band, **tk)
-
-        # Make cuts based on tracking-quality, and p2p of tracked f and df
-        r2 = sdl.compute_tracking_quality(S, f, df, sync)
-        f_ptp = np.ptp(f, axis=0)
-        df_ptp = np.ptp(df, axis=0)
-
-        f_ptp_range = exp['f_ptp_range']
-        df_ptp_range = exp['df_ptp_range']
-        good_chans = (r2 > exp['r2_min'])  \
-            & (f_ptp_range[0] < f_ptp) & (f_ptp < f_ptp_range[1])  \
-            & (df_ptp_range[0] < df_ptp) & (df_ptp < df_ptp_range[1])
-        num_good = np.sum(good_chans)
-        num_tot = len(good_chans)
-
-        summary['tracking_results'][band] = {
-            'f': f, 'df': df, 'sync': sync, 'r2': r2, 'good_chans': good_chans
-        }
-
-        if num_good / num_tot < exp['min_good_tracking_frac']:
-            S.log(f"Not enough good channels on band {band}!!")
-            S.log(f"Something is probably wrong")
-            success = False
-
-        if disable_bad_chans:
-            asa = S.get_amplitude_scale_array(band)
-            asa[~good_chans] = 0
-            S.set_amplitude_scale_array(asa)
-
-        # Update det config
-        if update_cfg:
-            cfg.dev.update_band(band, {
-                'frac_pp':            frac_pp,
-                'lms_freq_hz':        lms_freq,
-            }, update_file=True)
-
-        ## Lets add some cuts on p2p(f) and p2p(df) here. What are good numbers
-        ## for that?
-        sdl.pub_ocs_data(S, {'setup_tracking_params_summary': summary})
-
-    return success, summary
 
 
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
@@ -527,13 +424,10 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     #############################################################
     # 6. Setup Tracking
     #############################################################
-    summary['timestamps'].append(('setup_tracking_params', time.time()))
-    success, summary['setup_tracking_params'] = setup_tracking_params(
+    tracking_res = tracking.setup_tracking_params(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg
     )
-    if not success:
-        S.log("UXM Setup failed on setup tracking step")
-        return False, summary
+    summary['tracking_res'] = tracking_res
 
     #############################################################
     # 7. Noise
