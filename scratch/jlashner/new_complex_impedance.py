@@ -1,5 +1,5 @@
 import numpy as np
-import tqdm
+from tqdm.auto import tqdm
 import os
 import time
 import numpy as np
@@ -12,7 +12,7 @@ class CISweep:
     def __init__(self, *args, **kwargs):
         if len(args) > 0:
             self.initialize(*args, **kwargs)
-    
+
     def initialize(self, S, cfg, run_kwargs, sid, start_times, stop_times,
                    bands, channels, state):
         self._S = S
@@ -35,7 +35,6 @@ class CISweep:
 
         # Result arrays go here
 
-
     def save(self, path=None):
         saved_fields = [
             'meta', 'run_kwargs', 'freqs', 'bgs', 'start_times', 'stop_times',
@@ -49,7 +48,7 @@ class CISweep:
             return path
         else:
             filepath = sdl.validate_and_save(
-                'ci_sweep.npy', data, S=self._S, cfg=self._cfg.path, register=True)
+                'ci_sweep.npy', data, S=self._S, cfg=self._cfg, register=True)
             self.filepath = filepath
             return filepath
 
@@ -62,6 +61,12 @@ class CISweep:
         for k, v in np.load(path, allow_pickle=True).item():
             setattr(self, k, v)
         return self
+
+def _load_am(self, bg, arc=None):
+    bgi = np.where(self.bgs == bg)[0][0]
+    sid = self.sid[bgi]
+    self.am = sdl.load_session(self.meta['stream_id'], sid)
+    return self.am
 
 
 @sdl.set_action()
@@ -100,7 +105,7 @@ def take_complex_impedance(
     bgs = np.atleast_1d(bgs)
 
     if freqs is None:
-        freqs = np.logspace(1, np.log10(4e3), 20)
+        freqs = np.logspace(0, np.log10(4e3), 20)
     freqs = np.atleast_1d(freqs)
 
     run_kwargs = {
@@ -124,7 +129,8 @@ def take_complex_impedance(
     bands = []
     channels = []
     scale_array = np.array([S.get_amplitude_scale_array(b) for b in range(8)])
-    
+
+    pb = tqdm(total=nfreqs*nbgs, disable=False)
     try:
         S.set_downsample_factor(1)
         S.set_filter_disable(1)
@@ -137,7 +143,7 @@ def take_complex_impedance(
             # We want to run with channels that are in the specified bg
             # and are enabled.
             m = (scale_array[bgmap_bands, bgmap_chans] > 0) & (bgmap == bg)
-            channel_mask = bgmap_bands[m] * S.get_number_channels() + bgmap_chans
+            channel_mask = bgmap_bands[m] * S.get_number_channels() + bgmap_chans[m]
             bands.extend(bgmap_bands[m])
             channels.extend(bgmap_chans[m])
 
@@ -151,6 +157,9 @@ def take_complex_impedance(
                 stop_times[i, j] = time.time()
                 S.set_rtm_arb_waveform_enable(0)
                 S.set_tes_bias_bipolar(bg, init_biases[bg])
+                pb.update()
+            sdl.stream_g3_off(S)
+
 
         bands = np.array(bands)
         channels = np.array(channels)
@@ -164,7 +173,7 @@ def take_complex_impedance(
         sdl.stream_g3_off(S)
 
     return sweep
-    
+
 def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
                                  tes_bias=15.0, overbias_wait=5.0,
                                  cool_wait=30., **ci_kwargs):
