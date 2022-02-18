@@ -24,11 +24,13 @@ def compute_tracking_quality(S, f, df, sync):
     sync_idxs = S.make_sync_flag(sync)
     seg_size = np.min(np.diff(sync_idxs))
     nstacks = len(sync_idxs) - 1
+    nchans = len(f[0])
     sig = f + df
 
-    fstack = np.zeros((seg_size, len(f[0])))
+    fstack = np.zeros((seg_size, nchans))
     for i in range(nstacks):
-        fstack += (sig)[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
+        si = sync_idxs[i]
+        fstack[:seg_size] += (sig)[si:si+seg_size] / nstacks
 
     # calculates quality of estimate wrt real data
     y_real = (sig)[sync_idxs[0]:sync_idxs[0] + nstacks * seg_size, :]
@@ -150,11 +152,19 @@ class TrackingResults:
         r2 = compute_tracking_quality(self._S, f, df, sync)
 
         if self.f is not None:
-            nsamps = min(len(f), len(self.f[0]))
+            # It's possible for different tracking setup calls to have a
+            # slightly different number of samples, so we have to make sure
+            # we cut/elongate results so they can fit into the f/df arrays
+            nsamps = len(self.f[0])
             _f = np.full((nchans, nsamps), np.nan)
             _df = np.full((nchans, nsamps), np.nan)
-            _f[:, :nsamps] = f.T[m, :nsamps] * 1000
-            _df[:, :nsamps] = df.T[m, :nsamps] * 1000
+            fi = min(nsamps, len(f))
+            _f[:, :] = f.T[m, :fi] * 1000
+            _df[:, :] = df.T[m, :fi] * 1000
+            if fi < nsamps:
+                # Fill with the last data point to not mess up ptp calcs....
+                _f[:, fi:] = _f[:, fi-1]
+                _df[:, fi:] = _df[:, fi-1]
         else:
             _f = f.T[m] * 1000
             _df = df.T[m] * 1000
