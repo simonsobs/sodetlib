@@ -302,7 +302,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             x = ax.hist(fknees[m], bins=bins)
             text  = f"Median: {np.median(fknees[m]):0.2f}\n"
             text += f"Chans pictured: {np.sum(x[0]):0.0f}"
-            ax.text(0.75, .7, text, transform=ax.transAxes)
+            ax.text(0.72, .7, text, transform=ax.transAxes)
             ax.axvline(np.median(fknees[m]), color='red')
             max_bins = max(np.max(x[0]), max_bins)
             ax.set(xscale='log', ylabel=f'Band {b}')
@@ -332,11 +332,9 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             med_wl = np.nanmedian(wls[m])
             f_arr = np.tile(noisedict['f'], (sum(m),1))
             x = ax.loglog(f_arr.T, noisedict['axx'][m].T, color='C0', alpha=0.1)
-            ax.axvline(1.4, linestyle='--', alpha=0.6, color='C1')
-            ax.axvline(60, linestyle='--', alpha=0.6, color='C2')
             ax.axhline(med_wl, color='red', alpha=0.6,
                        label=f'Med. WL: {med_wl:.1f} pA/rtHz')
-            ax.set(ylabel=f'ASD (pA/rtHz)')
+            ax.set(ylabel=f'Band {b}\nASD (pA/rtHz)')
             ax.grid(linestyle='--', which='both')
             ax.legend(loc='upper right')
 
@@ -441,9 +439,9 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
                 l2 = 65*np.sqrt(0.1/f[f<=0.1])
             ax2.plot(f[f<=0.1],l2,'--',color = 'C1')
             ax2.fill_between(f[f<=0.1],l2,l1,color = 'wheat',alpha = 0.3)
-        text = f'White Noise: {np.round(float(noise_pars[rc,0]),2)} pA/rtHz\n'
+        text = f'White Noise: {np.round(float(noise_pars[rc,0]),1)} pA/rtHz\n'
         text += 'f$_{knee}$: '+f'{np.round(noise_pars[rc,2],4)} Hz'
-        ax2.text(0.55, 0.7, text, bbox=props, transform=ax2.transAxes)
+        ax2.text(0.03, 0.1, text, bbox=props, transform=ax2.transAxes)
         ax2.set_xlabel('Frequency [Hz]', fontsize=14)
         ax2.set_ylabel('ASD [pA/rtHz]', fontsize=14)
 
@@ -460,7 +458,7 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
             plt.ion()
     return fig, axes
 
-sdl.set_action()
+@sdl.set_action()
 def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                show_plot=True, save_plot=False, plotted_rchans=None,
                wl_f_range=(10,30), fit=False,
@@ -535,10 +533,8 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     ctime = int(am.timestamps[0])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                  nperdecade=nperdecade, **asd_args)
-    outdict = {}
-    outdict['metadata'] = sdl.get_metadata(S, cfg)
-    outdict['data'] = noisedict
-    outdict['data']['sid'] = sid
+    outdict = noisedict.copy()
+    outdict['sid'] = sid
     if plot_band_summary:
         fig_wnl, axes_wnl, fig_fk, axes_fk, fig_asd, axes_asd = plot_band_noise(
             am, nbins=nbins, noisedict=noisedict, show_plot=show_plot,
