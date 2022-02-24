@@ -159,12 +159,12 @@ class TrackingResults:
             _f = np.full((nchans, nsamps), np.nan)
             _df = np.full((nchans, nsamps), np.nan)
             fi = min(nsamps, len(f))
-            _f[:, :] = f.T[m, :fi] * 1000
-            _df[:, :] = df.T[m, :fi] * 1000
+            _f[:, :fi] = f.T[m, :fi] * 1000
+            _df[:, :fi] = df.T[m, :fi] * 1000
             if fi < nsamps:
                 # Fill with the last data point to not mess up ptp calcs....
-                _f[:, fi:] = _f[:, fi-1]
-                _df[:, fi:] = _df[:, fi-1]
+                _f[:, fi:] = _f[:, fi-1][:, None]
+                _df[:, fi:] = _df[:, fi-1][:, None]
         else:
             _f = f.T[m] * 1000
             _df = df.T[m] * 1000
@@ -264,15 +264,27 @@ def plot_tracking_summary(tr):
     """
     Plots summary of tracking results
     """
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # fig, axes = plt.subplots(figsize=(12, 8))
+    mosaic = """
+    BBBB.
+    AAAAC
+    AAAAC
+    AAAAC
+    AAAAC
+    """
+    gs = dict(hspace=0, wspace=0)
+    fig, axes = plt.subplot_mosaic(mosaic, figsize=(12, 8), gridspec_kw=gs)
     f0, f1 = tr.f_ptp_range
     df0, df1 = tr.df_ptp_range
 
     m = tr.is_good
+    ax = axes['A']
     ax.scatter(tr.f_ptp[m], tr.df_ptp[m], marker='.', alpha=0.8)
     ax.scatter(tr.f_ptp[~m], tr.df_ptp[~m], marker='.', color='red', alpha=0.2)
-    ax.set_xlim(-5, f1 * 1.3)
-    ax.set_ylim(-5, df1 * 1.3)
+    xlim = (-5, f1 * 1.3)
+    ylim = (-5, df1 * 1.3)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
     rect = Rectangle((f0, df0), f1-f0, df1-df0, fc='green', alpha=0.2,
                      linestyle='--', ec='black', lw=3)
     ax.add_patch(rect)
@@ -281,7 +293,19 @@ def plot_tracking_summary(tr):
 
     text = f"{tr.ngood} / {tr.nchans} good tracking channels"
     bbox = dict(fc='wheat', alpha=0.8)
-    ax.text(0.02, 0.95, text, transform=ax.transAxes, bbox=bbox, fontsize=16)
+    ax.text(0.02, 0.9, text, transform=ax.transAxes, bbox=bbox, fontsize=16)
+
+    ax = axes['B']
+    ax.set_xticks([])
+    ax.hist(tr.f_ptp, range=xlim, bins=40)
+    ax.set_xlim(*xlim)
+    ax.axvspan(f0, f1, color='green', alpha=0.2)
+
+    ax = axes['C']
+    ax.set_yticks([])
+    ax.hist(tr.df_ptp, range=ylim, bins=40, orientation='horizontal')
+    ax.set_ylim(*ylim)
+    ax.axhspan(df0, df1, color='green', alpha=0.2)
 
     return fig, ax
 
