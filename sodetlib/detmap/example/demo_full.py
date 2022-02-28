@@ -7,10 +7,12 @@ from sodetlib.detmap.example.download_example_data import sample_data_init
 
 dir_this_file = os.path.dirname(os.path.realpath(__file__))
 # options for all record types.
-output_dir = os.path.join(dir_this_file, 'output')
+output_parent_dir = os.path.join(dir_this_file, 'output')
 do_csv_output = True
+overwrite_csv_output = False
 show_layout_plot = False
 save_layout_plot = True
+overwrite_plot = False
 mapping_strategy = 'map_by_freq'
 verbose = True
 
@@ -43,9 +45,10 @@ cv4_record = dict(north_is_highband=False, array_name='cv4',
 mv6_map_maker = MapMaker(north_is_highband=mv6_record['north_is_highband'],
                          array_name=mv6_record['array_name'],
                          mapping_strategy=mapping_strategy, dark_bias_lines=mv6_record['dark_bias_lines'],
-                         do_csv_output=do_csv_output,
+                         do_csv_output=do_csv_output, overwrite_csv_output=overwrite_csv_output,
                          show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
-                         output_dir=output_dir,
+                         overwrite_plot=overwrite_plot,
+                         output_parent_dir=output_parent_dir,
                          verbose=verbose)
 
 mv6_smurf_map = mv6_map_maker.make_map_smurf(tunefile=mv6_record['tunefile_path'])
@@ -60,9 +63,10 @@ mv6_vna_map = mv6_map_maker.make_map_vna(tune_data_vna_intermediate_filename=mv6
 sv5_map_maker = MapMaker(north_is_highband=sv5_record['north_is_highband'],
                          array_name=sv5_record['array_name'],
                          mapping_strategy=mapping_strategy, dark_bias_lines=None,
-                         do_csv_output=do_csv_output,
+                         do_csv_output=do_csv_output, overwrite_csv_output=overwrite_csv_output,
                          show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
-                         output_dir=output_dir,
+                         overwrite_plot=overwrite_plot,
+                         output_parent_dir=output_parent_dir,
                          verbose=verbose)
 sv5_smurf_map = sv5_map_maker.make_map_smurf(tunefile=sv5_record['tunefile_path'])
 sv5_g3_map = sv5_map_maker.make_map_g3_timestream(timestream=sv5_record['timestream_path'])
@@ -71,9 +75,10 @@ sv5_g3_map = sv5_map_maker.make_map_g3_timestream(timestream=sv5_record['timestr
 cv4_map_maker = MapMaker(north_is_highband=cv4_record['north_is_highband'],
                          array_name=cv4_record['array_name'],
                          mapping_strategy=mapping_strategy, dark_bias_lines=None,
-                         do_csv_output=do_csv_output,
+                         do_csv_output=do_csv_output, overwrite_csv_output=overwrite_csv_output,
                          show_layout_plot=show_layout_plot, save_layout_plot=save_layout_plot,
-                         output_dir=output_dir,
+                         overwrite_plot=overwrite_plot,
+                         output_parent_dir=output_parent_dir,
                          verbose=verbose)
 cv4_smurf_map = cv4_map_maker.make_map_smurf(tunefile=cv4_record['tunefile_path'])
 

@@ -17,7 +17,6 @@ import matplotlib.cm as cm
 
 from sodetlib.detmap.simple_csv import read_csv
 from sodetlib.detmap.vna_to_smurf import emulate_smurf_bands
-from sodetlib.detmap.detmap_config import abs_path_detmap
 from sodetlib.detmap.design_mapping import design_pickle_to_csv, operate_tune_data_csv_filename, get_filename, \
     map_by_res_index, map_by_freq, order_smurf_band_res_index
 from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_column_names
@@ -40,6 +39,25 @@ def get_mux_band_to_mux_pos_dict(layout_position_path):
         else:
             mux_band_to_mux_pos_dict[is_north][mux_band] = mux_pos
     return mux_band_to_mux_pos_dict, thru_mux_pos
+
+
+def get_plot_path(plot_dir, plot_filename, overwrite_plot):
+    try:
+        file_prefix, extension = plot_filename.rsplit('.', 1)
+    except ValueError:
+        file_prefix = plot_filename
+        extension = 'png'
+    plot_path = os.path.join(plot_dir, f'{file_prefix}.{extension}')
+    if os.path.exists(plot_dir):
+        if not overwrite_plot:
+            counter = 0
+            while os.path.exists(plot_path):
+                counter += 1
+                plot_path = os.path.join(plot_dir, f'{file_prefix}_{"%03i" % counter}.{extension}')
+    else:
+        # make the plot directory if it does not exist
+        os.mkdir(plot_dir)
+    return plot_path
 
 
 class OperateTuneData:
@@ -252,12 +270,6 @@ class OperateTuneData:
         self.simulated_lost = None
         self.simulated_found = None
         self.simulated_to_design = None
-
-        # the directory for output plots
-        if self.tune_path is None:
-            self.plot_dir = os.path.join(os.path.dirname(abs_path_detmap), 'plots')
-        else:
-            self.plot_dir = os.path.join(os.path.dirname(self.tune_path), 'plots')
 
         # auto read in known file types
         if tune_path is not None:
@@ -871,7 +883,7 @@ class OperateTuneData:
         self.update_tunes(tune_data_new=tune_data_new, var_str='layout',
                           tune_data_with=tune_data_with_layout_data, tune_data_without=tune_data_without_layout_data)
 
-    def plot_with_layout(self, plot_path=None, show_plot=False, save_plot=True):
+    def plot_with_layout(self, plot_dir, plot_filename=None, overwrite_plot=True, show_plot=False, save_plot=True):
         ax_frames_on = False
         bands_base_size_linw = 1.0
         bands_has_design_freq_alpha = 0.5
@@ -1068,23 +1080,17 @@ class OperateTuneData:
         # save the plot
         if save_plot:
             # set the plot path and directory.
-            if plot_path is None:
-                plot_path = os.path.join(self.plot_dir, f'{self.mapping_strategy}_layout.png')
-            else:
-                self.plot_dir = os.path.dirname(plot_path)
-            # make the plot directory if it does not exist
-            if not os.path.exists(self.plot_dir):
-                os.mkdir(self.plot_dir)
+            if plot_filename is None:
+                plot_filename = f'{self.mapping_strategy}_layout.png'
+            plot_path = get_plot_path(plot_dir=plot_dir, plot_filename=plot_filename,
+                                      overwrite_plot=overwrite_plot)
             plt.savefig(plot_path)
             print(f'Saved the OperateTuneData Diagnostic layout plot at: {plot_path}')
         if show_plot:
             plt.show(block=True)
 
-    def plot_with_psat(self, psat_by_temp, bandpass_target, temp_k, psat_min=0.0, psat_max=6.0e-12,
-                       show_plot=False, save_plot=False):
-        # make the plot directory if it does not exist
-        if not os.path.exists(self.plot_dir):
-            os.mkdir(self.plot_dir)
+    def plot_with_psat(self, psat_by_temp, bandpass_target, temp_k, plot_dir, plot_filename=None,
+                       psat_min=0.0, psat_max=6.0e-12, show_plot=False, save_plot=False, overwrite_plot=True,):
         # # Plot layout initialization
         # colorbar across the bottom, key/legend on the top, A B and D polarization maps across the middle
         left = 0.05
@@ -1196,9 +1202,12 @@ class OperateTuneData:
         fig.suptitle(title_str)
         # Display and saving
         if save_plot:
-            plot_filename = os.path.join(self.plot_dir, title_str.replace(' ', '_') + '.png')
-            plt.savefig(plot_filename)
-            print(f'Plot saved at: {plot_filename}')
+            # set the plot path and directory.
+            if plot_filename is None:
+                plot_filename = os.path.join(plot_dir, title_str.replace(' ', '_') + '.png')
+            plot_path = get_plot_path(plot_dir=plot_dir, plot_filename=plot_filename, overwrite_plot=overwrite_plot)
+            plt.savefig(plot_path)
+            print(f'Saved the P-Sat Layout plot at: {plot_path}')
         if show_plot:
             plt.show()
         plt.close(fig=fig)

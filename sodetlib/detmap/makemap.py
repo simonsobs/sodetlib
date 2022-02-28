@@ -16,6 +16,8 @@ from sodetlib.detmap.layout_data import get_layout_data
 from sodetlib.detmap.channel_assignment import OperateTuneData
 from sodetlib.detmap.example.read_iv import read_psat  # soon to be deprecated
 
+output_parent_dir_default = 'output'
+
 
 def assign_channel_from_vna(north_is_highband: bool, path_north_side_vna=None, path_south_side_vna=None,
                             shift_mhz=10.0) -> OperateTuneData:
@@ -91,12 +93,12 @@ def assign_channel_from_vna(north_is_highband: bool, path_north_side_vna=None, p
 
 
 class MapMaker:
-    output_csv_default_filename = 'pixel_freq_mapping.csv'
+    output_csv_default_filename = 'PixelFreqMapping'
 
-    def __init__(self, north_is_highband: bool, array_name=None,
+    def __init__(self, north_is_highband: bool, output_parent_dir, array_name=None,
                  mapping_strategy: Union[int, float, str, None] = 'map_by_freq', dark_bias_lines=None,
-                 do_csv_output: bool = True, show_layout_plot: bool = False, save_layout_plot: bool = True,
-                 output_dir=None,
+                 do_csv_output: bool = True, overwrite_csv_output: bool = True,
+                 show_layout_plot: bool = False, save_layout_plot: bool = True, overwrite_plot: bool = True,
                  abs_path_metadata_files=None,
                  verbose: bool = True):
         """Read in design metadata for a detector array and return instances data class OperateTuneData.
@@ -141,9 +143,20 @@ class MapMaker:
         self.dark_bias_lines = dark_bias_lines
 
         self.do_csv_output = do_csv_output
+        self.overwrite_csv_output = overwrite_csv_output
         self.show_layout_plot = show_layout_plot
         self.save_layout_plot = save_layout_plot
-        self.output_dir = output_dir
+        self.overwrite_plot = overwrite_plot
+        self.output_parent_dir = output_parent_dir
+        if not os.path.exists(self.output_parent_dir):
+            os.mkdir(self.output_parent_dir)
+
+        # data attributes that are set dynamically in the class.
+        self.output_dir_path = None
+        self.plot_dir_path = None
+        self.output_csv_path = None
+        self.output_dirname = None
+        self.output_filename_prefix = None
 
         self.waferfile_path, self.designfile_path, self.mux_pos_to_mux_band_file_path = \
             get_metadata_files(array_name=self.array_name, abs_path_metadata_files=abs_path_metadata_files,
@@ -178,8 +191,7 @@ class MapMaker:
                                             plot=show_wafer_layout_plot)
         return design_data, wafer_layout_data
 
-    def add_metadata_and_get_output(self, tune_data: OperateTuneData, output_path_csv, layout_plot_path=None
-                                    ) -> OperateTuneData:
+    def add_metadata_and_get_output(self, tune_data: OperateTuneData) -> OperateTuneData:
         """General process for and instance of OperateTuneData (tune_data) with metadata (design_data, layout_data).
 
         Writes a CSV file with combined tune and metadata, and returns an instance of OperateTuneData that is fully
@@ -191,11 +203,6 @@ class MapMaker:
             An instance of the OperateTuneData data class for measurements of resonate frequencies on a single
             detector focal plane module. See: sodetlib/sodetlib/detmap/channel_assignment.py. This instance contains
             measured data.
-        output_path_csv : str
-            A string for an output path for a CSV file with combined tune and metadata
-        layout_plot_path : object : str, optional
-            A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
-            If None is given, a default filename is chosen.
 
         Returns
         -------
@@ -208,23 +215,38 @@ class MapMaker:
         # update the tune data to include the layout data.
         tune_data.map_layout_data(layout_data=self.wafer_layout_data)
         if self.show_layout_plot or self.save_layout_plot:
-            tune_data.plot_with_layout(plot_path=layout_plot_path, show_plot=self.show_layout_plot,
-                                       save_plot=self.save_layout_plot)
+            tune_data.plot_with_layout(plot_dir=self.plot_dir_path, plot_filename=self.output_filename_prefix,
+                                       show_plot=self.show_layout_plot,
+                                       save_plot=self.save_layout_plot, overwrite_plot=self.overwrite_plot)
         if self.do_csv_output:
             # write a CSV file of this data
-            tune_data.write_csv(output_path_csv=output_path_csv)
+            tune_data.write_csv(output_path_csv=self.output_csv_path)
         return tune_data
 
-    def get_output_csv_path(self, prefix, data_file):
-        if self.output_dir is None:
-            output_dir = os.path.dirname(data_file)
-        else:
-            output_dir = self.output_dir
-        # put the output in the dame directory as the tune file.
-        output_path_csv = os.path.join(output_dir, f'{prefix}_{self.output_csv_default_filename}')
-        return output_path_csv
+    def set_output_dirs(self, output_dirname):
+        self.output_dir_path = os.path.join(self.output_parent_dir, output_dirname)
+        if not os.path.exists(self.output_dir_path):
+            os.mkdir(self.output_dir_path)
+        self.plot_dir_path = os.path.join(self.output_dir_path, 'plots')
+        if not os.path.exists(self.plot_dir_path):
+            os.mkdir(self.plot_dir_path)
 
-    def make_map_smurf(self, tunefile, output_path_csv=None, layout_plot_path=None) -> OperateTuneData:
+    def set_output_paths(self, input_prefix, output_csv_filename=None):
+        self.output_dirname = f'{input_prefix}_{self.array_name}'
+        self.output_filename_prefix = f'{self.output_dirname}_{self.mapping_strategy}'
+        self.set_output_dirs(output_dirname=self.output_dirname)
+        if output_csv_filename is None:
+            output_csv_filename = f'{self.output_filename_prefix}.csv'
+        output_csv_path = os.path.join(self.output_dir_path, output_csv_filename)
+        if not self.overwrite_csv_output:
+            counter = 0
+            while os.path.exists(output_csv_path):
+                counter += 1
+                output_csv_filename = f'{self.output_filename_prefix}_{"%03i" % counter}.csv'
+                output_csv_path = os.path.join(self.output_dir_path, output_csv_filename)
+        self.output_csv_path = output_csv_path
+
+    def make_map_smurf(self, tunefile, output_csv_filename=None) -> OperateTuneData:
         """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is populated with metadata.
 
         ----------
@@ -234,14 +256,9 @@ class MapMaker:
             north_is_highband : bool
             A Toggle that solves the array mapping ambiguity. Consider this the question "is the 'North' side of a
             given detector array is the SMuRF highband?" True or False.
-        output_path_csv : obj: str, optional
-            A string for the and output path for a CSV file with combined tune and metadata. By default, the output
-            directory is the same as that of the `tunefile` argument above. The default filename is prepended with
-            'smurf_' with a suffix determined by `output_csv_default_filename` in
-            sodetlib/sodetlib/detmap/detmap_config.py
-        layout_plot_path : object : str, optional
-            A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
-            If None is given, a default filename is chosen.
+        output_csv_filename : obj: str, optional
+            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
 
         Returns
@@ -252,17 +269,19 @@ class MapMaker:
             tunefile See: sodetlib/sodetlib/detmap/channel_assignment.py and OperateTuneData.read_tunefile() and within.
             This instance is of OperateTuneData is fully populated with available metadata.
         """
-        if output_path_csv is None:
-            output_path_csv = self.get_output_csv_path(prefix='smurf', data_file=tunefile)
+        self.set_output_paths(input_prefix='smurf', output_csv_filename=output_csv_filename)
+        if not self.overwrite_csv_output and os.path.exists(self.output_csv_path):
+            raise FileExistsError(f'It is not allowed to overwrite an output csv file with ' +
+                                  f'MakeMap.overwrite_csv_output==False, the requested output name exists: ' +
+                                  f'{self.output_csv_path}')
         # get the tune file data from smurf
         tune_data_smurf = OperateTuneData(tune_path=tunefile, north_is_highband=self.north_is_highband)
-        return self.add_metadata_and_get_output(tune_data=tune_data_smurf, output_path_csv=output_path_csv,
-                                                layout_plot_path=layout_plot_path)
+        return self.add_metadata_and_get_output(tune_data=tune_data_smurf)
 
     def make_map_vna(self, tune_data_vna_intermediate_filename,
                      path_north_side_vna=None, path_south_side_vna=None,
                      shift_mhz=10.0,
-                     output_path_csv=None, layout_plot_path=None) -> OperateTuneData:
+                     output_csv_filename=None) -> OperateTuneData:
         """A recipe for obtaining an instance of OperateTuneData from a pair of arrays of frequency data from a VNA.
 
             Two array of frequency data (north and south sides of an array) are allowed as input for a single detector focal
@@ -291,14 +310,9 @@ class MapMaker:
             It is known that the measured frequencies of the SMuRF system are shifted compared to VNA measurements by
             approximately 10.0 MHz. This applies a shift to the VNA data to deliver projection of  the measured VNA
             frequencies into the reference frame of SMuRF data. The default shift is + 10.0 MHz added to the VNA data.
-        output_path_csv : obj: str, optional
-            A string for the and output path for a CSV file with combined tune and metadata. By default, the output
-            directory is the same that of the `tune_data_vna_output_filename` argument above. The default filename is
-            prepended with 'vna_' with a suffix determined by `output_csv_default_filename` in
-            sodetlib/sodetlib/detmap/detmap_config.py.
-        layout_plot_path : object : str, optional
-            A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
-            If None is given, a default filename is chosen.
+        output_csv_filename : obj: str, optional
+            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
         Returns
         -------
@@ -312,8 +326,11 @@ class MapMaker:
             with available metadata.
 
         """
-        if output_path_csv is None:
-            output_path_csv = self.get_output_csv_path(prefix='vna', data_file=tune_data_vna_intermediate_filename)
+        self.set_output_paths(input_prefix='vna', output_csv_filename=output_csv_filename)
+        if not self.overwrite_csv_output and os.path.exists(self.output_csv_path):
+            raise FileExistsError(f'It is not allowed to overwrite an output csv file with ' +
+                                  f'MakeMap.overwrite_csv_output==False, the requested output name exists: ' +
+                                  f'{self.output_csv_path}')
         # parse/get date from a Vector Network Analyzer
         if not os.path.exists(tune_data_vna_intermediate_filename):
             tune_data_raw_vna = assign_channel_from_vna(path_north_side_vna=path_north_side_vna,
@@ -324,10 +341,9 @@ class MapMaker:
         # reload the tune data from the csv file, for constant behavior on first run or many runs
         tune_data_vna = OperateTuneData(tune_path=tune_data_vna_intermediate_filename,
                                         north_is_highband=self.north_is_highband)
-        return self.add_metadata_and_get_output(tune_data=tune_data_vna, output_path_csv=output_path_csv,
-                                                layout_plot_path=layout_plot_path)
+        return self.add_metadata_and_get_output(tune_data=tune_data_vna)
 
-    def make_map_g3_timestream(self, timestream, output_path_csv=None,  layout_plot_path=None) -> OperateTuneData:
+    def make_map_g3_timestream(self, timestream, output_csv_filename=None) -> OperateTuneData:
         """A recipe for obtaining an instance of OperateTuneData from a SMuRF tunefile that is full populated with metadata.
 
         Parameters
@@ -335,13 +351,9 @@ class MapMaker:
         timestream : obj: str
             A path string to a g3 time sttreamfile, a specifically formatted binary pickle with .npy extension.
             This file stores aquired frequency data for a comb of resonator on a single detector focal plane module.
-        output_path_csv : obj: str, optional
-            A string for the and output path for a CSV file with combined tune and metadata. By default, the output
-            directory is the same as that of the `timestream` argument above. The default filename is prepended with 'g3ts_'
-            with a suffix determined by `output_csv_default_filename` in sodetlib/sodetlib/detmap/detmap_config.py
-        layout_plot_path : object : str, optional
-            A string for a full path and filename for plot created by the OperateTuneData.plot_with_layout() method.
-            If None is given, a default filename is chosen.
+        output_csv_filename : obj: str, optional
+            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
         Returns
         -------
@@ -352,16 +364,14 @@ class MapMaker:
             This instance is of OperateTuneData is fully populated with available metadata.
 
         """
-        if output_path_csv is None:
-            output_path_csv = self.get_output_csv_path(prefix='g3ts', data_file=timestream)
+        self.set_output_paths(input_prefix='g3stream', output_csv_filename=output_csv_filename)
         # get the tune file data from smurf
         tune_data_g3ts = OperateTuneData(tune_path=timestream, is_g3timestream=True,
                                          north_is_highband=self.north_is_highband)
-        return self.add_metadata_and_get_output(tune_data=tune_data_g3ts, output_path_csv=output_path_csv,
-                                                layout_plot_path=layout_plot_path)
+        return self.add_metadata_and_get_output(tune_data=tune_data_g3ts)
 
-    @staticmethod
-    def psat_map(tune_data: OperateTuneData, cold_ramp_file, temp_k=9.0, show_plot=False, save_plot=True):
+    def psat_map(self, tune_data: OperateTuneData, cold_ramp_file, temp_k=9.0, show_plot=False, save_plot=True,
+                 psat_plot_filename=None):
         """ Color maps of psat (power of saturation) for each detector as a function of position on wafer.
 
         Parameters
@@ -396,5 +406,6 @@ class MapMaker:
         for bandpass_target, psat_min, psat_max in [(90, 0.0, 3.0e-12),
                                                     (150, 0.0, 6.0e-12)]:
             tune_data.plot_with_psat(psat_by_temp=psat_by_temp, bandpass_target=bandpass_target,
-                                     temp_k=temp_k, psat_min=psat_min, psat_max=psat_max,
+                                     temp_k=temp_k, plot_dir=self.plot_dir_path, plot_filename=psat_plot_filename,
+                                     psat_min=psat_min, psat_max=psat_max,
                                      show_plot=show_plot, save_plot=save_plot)
