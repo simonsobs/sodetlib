@@ -22,6 +22,21 @@ from sodetlib.detmap.design_mapping import design_pickle_to_csv, operate_tune_da
 from sodetlib.detmap.single_tune import TuneDatum, tune_data_header, tune_data_column_names
 
 
+def is_north_highband(is_north, is_highband):
+    if is_north is None or is_highband is None:
+        return None
+    elif is_north:
+        if is_highband:
+            return True
+        else:
+            return False
+    else:
+        if is_highband:
+            return False
+        else:
+            return True
+
+
 def get_mux_band_to_mux_pos_dict(layout_position_path):
     mux_layout_position_by_column, _mux_layout_position_by_row = read_csv(path=layout_position_path)
     # initialize the mux_band_to_mux_pos_dict, True and False keys denote the is_north
@@ -193,7 +208,7 @@ class OperateTuneData:
         objects that were not-successfully mapped to layout data. Since this is an instance of this class, it includes
         all the same data exporting methods and analysis to answer the question of why was this mapping not-successful
         and on what data? The attribute is None until map_layout_data() is called.
-    plot_dir: str
+    plot_dir_path: str
         The path to where the 'plot' directory is located. This is the directory where plots are saved. This is
         determined automatically in the __init__() method from the parent directory of tune_path or it tune
         path is None, it is defined as sodetlib/sodetlib/detmap/plots/.
@@ -625,21 +640,39 @@ class OperateTuneData:
                 f.write(f'{tune_datum_str_pandas_null}\n')
         print(f'Output CSV written at: {output_path_csv}')
 
-    def read_csv(self):
+    def read_csv(self, csv_path=None):
         """ Read a CSV file writen by an instance of this class that called the write_csv() method.
 
         self.tune_path is set via the __init__() method and this method is called automatically in __init__().
         """
+        if csv_path is not None:
+            self.tune_path = csv_path
         if self.tune_path is None:
-            last_filename, _new_filename = get_filename(filename_func=operate_tune_data_csv_filename,
-                                                        prefix=self.output_prefix)
-            if last_filename is None:
-                raise FileNotFoundError
-            self.tune_path = last_filename
+            raise FileNotFoundError
         # read in the data
         data_by_column, data_by_row = read_csv(path=self.tune_path)
         # set the data in the standard format for this class
         self.tune_data = {TuneDatum(**row_dict) for row_dict in data_by_row}
+        # determine if there is smurf data that can be used to make additional data structures.
+        for tune_datum in self.tune_data:
+            if tune_datum.smurf_channel is not None:
+                self.is_smurf = True
+                break
+        # we can make additional data structures when we have the design data imported into measured tunes
+        for tune_datum in self.tune_data:
+            if tune_datum.design_freq_mhz is not None:
+                self.imported_design_data = True
+                break
+        # determine that confirm that the data metadata element north_is_highband is set correctly
+        self.north_is_highband = None
+        for tune_datum in self.tune_data:
+            if self.north_is_highband is None:
+                self.north_is_highband = is_north_highband(is_north=tune_datum.is_north,
+                                                           is_highband=tune_datum.is_highband)
+            elif self.north_is_highband != is_north_highband(is_north=tune_datum.is_north,
+                                                             is_highband=tune_datum.is_highband):
+                raise ValueError(f'The settings for north_is_highband are inconsistent for {self.tune_path}.')
+
         # do a data organization and validation
         self.tune_data_organization_and_validation()
 
@@ -716,6 +749,15 @@ class OperateTuneData:
                     self.tune_data.add(tune_datum_this_res)
         # do a data organization and validation
         self.tune_data_organization_and_validation()
+
+    def set_design_freqs_by_band(self):
+        self.design_freqs_by_band = {}
+        for is_north in sorted(self.tune_data_side_band_res_index.keys()):
+            for band_num in sorted(self.tune_data_side_band_res_index[is_north].keys()):
+                self.design_freqs_by_band[band_num] = []
+                for res_index in sorted(self.tune_data_side_band_res_index[is_north][band_num].keys()):
+                    tune_datum_design = self.tune_data_side_band_res_index[is_north][band_num][res_index]
+                    self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
 
     def read_design_file(self):
         """ Read a design file (pickle, or CSV) that has designed resonator frequency data.
@@ -818,13 +860,7 @@ class OperateTuneData:
         # do a data organization and validation
         self.tune_data_organization_and_validation()
         # some extra organization and data keeping
-        self.design_freqs_by_band = {}
-        for is_north in sorted(self.tune_data_side_band_res_index.keys()):
-            for band_num in sorted(self.tune_data_side_band_res_index[is_north].keys()):
-                self.design_freqs_by_band[band_num] = []
-                for res_index in sorted(self.tune_data_side_band_res_index[is_north][band_num].keys()):
-                    tune_datum_design = self.tune_data_side_band_res_index[is_north][band_num][res_index]
-                    self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
+        self.set_design_freqs_by_band()
 
     def map_design_data(self, design_data, mapping_strategy='map_by_res_index'):
         # choose a mapping strategy

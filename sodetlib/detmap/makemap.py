@@ -8,7 +8,7 @@ visualizations.
 """
 import os
 import numpy as np
-from typing import Union
+from typing import Union, Optional
 # custom packages
 from sodetlib.detmap.simple_csv import read_csv
 from sodetlib.detmap.meta_select import get_metadata_files
@@ -95,11 +95,11 @@ def assign_channel_from_vna(north_is_highband: bool, path_north_side_vna=None, p
 class MapMaker:
     output_csv_default_filename = 'PixelFreqMapping'
 
-    def __init__(self, north_is_highband: bool, output_parent_dir, array_name=None,
+    def __init__(self, output_parent_dir, north_is_highband: Optional[bool] = None, array_name=None,
                  mapping_strategy: Union[int, float, str, None] = 'map_by_freq', dark_bias_lines=None,
                  do_csv_output: bool = True, overwrite_csv_output: bool = True,
                  show_layout_plot: bool = False, save_layout_plot: bool = True, overwrite_plot: bool = True,
-                 abs_path_metadata_files=None,
+                 abs_path_metadata_files=None, from_output_csv=None,
                  verbose: bool = True):
         """Read in design metadata for a detector array and return instances data class OperateTuneData.
 
@@ -135,7 +135,7 @@ class MapMaker:
                 resonators mapping to the same design resonator are moved to a nearest neighbor pushing the other mapped
                 resonators to fill in the gaps where designed resonators previously did not have measured counterparts.
         """
-
+        # user settings
         self.north_is_highband = north_is_highband
         self.array_name = array_name
 
@@ -148,8 +148,7 @@ class MapMaker:
         self.save_layout_plot = save_layout_plot
         self.overwrite_plot = overwrite_plot
         self.output_parent_dir = output_parent_dir
-        if not os.path.exists(self.output_parent_dir):
-            os.mkdir(self.output_parent_dir)
+        self.from_output_csv = from_output_csv
 
         # data attributes that are set dynamically in the class.
         self.output_dir_path = None
@@ -157,12 +156,24 @@ class MapMaker:
         self.output_csv_path = None
         self.output_dirname = None
         self.output_filename_prefix = None
-
+        # things to initialize
+        if not os.path.exists(self.output_parent_dir):
+            os.mkdir(self.output_parent_dir)
         self.waferfile_path, self.designfile_path, self.mux_pos_to_mux_band_file_path = \
             get_metadata_files(array_name=self.array_name, abs_path_metadata_files=abs_path_metadata_files,
                                verbose=verbose)
-
         self.design_data, self.wafer_layout_data = self.load_metadata()
+        # autoload previously processed output file
+        if self.from_output_csv is None:
+            if self.north_is_highband is None:
+                raise ValueError(f"north_is_highband must not be None when not reading from an output CSV file.")
+
+    def load_from_output_csv(self):
+        operate_tune_data = OperateTuneData()
+        operate_tune_data.read_csv(csv_path=self.from_output_csv)
+        operate_tune_data.design_freqs_by_band = self.design_data.design_freqs_by_band
+        # operate_tune_data.wafer_layout_data = self.wafer_layout_data
+        return operate_tune_data
 
     def load_metadata(self, show_wafer_layout_plot=False) -> (OperateTuneData, dict):
         """
