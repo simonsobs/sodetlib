@@ -160,7 +160,9 @@ class TrackingResults:
         channels = np.where(m)[0]
         nchans = len(channels)
         bands = np.array([band for _ in channels])
-        sb_centers = self._S.get_subband_centers(band, as_offset=False)
+        sb_centers = np.array(
+            self._S.get_subband_centers(band, as_offset=False)[1]
+        )
         self.channels = np.concatenate((self.channels, channels))
         self.bands = np.concatenate((self.bands, bands))
         self.subband_centers = np.concatenate((
