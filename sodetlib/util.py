@@ -233,7 +233,7 @@ def validate_and_save(fname, data, S=None, cfg=None, register=True,
 def get_tracking_kwargs(S, cfg, band, kwargs=None):
     band_cfg = cfg.dev.bands[band]
     tk = {
-        'reset_rate_khz': cfg.dev.exp['flux_ramp_rate_khz'],
+        'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
         'lms_gain': band_cfg.get('lms_gain', 0),
         'fraction_full_scale': band_cfg['frac_pp'],
