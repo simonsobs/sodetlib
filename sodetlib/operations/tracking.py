@@ -7,17 +7,26 @@ from matplotlib.patches import Rectangle
 def compute_tracking_quality(S, f, df, sync):
     """
     Computes the tracking quality parameter from tracking_setup results.
+    Tracking quality is a measure of how periodic the tracking response is with
+    respect to the flux-ramp. It is defined as the r-squared value between the
+    measured frequency response (f+df), and the (f+df) response averaged across
+    all flux-ramp periods. If the signal is regular with respect to flux-ramp,
+    the true freq response will be similar to the average freq response,
+    resulting in a high r-squared value. If the signal is irregular, the true
+    and average freq response will differ, resulting in a lower r-squared
+    value. This can be used in conjunction with the f and df peak-to-peak
+    values to determine which channels are tracking correctly.
 
     Args
     ------
     S : SmurfControl
         Pysmurf instance
     f : np.ndarray
-        Array of the tracked frequency for each channel, as returned by
+        Array of the tracked frequency for each channelk (kHz), as returned by
         tracking_setup
     df : np.ndarray
-        Array of the tracked frequency error for each channel, as returned
-        by tracking_setup
+        Array of the tracked frequency error for each channel (kHz), as
+        returned by tracking_setup
     sync : np.ndarray
         Array containing tracking sync flags, as returned by tracking_setup
     """
@@ -80,10 +89,10 @@ class TrackingResults:
         Array of shape (nchans) containing the smurf-channel of each channel
     f : np.ndarray
         Array of shape (nchans, nsamps) containing the tracked freq response
-        throughout the tracking setup call
+        (kHz) throughout the tracking setup call
     df : np.ndarray
         Array of shape (nchans, nsamps) containing the untracked freq response
-        throughout the tracking setup call
+        (kHz) throughout the tracking setup call
     sync_idx : np.ndarray
         Array of shape (nchans, num_fr_periods) containing the indices where
         the flux ramp resetted
@@ -112,18 +121,20 @@ class TrackingResults:
 
         self.bands = np.array([], dtype=int)
         self.channels = np.array([], dtype=int)
+        self.subband_centers = np.array([], dtype=float)
         self.nchans = 0
         self.ngood = 0
 
         self.f = None
         self.df = None
+        self.tracking_kwargs = [None for _ in range(8)]
         self.sync_idxs = [None for _ in range(8)]
         self.r2 = np.array([], dtype=float)
         self.f_ptp = np.array([], dtype=float)
         self.df_ptp = np.array([], dtype=float)
         self.is_good = np.array([], dtype=bool)
 
-    def add_band_data(self, band, f, df, sync):
+    def add_band_data(self, band, f, df, sync, tracking_kwargs=None):
         """
         Computes tracking-related data based on the tracking response,
         and updates the arrays described in the attributes with channels
@@ -140,15 +151,22 @@ class TrackingResults:
         sync : np.ndarray
             sync arrayas returned by tracking_setup
         """
+        if band in self.bands:
+            raise ValueError(f"Data for band {band} has already been added!")
+
         fptp = np.ptp(f, axis=0)
         m = fptp != 0
 
         channels = np.where(m)[0]
         nchans = len(channels)
         bands = np.array([band for _ in channels])
+        sb_centers = self._S.get_subband_centers(band, as_offset=False)
         self.channels = np.concatenate((self.channels, channels))
         self.bands = np.concatenate((self.bands, bands))
+        self.subband_centers = np.concatenate((
+                self.subband_centers, sb_centers[channels]))
 
+        self.tracking_kwargs[band] = tracking_kwargs
         r2 = compute_tracking_quality(self._S, f, df, sync)
 
         if self.f is not None:
@@ -190,17 +208,24 @@ class TrackingResults:
 
         self.sync_idxs[band] = self._S.make_sync_flag(sync)
         self.nchans += len(_f)
-        self.make_cuts()
+        self.find_bad_chans()
 
-    def make_cuts(self, f_ptp_range=None, df_ptp_range=None, r2_min=None):
+    def find_bad_chans(self, f_ptp_range=None, df_ptp_range=None, r2_min=None):
         """
         Recomputes the ``is_good`` array based on cuts ranges.
         """
-        f0, f1 = self.f_ptp_range
-        df0, df1 = self.df_ptp_range
+        if f_ptp_range is None:
+            f_ptp_range = self.f_ptp_range
+        if df_ptp_range is None:
+            df_ptp_range = self.df_ptp_range
+        if r2_min is None:
+            r2_min = self.r2_min
+
+        f0, f1 = f_ptp_range
+        df0, df1 = df_ptp_range
 
         self.is_good = np.ones_like(self.r2, dtype=bool)
-        self.is_good[self.r2 < self.r2_min] = 0
+        self.is_good[self.r2 < r2_min] = 0
         self.is_good[~((f0 < self.f_ptp) & (self.f_ptp < f1))] = 0
         self.is_good[~((df0 < self.df_ptp) & (self.df_ptp < df1))] = 0
         self.ngood = np.sum(self.is_good)
@@ -209,7 +234,8 @@ class TrackingResults:
         saved_fields = [
             'meta', 'bands', 'channels',
             'f_ptp_range', 'df_ptp_range', 'r2_min',
-            'f', 'df', 'sync_idxs', 'r2', 'is_good'
+            'f', 'df', 'sync_idxs', 'r2', 'is_good',
+            'tracking_kwargs'
         ]
         data = {}
         for field in saved_fields:
@@ -244,16 +270,16 @@ def plot_tracking_channel(tr, idx):
     ax.plot(df+f, color='grey', alpha=0.8, label='Freq Response')
     ax.plot(f, label='Tracked Freq')
     ax.set_xticks([])
+    ax.set_ylabel(f"Freq offset from {tr.subband_centers[idx]:0.2f} [kHz]")
     ax.legend(loc='upper left')
 
-    txt = f"r2: {tr.r2[idx]:0.2f}\nis_good: {tr.is_good[idx]}"
     txt = '\n'.join([
         f'fptp = {tr.f_ptp[idx]:0.2f}',
         f'dfptp = {tr.df_ptp[idx]:0.2f}',
         f'r2 = {tr.r2[idx]:0.2f}',
         f'is_good = {tr.is_good[idx]}',
     ])
-    bbox = dict(facecolor='white')
+    bbox = dict(facecolor='white', alpha=0.8)
     ax.text(0.02, 0.1, txt, transform=ax.transAxes, bbox=bbox)
     for s in tr.sync_idxs[band]:
         ax.axvline(s, color='grey', ls='--')
@@ -314,7 +340,7 @@ def disable_bad_chans(S, tr, bands=None, **kwargs):
     """
     Disables cut channels based on a TrackingResults object.
     """
-    tr.make_cuts(**kwargs)
+    tr.find_bad_chans(**kwargs)
     if bands is None:
         bands = np.arange(8)
 
@@ -322,16 +348,19 @@ def disable_bad_chans(S, tr, bands=None, **kwargs):
     for b in bands:
         m = tr.bands == b
         asa = S.get_amplitude_scale_array(b)
+        fea = S.get_feedback_enable_array(b)
         for good, c in zip(tr.is_good[m], tr.channels[m]):
             if not good:
                 asa[c] = 0
+                fea[c] = 0
         S.set_amplitude_scale_array(b, asa)
+        S.set_feedback_enable_array(b, asa)
 
 
 @sdl.set_action()
 def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
     """
-    Setups up tracking parameters by determining correct frac-pp and lms-freq
+    Sets up tracking parameters by determining correct frac-pp and lms-freq
     for each band.
 
     Args
@@ -342,14 +371,10 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         DetConfig instance
     bands : np.ndarray, int
         Band or list of bands to run on
-    init_fracpp : float, optional
-        Initial frac-pp value to use for tracking estimates
-    nphi0 : int
-        Number of phi0 periods to track on
-    reset_rate_khz : float
-        Flux ramp reset rate in khz
     update_cfg : bool
         If true, will update the device cfg and save the file.
+    show_plots : bool
+        If true, will show summary plots
     """
 
     bands = np.atleast_1d(bands)
@@ -358,10 +383,11 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
     res = TrackingResults(S, cfg)
 
     tk = {
-        'reset_rate_khz': cfg.dev.exp['flux_ramp_rate_khz'],
+        'reset_rate_khz': exp['flux_ramp_rate_khz'],
         'make_plot': False, 'show_plot': False, 'channel': [],
         'nsamp': 2**18, 'return_data': True,
-        'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
+        'feedback_start_frac': exp['feedback_start_frac'],
+        'feedback_end_frac': exp['feedback_end_frac'],
     }
     for band in bands:
         sdl.pub_ocs_log(S, f"Setting up trackng params: band {band}")
@@ -396,7 +422,7 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         })
 
         f, df, sync = S.tracking_setup(band, **tk)
-        res.add_band_data(band, f, df, sync)
+        res.add_band_data(band, f, df, sync, tracking_kwargs=tk)
 
         # Update det config
         if update_cfg:
@@ -498,8 +524,9 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
     for i, band in enumerate(bands):
         tk.update({'lms_freq_hz': lms_freqs[i]})
         f, df, sync = S.tracking_setup(band, **tk)
-        res.add_band_data(band, f, df, sync)
+        res.add_band_data(band, f, df, sync, tracking_kwargs=tk)
 
+    res.find_bad_chans()
     res.save()
 
     is_interactive = plt.isinteractive()

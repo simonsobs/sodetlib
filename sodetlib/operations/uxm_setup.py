@@ -248,17 +248,20 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
             success = True
             break
 
-        if step == 0:
-            S.log(f"Cannot achieve resp in range {resp_range}!")
-            success = False
-            break
-
         if max_resp < resp_range[0]:
+            if att == 0:
+                S.log(f"Cannot achieve resp in range {resp_range}! Try increasing tone power")
+                success = False
+                break
             att -= step
-            step = step // 2
+
         elif max_resp > resp_range[1]:
+            if att == 30:
+                S.log(f"Cannot achieve resp in range {resp_range}! Try decreasing tone power")
+                success = False
+                break
             att += step
-            step = step // 2
+        step = int(np.ceil(step / 2))
 
     if success and update_cfg:
         cfg.dev.update_band(band, {
