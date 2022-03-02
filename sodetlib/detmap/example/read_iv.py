@@ -17,7 +17,7 @@ from operator import attrgetter
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from sodetlib.detmap.detmap_config import abs_path_detmap
+from sodetlib.detmap.meta_select import abs_path_detmap
 
 
 class PsatBath(NamedTuple):

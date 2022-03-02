@@ -50,6 +50,9 @@ def sample_data_init(del_dir=False):
     zip_file_id = '1G8eiJ85zVKu53GCzeVdjHEV8cWqrg6eH'
     zipfile_url = f'https://drive.google.com/file/d/{zip_file_id}/view?usp=sharing'
     zipfile_path = os.path.join(abs_path_detmap, 'sample_data.zip')
+    if os.path.exists(zipfile_path):
+        # delete an old (failed) zip file if one is present.
+        os.remove(zipfile_path)
     # start the download and tell the user what is happening
     print(f'  Beginning file download of at {zipfile_url}')
     print(f'  This is ~350 Mb file so it make take a while depending on your connection speed...')

@@ -39,6 +39,8 @@ if abstracted:
     sv5_smurf_map = sv5_map_maker.make_map_smurf(tunefile=sv5_record['tunefile_path'])
 else:
     # Here we deal with the file naming structure which is handled above by the MapMaker() class
+    if not os.path.exists(output_parent_dir):
+        os.mkdir(output_parent_dir)
     output_dir_jack_data = os.path.join(output_parent_dir, 'jack_output')
     if not os.path.exists(output_dir_jack_data):
         os.mkdir(output_dir_jack_data)

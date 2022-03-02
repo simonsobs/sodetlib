@@ -6,11 +6,12 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
 from multiprocessing.pool import Pool
-from sodetlib.detmap.detmap_config import abs_path_metadata_files_default, metadata_designfile_default, \
-    metadata_waferfile_default, metadata_mux_pos_to_mux_band_file_default
 from sodetlib.detmap.layout_data import get_layout_data
 from sodetlib.detmap.channel_assignment import OperateTuneData, get_mux_band_to_mux_pos_dict
+from sodetlib.detmap.meta_select import get_metadata_files
 
+waferfile_path_default, designfile_path_default, mux_pos_to_mux_band_file_path_default = \
+    get_metadata_files(verbose=True)
 # Debug mode
 debug_mode = True
 # multiprocessing
@@ -122,16 +123,15 @@ def full_model_sim_arg_to_kwargs(kwargs):
 class TuneDataModelEngine:
     def __init__(self, design_file_path=None, wafer_path=None, layout_position_path=None):
         if design_file_path is None:
-            self.design_file_path = os.path.join(abs_path_metadata_files_default, metadata_designfile_default)
+            self.design_file_path = designfile_path_default
         else:
             self.design_file_path = design_file_path
         if wafer_path is None:
-            self.wafer_path = os.path.join(abs_path_metadata_files_default, metadata_waferfile_default)
+            self.wafer_path = waferfile_path_default
         else:
             self.wafer_path = wafer_path
         if layout_position_path is None:
-            self.layout_position_path = os.path.join(abs_path_metadata_files_default,
-                                                     metadata_mux_pos_to_mux_band_file_default)
+            self.layout_position_path = mux_pos_to_mux_band_file_path_default
         else:
             self.layout_position_path = layout_position_path
 
