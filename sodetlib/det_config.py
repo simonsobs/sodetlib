@@ -51,6 +51,7 @@ exp_defaults = {
     "flux_ramp_rate_khz": 4, "init_frac_pp": 0.4, "nphi0": 5,
     "f_ptp_range": [40, 150], "df_ptp_range": [0, 40], "r2_min": 0.9,
     "min_good_tracking_frac": 0.8,
+    'feedback_start_frac': 0.02, 'feedback_end_frac': 0.98,
 
     # Misc files
     "tunefile": None, "bgmap_file": None, "iv_file": None,

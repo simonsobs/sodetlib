@@ -192,10 +192,17 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     #############################################################
     summary['timestamps'].append(('tracking_setup', time.time()))
 
-    summary['tracking_setup_results'] = relock_tracking_setup(
+    tr = relock_tracking_setup(
         S, cfg, bands, show_plots=show_plots,
         reset_rate_khz=reset_rate_khz, nphi0=nphi0
     )
+    summary['tracking_setup_results'] = tr
+
+    # Check that the number of good tracing channels is larger than the
+    # min_good_tracking_frac
+    if tr.ngood / tr.nchans < cfg.dev.exp['min_good_tracking_frac']:
+        return False, summary
+
 
     #############################################################
     # 5. Noise
