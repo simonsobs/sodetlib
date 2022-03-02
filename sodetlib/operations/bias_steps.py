@@ -5,6 +5,7 @@ import numpy as np
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
+from sodetlib.operations import iv
 from pysmurf.client.util.pub import set_action
 
 np.seterr(all='ignore')
@@ -473,12 +474,14 @@ class BiasStepAnalysis:
         if not transition:
             # Assumes dRtes / dIb = 0
             I0 = Ib * dIrat
+
         else:
             # Assumes dPj / dIb = 0
             I0 = Ib * dIrat / (2 * dIrat - 1)
 
         Pj = I0 * R_sh * (Ib - I0)
         R0 = Pj / I0**2
+        R0[I0 == 0] = 0
 
         return R0, I0, Pj
 
@@ -665,6 +668,33 @@ class BiasStepAnalysis:
 
         return fig, ax
 
+def plot_iv_res_comparison(bsa, lim=None):
+    iva = iv.IVAnalysis.load(bsa.meta['iv_file'])
+    chmap = sdl.map_band_chans(bsa.bands, bsa.channels,
+                               iva.bands, iva.channels)
+    iv_res = np.full(bsa.nchans, np.nan)
+
+    fig, ax = plt.subplots()
+    for bg in bsa.bgs:
+        m = bsa.bgmap == bg
+        vb = bsa.Vbias[bg]
+        idx = np.argmin(np.abs(iva.v_bias - vb))
+        iv_res = iva.R[chmap[m], idx]
+        ax.scatter(bsa.R0[m]*1000, iv_res*1000, marker='.', alpha=0.2,
+                   label=f'Bias Group {bg}')
+    if lim is None:
+        lim = (-0.1, 10)
+    ax.plot(lim, lim, ls='--', color='grey', alpha=0.4)
+    ax.set(xlim=lim, ylim=lim)
+    ax.set_xlabel("Bias Step Resistance (mOhm)")
+    ax.set_ylabel("IV Resistance (mOhm)")
+
+    return fig, ax
+
+
+
+
+
 @set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
@@ -727,7 +757,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 @set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     create_bg_map=False, save_bg_map=False, nsteps=20,
-                    nsweep_steps=5, high_current_mode=True, hcm_wait_time=3,
+                    nsweep_steps=None, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
@@ -816,7 +846,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
          
         bsa.start = time.time()
-        if create_bg_map:
+        if create_bg_map or (nsweep_steps is not None):
             bsa.bg_sweep_start = time.time()
             for bg in bgs:
                 play_bias_steps_dc(
