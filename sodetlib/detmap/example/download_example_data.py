@@ -1,31 +1,30 @@
 import os
 import shutil
 import zipfile
-import requests
 import gdown
 
 real_path_this_file = os.path.dirname(os.path.realpath(__file__))
 abs_path_sodetlib, _ = real_path_this_file.rsplit("sodetlib", 1)
 abs_path_detmap = os.path.join(abs_path_sodetlib, "sodetlib", "detmap")
-sample_data_dir = os.path.join(abs_path_detmap, 'sample_data')
-zip_file_id = '1G8eiJ85zVKu53GCzeVdjHEV8cWqrg6eH'
-zipfile_url = f'https://drive.google.com/file/d/{zip_file_id}/view?usp=sharing'
-zipfile_path = os.path.join(abs_path_detmap, 'sample_data.zip')
+zip_file_id_sample_data = '1G8eiJ85zVKu53GCzeVdjHEV8cWqrg6eH'
 
 
-def sample_data_init(del_dir=False):
+def sample_data_init(del_dir=False, zip_file_id=zip_file_id_sample_data, folder_name='sample_data'):
+    zipfile_url = f'https://drive.google.com/file/d/{zip_file_id_sample_data}/view?usp=sharing'
+    zipfile_path = os.path.join(abs_path_detmap, f'{folder_name}.zip')
+    data_dir = os.path.join(abs_path_detmap, f'{folder_name}')
     # get the absolute path fo the detector mapping code
-    if os.path.exists(sample_data_dir):
+    if os.path.exists(data_dir):
         if del_dir:
             # Delete the data directory and downloaded again.
-            print(f"Deleting the sample data dir: {sample_data_dir}")
-            shutil.rmtree(sample_data_dir)
+            print(f"Deleting the sample data dir: {data_dir}")
+            shutil.rmtree(data_dir)
             print('Directory deleted')
         else:
             # the data exists and does not need to be downloaded again.
             return
     # Download the example time stream data.
-    print('The Sample Data used for the default data not found, doing a one time download of the sample data data.')
+    print(f'The {folder_name} is not found, doing a one time download of the {folder_name}')
     if os.path.exists(zipfile_path):
         # delete an old (failed) zip file if one is present.
         os.remove(zipfile_path)
@@ -43,7 +42,7 @@ def sample_data_init(del_dir=False):
     os.remove(zipfile_path)
     print("  The zipfile extracted and unpacked.")
     print("  A cleanup was done remove original zipfile\n")
-    print(f"Data unpacked at: {sample_data_dir}")
+    print(f"Data unpacked at: {data_dir}")
     return
 
 

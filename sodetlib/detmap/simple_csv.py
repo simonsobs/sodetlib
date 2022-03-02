@@ -1,4 +1,5 @@
 import os
+from operator import itemgetter
 
 default_null_strings = {'', 'None', 'none', 'null', 'NaN', 'nan'}
 default_true_strings = {'Y', 'y', 'True', 'true'}
@@ -86,5 +87,22 @@ def read_csv(path, header=None):
     return data_by_column, data_by_row
 
 
+def manifest_parse(path):
+    _data_by_column, manifest_data_by_row = read_csv(path=path)
+    manifest_data = {}
+    for single_row in manifest_data_by_row:
+        source = single_row['source'].lower()
+        if source not in manifest_data.keys():
+            manifest_data[source] = []
+        single_row['parent_dir_path'], single_row['tune_filename'] = single_row['simons1_path'].rsplit('/', 1)
+        manifest_data[source].append(single_row)
+    manifest_ordered = {}
+    for source in sorted(manifest_data.keys()):
+        manifest_this_source = manifest_data[source]
+        manifest_ordered[source] = sorted(manifest_this_source, key=itemgetter('array_name'))
+    return manifest_ordered
+
+
 if __name__ == '__main__':
     data_by_column, data_by_row = read_csv(path=os.path.join('sample_data', 'coldloadramp_example.csv'))
+    manifest = manifest_parse(path=os.path.join('example', 'manifest.csv'))
