@@ -30,7 +30,6 @@ def sample_data_init(del_dir=False, zip_file_id=zip_file_id_sample_data, folder_
         os.remove(zipfile_path)
     # start the download and tell the user what is happening
     print(f'  Beginning file download of at {zipfile_url}')
-    print(f'  This is ~350 Mb file so it make take a while depending on your connection speed...')
     gdown.download(url=f'https://drive.google.com/uc?id={zip_file_id}', output=zipfile_path)
     print('Download Complete.\n')
 

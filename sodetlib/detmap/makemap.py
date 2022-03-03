@@ -99,7 +99,7 @@ class MapMaker:
                  mapping_strategy: Union[int, float, str, None] = 'map_by_freq', dark_bias_lines=None,
                  do_csv_output: bool = True, overwrite_csv_output: bool = True,
                  show_layout_plot: bool = False, save_layout_plot: bool = True, overwrite_plot: bool = True,
-                 abs_path_metadata_files=None, from_output_csv=None,
+                 abs_path_metadata_files=None, from_output_csv=None, plot_pdf=False,
                  verbose: bool = True):
         """Read in design metadata for a detector array and return instances data class OperateTuneData.
 
@@ -150,6 +150,9 @@ class MapMaker:
         self.output_parent_dir = output_parent_dir
         self.from_output_csv = from_output_csv
 
+        self.verbose = verbose
+        self.plot_pdf = plot_pdf
+
         # data attributes that are set dynamically in the class.
         self.output_dir_path = None
         self.plot_dir_path = None
@@ -161,7 +164,7 @@ class MapMaker:
             os.mkdir(self.output_parent_dir)
         self.waferfile_path, self.designfile_path, self.mux_pos_to_mux_band_file_path = \
             get_metadata_files(array_name=self.array_name, abs_path_metadata_files=abs_path_metadata_files,
-                               verbose=verbose)
+                               verbose=self.verbose)
         self.design_data, self.wafer_layout_data = self.load_metadata()
         # autoload previously processed output file
         if self.from_output_csv is None:
@@ -228,7 +231,8 @@ class MapMaker:
         if self.show_layout_plot or self.save_layout_plot:
             tune_data.plot_with_layout(plot_dir=self.plot_dir_path, plot_filename=self.output_filename_prefix,
                                        show_plot=self.show_layout_plot,
-                                       save_plot=self.save_layout_plot, overwrite_plot=self.overwrite_plot)
+                                       save_plot=self.save_layout_plot, overwrite_plot=self.overwrite_plot,
+                                       plot_pdf=self.plot_pdf)
         if self.do_csv_output:
             # write a CSV file of this data
             tune_data.write_csv(output_path_csv=self.output_csv_path)
@@ -263,12 +267,12 @@ class MapMaker:
         ----------
         tunefile : obj: str
             A path string to a SMuRF tunefile, a specifically formatted binary pickle with .npy extension. This file stores
-            aquired frequency data for a comb of resonator on a single detector focal plane module.
+            acquired frequency data for a comb of resonator on a single detector focal plane module.
             north_is_highband : bool
             A Toggle that solves the array mapping ambiguity. Consider this the question "is the 'North' side of a
             given detector array is the SMuRF highband?" True or False.
         output_csv_filename : obj: str, optional
-            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            A string for the filename a CSV file with combined tune and metadata. The default filename is prepended
             with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
 
@@ -280,7 +284,10 @@ class MapMaker:
             tunefile See: sodetlib/sodetlib/detmap/channel_assignment.py and OperateTuneData.read_tunefile() and within.
             This instance is of OperateTuneData is fully populated with available metadata.
         """
-        self.set_output_paths(input_prefix='smurf', output_csv_filename=output_csv_filename)
+        tunefile_filename = os.path.basename(tunefile)
+        tunefile_prefix, _extension = tunefile_filename.rsplit('.', 1)
+        tunefile_time_stamp, _tune_str = tunefile_prefix.split('_')
+        self.set_output_paths(input_prefix=f'smurf_{tunefile_time_stamp}', output_csv_filename=output_csv_filename)
         if not self.overwrite_csv_output and os.path.exists(self.output_csv_path):
             raise FileExistsError(f'It is not allowed to overwrite an output csv file with ' +
                                   f'MakeMap.overwrite_csv_output==False, the requested output name exists: ' +
@@ -307,7 +314,7 @@ class MapMaker:
             does not exist then at least one of the optional arguments `path_north_side_vna` and `path_south_side_vna` must
             be specified. The targets of these files is then combined to a single instance of OperateTuneData which is then
             outputted as a CSV file with at the path specified by tune_data_vna_output_filename using the method
-            OperateTuneData.write_csv(). This file stores aquired frequency data for a comb of resonator on a single
+            OperateTuneData.write_csv(). This file stores acquired frequency data for a comb of resonator on a single
             detector focal plane module.
         path_north_side_vna : obj:`str`, optional
             An optional path str to measured frequency array file measured by a VNA for the 'North' side of a detector
@@ -322,7 +329,7 @@ class MapMaker:
             approximately 10.0 MHz. This applies a shift to the VNA data to deliver projection of  the measured VNA
             frequencies into the reference frame of SMuRF data. The default shift is + 10.0 MHz added to the VNA data.
         output_csv_filename : obj: str, optional
-            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            A string for the filename a CSV file with combined tune and metadata. The default filename is prepended
             with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
         Returns
@@ -361,9 +368,9 @@ class MapMaker:
         ----------
         timestream : obj: str
             A path string to a g3 time sttreamfile, a specifically formatted binary pickle with .npy extension.
-            This file stores aquired frequency data for a comb of resonator on a single detector focal plane module.
+            This file stores acquired frequency data for a comb of resonator on a single detector focal plane module.
         output_csv_filename : obj: str, optional
-            A string for the fileaname a CSV file with combined tune and metadata. The default filename is prepended
+            A string for the filename a CSV file with combined tune and metadata. The default filename is prepended
             with 'smurf_' with a suffix determined by `output_csv_default_filename` the class attributes.
 
         Returns

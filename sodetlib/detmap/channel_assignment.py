@@ -919,7 +919,8 @@ class OperateTuneData:
         self.update_tunes(tune_data_new=tune_data_new, var_str='layout',
                           tune_data_with=tune_data_with_layout_data, tune_data_without=tune_data_without_layout_data)
 
-    def plot_with_layout(self, plot_dir, plot_filename=None, overwrite_plot=True, show_plot=False, save_plot=True):
+    def plot_with_layout(self, plot_dir, plot_filename=None, overwrite_plot=True, show_plot=False, save_plot=True,
+                         plot_pdf=False):
         ax_frames_on = False
         bands_base_size_linw = 1.0
         bands_has_design_freq_alpha = 0.5
@@ -1117,7 +1118,14 @@ class OperateTuneData:
         if save_plot:
             # set the plot path and directory.
             if plot_filename is None:
-                plot_filename = f'{self.mapping_strategy}_layout.png'
+                plot_filename = f'{self.mapping_strategy}_layout'
+            if '.' not in os.path.basename(plot_filename):
+                if plot_pdf:
+                    extension = 'pdf'
+                else:
+                    extension = 'png'
+
+                plot_filename += f'.{extension}'
             plot_path = get_plot_path(plot_dir=plot_dir, plot_filename=plot_filename,
                                       overwrite_plot=overwrite_plot)
             plt.savefig(plot_path)

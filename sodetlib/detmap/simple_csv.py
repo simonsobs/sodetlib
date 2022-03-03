@@ -1,5 +1,7 @@
 import os
 from operator import itemgetter
+from sodetlib.detmap.meta_select import abs_path_detmap
+from sodetlib.detmap.example.download_example_data import sample_data_init
 
 default_null_strings = {'', 'None', 'none', 'null', 'NaN', 'nan'}
 default_true_strings = {'Y', 'y', 'True', 'true'}
@@ -87,22 +89,27 @@ def read_csv(path, header=None):
     return data_by_column, data_by_row
 
 
-def manifest_parse(path):
-    _data_by_column, manifest_data_by_row = read_csv(path=path)
-    manifest_data = {}
-    for single_row in manifest_data_by_row:
-        source = single_row['source'].lower()
-        if source not in manifest_data.keys():
-            manifest_data[source] = []
-        single_row['parent_dir_path'], single_row['tune_filename'] = single_row['simons1_path'].rsplit('/', 1)
-        manifest_data[source].append(single_row)
-    manifest_ordered = {}
-    for source in sorted(manifest_data.keys()):
-        manifest_this_source = manifest_data[source]
-        manifest_ordered[source] = sorted(manifest_this_source, key=itemgetter('array_name'))
-    return manifest_ordered
+def find_data_path(simons1_path):
+    if os.path.exists(simons1_path):
+        return simons1_path
+    simons1_dir_path, tune_filename = simons1_path.rsplit('/', 1)
+    sample_data_dir_path = os.path.join(abs_path_detmap, 'sample_data')
+    tune_file_sample_data_path = os.path.join(sample_data_dir_path, tune_filename)
+    if not os.path.exists(sample_data_dir_path):
+        sample_data_init(del_dir=False)
+    if os.path.exists(tune_file_sample_data_path):
+        return tune_file_sample_data_path
+    tune_data_dir_path = os.path.join(abs_path_detmap, 'tunes')
+    tune_file_tune_data_path = os.path.join(tune_data_dir_path, tune_filename)
+    if not os.path.exists(tune_data_dir_path):
+        sample_data_init(del_dir=False, zip_file_id='1BugpuMsoKtlaxqagIt2d0uaQQhWcMb_V', folder_name='tunes')
+    if os.path.exists(tune_file_tune_data_path):
+        return tune_file_tune_data_path
+    else:
+        raise FileNotFoundError(f'cannot fine the tune file {tune_filename} ' +
+                                f'at the following paths {simons1_path}\n{tune_file_sample_data_path}' +
+                                f'\n{tune_file_tune_data_path}')
 
 
 if __name__ == '__main__':
     data_by_column, data_by_row = read_csv(path=os.path.join('sample_data', 'coldloadramp_example.csv'))
-    manifest = manifest_parse(path=os.path.join('example', 'manifest.csv'))
