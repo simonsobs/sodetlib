@@ -297,15 +297,24 @@ def pigeon_mapping_right(design, measured):
 
 
 def pigeon_mapping_left(design, measured):
-    design_right_transform = np.flip(design) * -1.0
-    measured_right_transform = np.flip(measured) * -1.0
-    design_to_measured_one_to_one_right_transform, measured_overrun_right_transform, design_unmapped_right_transform = \
-        pigeon_mapping_right(design=design_right_transform, measured=measured_right_transform)
-    design_to_measured_one_to_one = {design_right_key * -1.0:
+    diff = len(measured) - len(design)
+    if diff >= 0:
+        # There are more (or exactly equal number of) measured frequencies then available design frequencies
+        design_to_measured_one_to_one = {des: meas for des, meas in zip(design, measured[diff:])}
+        # if len(measured) == len(design) then this is an empty list
+        measured_overrun = list(measured[:diff])
+        design_unmapped = []
+    else:
+        design_right_transform = np.flip(design) * -1.0
+        measured_right_transform = np.flip(measured) * -1.0
+        design_to_measured_one_to_one_right_transform, measured_overrun_right_transform, design_unmapped_right_transform = \
+            pigeon_mapping_right(design=design_right_transform, measured=measured_right_transform)
+        design_to_measured_one_to_one = {design_right_key * -1.0:
                                          design_to_measured_one_to_one_right_transform[design_right_key] * -1.0
-                                     for design_right_key in design_to_measured_one_to_one_right_transform.keys()}
-    measured_overrun = [meas * -1.0 for meas in reversed(measured_overrun_right_transform)]
-    design_unmapped = [des * -1.0 for des in reversed(design_unmapped_right_transform)]
+                                         for design_right_key in sorted(design_to_measured_one_to_one_right_transform.keys(), reverse=True)}
+        measured_overrun = [meas * -1.0 for meas in reversed(measured_overrun_right_transform)]
+        design_unmapped = [des * -1.0 for des in reversed(design_unmapped_right_transform)]
+
     return design_to_measured_one_to_one, measured_overrun, design_unmapped
 
 

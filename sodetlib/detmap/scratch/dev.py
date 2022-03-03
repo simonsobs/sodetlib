@@ -15,4 +15,6 @@ if getuser() in {'chw3k5', 'cwheeler'}:
 
 
 if __name__ == '__main__':
-    manifest = Manifest(path=os.path.join(abs_path_detmap, 'example', 'manifest.csv'))
+    all_manifest = os.path.join(abs_path_detmap, 'example', 'manifest.csv')
+    test_manifest = os.path.join(abs_path_detmap, 'example', 'dev_manifest.csv')
+    manifest = Manifest(path=test_manifest)
