@@ -7,7 +7,7 @@ from sodetlib.detmap.makemap import MapMaker
 
 
 class Manifest:
-    def __init__(self, path, output_dir=None, overwrite=True, plot_pdf=True):
+    def __init__(self, path, output_dir=None, overwrite=True, plot_pdf=False):
         # settings
         self.manifest_path = path
         if output_dir is None:
