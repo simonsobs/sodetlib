@@ -281,6 +281,7 @@ class OperateTuneData:
         self.tune_data_with_layout_data = None
         self.tune_data_without_layout_data = None
         self.design_freqs_by_band = None
+        self.mux_bands_by_smurf_band = None
         self.mapping_strategy = None
         self.simulated_lost = None
         self.simulated_found = None
@@ -752,12 +753,27 @@ class OperateTuneData:
 
     def set_design_freqs_by_band(self):
         self.design_freqs_by_band = {}
+        self.mux_bands_by_smurf_band = {}
         for is_north in sorted(self.tune_data_side_band_res_index.keys()):
             for band_num in sorted(self.tune_data_side_band_res_index[is_north].keys()):
                 self.design_freqs_by_band[band_num] = []
+                if band_num not in self.mux_bands_by_smurf_band.keys():
+                    self.mux_bands_by_smurf_band[band_num] = {}
                 for res_index in sorted(self.tune_data_side_band_res_index[is_north][band_num].keys()):
                     tune_datum_design = self.tune_data_side_band_res_index[is_north][band_num][res_index]
                     self.design_freqs_by_band[band_num].append(tune_datum_design.freq_mhz)
+                    mux_band = tune_datum_design.mux_band
+                    freq_mhz = tune_datum_design.freq_mhz
+                    if mux_band not in self.mux_bands_by_smurf_band[band_num].keys():
+                        mux_min_mhz = float('inf')
+                        mux_max_mhz = float('-inf')
+                        self.mux_bands_by_smurf_band[band_num][mux_band] = (mux_min_mhz, mux_max_mhz)
+                    mux_min_mhz, mux_max_mhz = self.mux_bands_by_smurf_band[band_num][mux_band]
+                    if freq_mhz < mux_min_mhz:
+                        mux_min_mhz = freq_mhz
+                    if freq_mhz > mux_max_mhz:
+                        mux_max_mhz = freq_mhz
+                    self.mux_bands_by_smurf_band[band_num][mux_band] = (mux_min_mhz, mux_max_mhz)
 
     def read_design_file(self):
         """ Read a design file (pickle, or CSV) that has designed resonator frequency data.
@@ -879,6 +895,7 @@ class OperateTuneData:
             raise KeyError(f'Mapping Strategy: {mapping_strategy}, is not recognized.')
         # some data used for plotting
         self.design_freqs_by_band = design_data.design_freqs_by_band
+        self.mux_bands_by_smurf_band = design_data.mux_bands_by_smurf_band
         # we can make additional data structures when we have the design data imported into measured tunes
         self.imported_design_data = True
         # reset this instance's tune_data
@@ -1074,15 +1091,41 @@ class OperateTuneData:
                 text_color = 'black'
             else:
                 text_color = 'white'
-            ax.text(x=0.5, y=0.8, s=f'Band {band_num} - {south_or_north_side_str} of Array',
-                    transform=ax.transAxes, ha='center', va='center', alpha=0.8, size=7, color=text_color,
+            # smurf band label text
+            ax.text(x=0.5, y=0.7, s=f'Band {band_num} - {south_or_north_side_str} of Array',
+                    transform=ax.transAxes, ha='center', va='center', alpha=0.8, size=6, color=text_color,
                     weight='bold',
                     bbox=dict(color=band_colors[band_num], alpha=1.0, ls='-', lw=1.0, ec='black'))
+            # mux ban label
+            mux_bands_dict = self.mux_bands_by_smurf_band[band_num]
+            for mux_band in sorted(mux_bands_dict.keys()):
+                mux_f_min_mhz, mux_f_max_mhz = mux_bands_dict[mux_band]
+                mux_f_center_mhz = (mux_f_min_mhz + mux_f_max_mhz) / 2.0
+                mux_f_span_mhz = mux_f_max_mhz - mux_f_min_mhz
+                if mux_band % 2 == 0:
+                    color_text = 'black'
+                    color_background = 'silver'
+                else:
+                    color_text = 'white'
+                    color_background = 'gray'
+                if mux_f_span_mhz > 100.0:
+                    mux_text = f'Mux Band: {mux_band}'
+                else:
+                    mux_text = f'{mux_band}'
+                ax.text(x=mux_f_center_mhz, y=1, s=mux_text,
+                        ha='center', va='center', alpha=0.8, size=7, color=color_text,
+                        weight='bold')
+                ax.fill_between(x=[mux_f_min_mhz, mux_f_max_mhz], y1=[1.1, 1.1], y2=[0.9, 0.9],
+                                facecolor=color_background, alpha=0.9)
+
+            # x-axis label
             if band_num % 4 == 3:
                 ax.set_xlabel('Frequency (MHz)')
+            # Not connected rug plot overlay
             for tune_datum_nc in not_connected_by_band[band_num]:
                 freq_mhz_nc = tune_datum_nc.freq_mhz
                 ax.plot([freq_mhz_nc, freq_mhz_nc], [-0.1, 0.3], color='cyan', linewidth=2.0, ls='dashed')
+            # No layout data rug plot overlay
             for tune_datum_no_layout in no_layout_by_band[band_num]:
                 freq_mhz_no_layout = tune_datum_no_layout.freq_mhz
                 ax.plot([freq_mhz_no_layout, freq_mhz_no_layout], [-0.1, 0.3], color='lime', linewidth=2.0,
