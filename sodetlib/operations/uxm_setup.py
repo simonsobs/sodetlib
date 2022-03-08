@@ -329,8 +329,7 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     return True, summary
 
 
-
-
+@sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
