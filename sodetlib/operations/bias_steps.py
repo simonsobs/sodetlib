@@ -227,7 +227,7 @@ class BiasStepAnalysis:
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
             arc=None, step_window=0.03, fit_tmin=1.5e-3, transition=None,
-            R0_thresh=30e-3, save=False):
+            R0_thresh=30e-3, save=False, bg_map_file=None):
         """
         Runs the bias step analysis.
 
@@ -261,12 +261,18 @@ class BiasStepAnalysis:
                 crosstalk
             save (bool):
                 If true will save the analysis to a npy file.
+            bg_map_file (optional, path):
+                If create_bg_map is false and this file is not None, use this file
+                to load the bg_map.
         """
         self._load_am(arc=arc)
         self._find_bias_edges()
         if create_bg_map:
             self._create_bg_map(assignment_thresh=assignment_thresh,
                                 save_bg_map=save_bg_map)
+        elif bg_map_file is not None:
+            self.bgmap, self.polarity = sdl.load_bgmap(
+                self.bands, self.channels, bg_map_file)
         else:
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file'])
