@@ -1100,10 +1100,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         S.set_filter_disable(1)
 
         dc_biases = initial_dc_biases
+        init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
             dc_biases = dc_biases / S.high_low_current_ratio
             step_voltage /= S.high_low_current_ratio
-
             sdl.set_current_mode(S, bgs, 1)
             S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
             time.sleep(hcm_wait_time)
@@ -1131,8 +1131,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     finally:
         sdl.stream_g3_off(S)
-        if high_current_mode:
-            sdl.set_current_mode(S, bgs, 0)
+
+        # Restores current mode to initial values
+        sdl.set_current_mode(S, np.where(init_current_mode == 0)[0], 0)
+        sdl.set_current_mode(S, np.where(init_current_mode == 1)[0], 1)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
