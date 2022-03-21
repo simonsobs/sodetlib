@@ -748,7 +748,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, dc_voltage)
 
-    _analysis_kwargs = {'assignment_thresh': 0.9}
+    _analysis_kwargs = {'assignment_thresh': 0.3}
     _analysis_kwargs.update(analysis_kwargs)
     bsa = take_bias_steps(
         S, cfg, bgs, step_voltage=step_voltage, step_duration=0.05,
