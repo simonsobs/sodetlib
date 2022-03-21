@@ -46,22 +46,33 @@ ENV PYTHONPATH /usr/local/src/spt3g_software/build:${PYTHONPATH}
 # SO3G Install
 #################################################################
 WORKDIR /usr/local/src
-ENV LANG C.UTF-8
+RUN mkdir /usr/local/src/IPMC && mkdir /usr/local/src/FirmwareLoader
+RUN git clone --depth 1 https://github.com/slaclab/smurf-base-docker.git 
+RUN tar -xf /usr/local/src/smurf-base-docker/packages/IPMC.tar.gz \
+         -C /usr/local/src/IPMC
+RUN tar -xf /usr/local/src/smurf-base-docker/packages/FirmwareLoader.tar.gz \
+         -C /usr/local/src/FirmwareLoader
 
-RUN git clone https://github.com/simonsobs/so3g.git
-WORKDIR /usr/local/src/so3g
-RUN pip3 install -r requirements.txt
+ENV LD_LIBRARY_PATH /usr/local/src/IPMC/lib64:${LD_LIBRARY_PATH}
+ENV PATH /usr/local/src/IPMC/bin/x86_64-linux-dbg:${PATH}
+ENV PATH /usr/local/src/FirmwareLoader:${PATH}
 
-ENV Spt3g_DIR /usr/local/src/spt3g_software
-# Install qpoint
-RUN /bin/bash /usr/local/src/so3g/docker/qpoint-setup.sh
+# Install EPICS
+RUN mkdir -p /usr/local/src/epics/base-3.15.5
+WORKDIR /usr/local/src/epics/base-3.15.5
+RUN wget -c base-3.15.5.tar.gz https://github.com/epics-base/epics-base/archive/R3.15.5.tar.gz -O - | tar zx --strip 1 && \
+    make clean && make && make install && \
+    find . -maxdepth 1 \
+    ! -name bin -a ! -name lib -a ! -name include \
+    -exec rm -rf {} + \
+    || true
+ENV EPICS_BASE /usr/local/src/epics/base-3.15.5
+ENV EPICS_HOST_ARCH linux-x86_64
+ENV PATH /usr/local/src/epics/base-3.15.5/bin/linux-x86_64:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/src/epics/base-3.15.5/lib/linux-x86_64:${LD_LIBRARY_PATH}
+ENV PYEPICS_LIBCA /usr/local/src/epics/base-3.15.5/lib/linux-x86_64/libca.so
 
-# Build so3g
-RUN mkdir build \
-    && cd build \
-    && cmake .. -DCMAKE_PREFIX_PATH=$SPT3G_SOFTWARE_BUILD_PATH \
-    && make \
-    && make install
+RUN pip3 install ipython numpy pyepics
 
 #################################################################
 # SOTODLIB Install
@@ -92,6 +103,3 @@ COPY . /sodetlib
 WORKDIR /sodetlib
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
-
-# This is to get the leap-second download out of the way
-RUN python3 -c "import so3g"
