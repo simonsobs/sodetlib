@@ -568,6 +568,17 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         _analysis_kwargs.update(analysis_kwargs)
         analyze_iv(iva, **_analysis_kwargs)
 
+        # Save and publish plots
+        fig, ax = plot_Rfracs(iva)
+        fname = sdl.make_filename(S, 'iv_rfracs.png', plot=True)
+        fig.savefig(fname)
+        S.pub.register_file(fname, 'iv', format='png', plot=True)
+
+        fig, ax = plot_Rn_hist(iva)
+        fname = sdl.make_filename(S, 'iv_rns.png', plot=True)
+        fig.savefig(fname)
+        S.pub.register_file(fname, 'iv', format='png', plot=True)
+
     return iva
 
 
