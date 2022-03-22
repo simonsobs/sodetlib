@@ -213,7 +213,7 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
                                                 save_plot=True)
     summary['noise']['am'] = am
     sdl.pub_ocs_data(S, {'noise_summary': {
-        'band_medians': summary['noise']['noisedict']['band_medians']
+        'band_medians': summary['noise']['band_medians']
     }})
 
     summary['timestamps'].append(('end', time.time()))
