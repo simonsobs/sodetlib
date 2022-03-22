@@ -12,7 +12,7 @@ np.seterr(all='ignore')
 
 
 def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
-                       num_steps=5):
+                       num_steps=5, dacs='pos'):
     """
     Plays bias steps on a group of bias groups stepping with only one DAC
 
@@ -27,10 +27,16 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
             Duration of each step in sec
         num_steps: int
             Number of bias steps
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
     """
     if bias_groups is None:
         bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
+
+    if dacs not in ['pos', 'neg', 'both']:
+        raise ValueError("Arg dac must be in ['pos', 'neg', 'both']")
 
     dac_volt_array_low = S.get_rtm_slow_dac_volt_array()
     dac_volt_array_high = dac_volt_array_low.copy()
@@ -40,7 +46,14 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
     for bg in bias_groups:
         bg_idx = np.ravel(np.where(bias_order == bg))
         dac_positive = dac_positives[bg_idx][0] - 1
-        dac_volt_array_high[dac_positive] += step_voltage
+        dac_negative = dac_negatives[bg_idx][0] - 1
+        if dacs == 'pos':
+            dac_volt_array_high[dac_positive] += step_voltage
+        elif dacs == 'neg':
+            dac_volt_array_high[dac_negative] -= step_voltage
+        elif dacs == 'both':
+            dac_volt_array_high[dac_positive] += step_voltage / 2
+            dac_volt_array_high[dac_negative] -= step_voltage / 2
 
     start = time.time()
     for _ in range(num_steps):
@@ -699,8 +712,6 @@ def plot_iv_res_comparison(bsa, lim=None):
 
 
 
-
-
 @set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
@@ -736,6 +747,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
         analysis_kwargs (dict, optional):
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
@@ -754,7 +768,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         S, cfg, bgs, step_voltage=step_voltage, step_duration=0.05,
         create_bg_map=True, save_bg_map=True, nsteps=nsteps,
         nsweep_steps=nsweep_steps, high_current_mode=high_current_mode,
-        hcm_wait_time=hcm_wait_time, run_analysis=True,
+        hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
         analysis_kwargs=_analysis_kwargs)
 
     return bsa
@@ -764,7 +778,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     create_bg_map=False, save_bg_map=False, nsteps=20,
                     nsweep_steps=None, high_current_mode=True, hcm_wait_time=3,
-                    run_analysis=True, analysis_kwargs=None):
+                    run_analysis=True, analysis_kwargs=None, dacs='pos'):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -808,6 +822,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
         run_analysis (bool):
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -856,7 +873,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             bsa.bg_sweep_start = time.time()
             for bg in bgs:
                 play_bias_steps_dc(
-                    S, cfg, bg, step_duration, step_voltage, nsweep_steps
+                    S, cfg, bg, step_duration, step_voltage, nsweep_steps,
+                    dacs=dacs,
                 )
             bsa.bg_sweep_stop = time.time()
 
