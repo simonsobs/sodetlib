@@ -238,6 +238,8 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         if save_dir==None:
             raise ValueError('save_dir must be provided to save plots.')
     bands = am.ch_info.band
+    ctime = int(am.timestamps[0])
+
     if noisedict == None:
         noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                       nperdecade=nperdecade, **asd_args)
@@ -245,7 +247,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
     fknees = noisedict['noise_pars'][:,2]
     band_medians = noisedict['band_medians']
 
-    #Only turns of interactive mode inside with so that won't effect setting.
+    #Only turns off interactive mode inside with so that won't effect setting.
     try:
         isinteractive = plt.isinteractive
         plt.ioff()
@@ -261,9 +263,9 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             ax = axes_wnl[b % 4, b // 4]
             m = bands == b
             x = ax.hist(wls[m], bins=bins)
-            text  = f"Median: {band_medians[b]:0.2f}\n"
+            text  = f"Median: {band_medians[b]:0.1f} pA/rtHz\n"
             text += f"Chans pictured: {np.sum(x[0]):0.0f}"
-            ax.text(0.75, .7, text, transform=ax.transAxes)
+            ax.text(0.7, .7, text, transform=ax.transAxes)
             ax.axvline(np.median(wls[m]), color='red')
             max_bins = max(np.max(x[0]), max_bins)
             ax.set(xscale='log', ylabel=f'Band {b}')
@@ -275,10 +277,11 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         for _ax in axes_wnl:
             for ax in _ax:
                 ax.set(ylim=(0, max_bins * 1.1))
+        plt.suptitle(
+            f'Total yield {len(wls)}, Overall median noise {np.nanmedian(wls):0.1f} pA/rtHz')
         if show_plot:
             plt.show()
         if save_plot:
-            ctime = int(am.timestamps[0])
             plt.savefig(os.path.join(save_dir,
                                     f'{ctime}_white_noise_summary.png'))
             if not(show_plot):
@@ -299,7 +302,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             x = ax.hist(fknees[m], bins=bins)
             text  = f"Median: {np.median(fknees[m]):0.2f}\n"
             text += f"Chans pictured: {np.sum(x[0]):0.0f}"
-            ax.text(0.75, .7, text, transform=ax.transAxes)
+            ax.text(0.72, .7, text, transform=ax.transAxes)
             ax.axvline(np.median(fknees[m]), color='red')
             max_bins = max(np.max(x[0]), max_bins)
             ax.set(xscale='log', ylabel=f'Band {b}')
@@ -314,14 +317,46 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         if show_plot:
             plt.show()
         if save_plot:
-            ctime = int(am.timestamps[0])
             plt.savefig(os.path.join(save_dir,f'{ctime}_fknee_summary.png'))
             if not(show_plot):
                 plt.close()
+
+        #Plot ASDs
+        fig_asd, axes_asd = plt.subplots(4, 2, figsize=(16, 8),
+                                 gridspec_kw={'hspace': 0})
+        fig_asd.patch.set_facecolor('white')
+
+        for b in range(8):
+            ax = axes_asd[b % 4, b // 4]
+            m = bands == b
+            med_wl = np.nanmedian(wls[m])
+            f_arr = np.tile(noisedict['f'], (sum(m),1))
+            x = ax.loglog(f_arr.T, noisedict['axx'][m].T, color='C0', alpha=0.1)
+            ax.axhline(med_wl, color='red', alpha=0.6,
+                       label=f'Med. WL: {med_wl:.1f} pA/rtHz')
+            ax.set(ylabel=f'Band {b}\nASD (pA/rtHz)')
+            ax.grid(linestyle='--', which='both')
+            ax.legend(loc='upper right')
+
+        axes_asd[0][0].set(title="AMC 0")
+        axes_asd[0][1].set(title="AMC 1")
+        axes_asd[-1][0].set(xlabel="Frequency (Hz)")
+        axes_asd[-1][1].set(xlabel="Frequency (Hz)")
+        for _ax in axes_asd:
+            for ax in _ax:
+                ax.set(ylim=[1, 5e3])
+        if show_plot:
+            plt.show()
+        if save_plot:
+            plt.savefig(os.path.join(save_dir,
+                                    f'{ctime}_band_asds.png'))
+            if not(show_plot):
+                plt.close()
+
     finally:
         if isinteractive:
             plt.ion()
-    return fig_wnl, axes_wnl, fig_fk, axes_fk
+    return fig_wnl, axes_wnl, fig_fk, axes_fk, fig_asd, axes_asd
 
 def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30),
                        fit=False, show_plot=False, save_plot=False, nperdecade=10,
@@ -404,9 +439,9 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
                 l2 = 65*np.sqrt(0.1/f[f<=0.1])
             ax2.plot(f[f<=0.1],l2,'--',color = 'C1')
             ax2.fill_between(f[f<=0.1],l2,l1,color = 'wheat',alpha = 0.3)
-        text = f'White Noise: {np.round(float(noise_pars[rc,0]),2)} pA/rtHz\n'
+        text = f'White Noise: {np.round(float(noise_pars[rc,0]),1)} pA/rtHz\n'
         text += 'f$_{knee}$: '+f'{np.round(noise_pars[rc,2],4)} Hz'
-        ax2.text(0.55, 0.7, text, bbox=props, transform=ax2.transAxes)
+        ax2.text(0.03, 0.1, text, bbox=props, transform=ax2.transAxes)
         ax2.set_xlabel('Frequency [Hz]', fontsize=14)
         ax2.set_ylabel('ASD [pA/rtHz]', fontsize=14)
 
@@ -423,6 +458,7 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
             plt.ion()
     return fig, axes
 
+@sdl.set_action()
 def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                show_plot=True, save_plot=False, plotted_rchans=None,
                wl_f_range=(10,30), fit=False,
@@ -436,7 +472,6 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     Args
     ----
-
     S : `pysmurf.client.base.smurf_control.SmurfControl`
         pysmurf control object
     cfg : `sodetlib.det_config.DetConfig`
@@ -465,7 +500,6 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     Returns
     -------
-
     am: AxisManager
         AxisManager from the timestream acquired to calculate noise
         parameters.
@@ -496,19 +530,27 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     sid = sdl.take_g3_data(S, acq_time)
     am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
+    ctime = int(am.timestamps[0])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                  nperdecade=nperdecade, **asd_args)
-    outdict = {}
+    outdict = noisedict.copy()
     outdict['sid'] = sid
-    outdict['noisedict'] = noisedict
     if plot_band_summary:
-        plot_band_noise(am, nbins=nbins, noisedict=noisedict,
-                        show_plot=show_plot, save_plot=save_plot,
-                        save_dir=save_dir, **asd_args)
+        fig_wnl, axes_wnl, fig_fk, axes_fk, fig_asd, axes_asd = plot_band_noise(
+            am, nbins=nbins, noisedict=noisedict, show_plot=show_plot,
+            save_plot=False, save_dir=save_dir, **asd_args)
+        if save_plot:
+            savename = os.path.join(save_dir, f'{ctime}_white_noise_summary.png')
+            fig_wnl.savefig(savename)
+            S.pub.register_file(savename, 'take_noise', plot=True)
+            savename = os.path.join(save_dir, f'{ctime}_fknee_summary.png')
+            fig_fk.savefig(savename)
+            S.pub.register_file(savename, 'take_noise', plot=True)
+            savename = os.path.join(save_dir, f'{ctime}_asd_summary.png')
+            fig_asd.savefig(savename)
+            S.pub.register_file(savename, 'take_noise', plot=True)
 
-    if plotted_rchans is None:
-        return am, outdict
-    else:
+    if plotted_rchans is not None:
         outdict['channel_plots'] = {}
         for rc in np.atleast_1d(plotted_rchans):
             outdict['channel_plots'][rc] = {}
@@ -520,4 +562,6 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                                            **asd_args)
             outdict['channel_plots'][rc]['fig'] = fig
             outdict['channel_plots'][rc]['axes'] = axes
+    fname = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
+    sdl.validate_and_save(fname, outdict, S=S, cfg=cfg, make_path=False)
     return am, outdict

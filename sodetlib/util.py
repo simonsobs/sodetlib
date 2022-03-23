@@ -59,6 +59,48 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
+def _encode_data(data):
+    """
+    Encodes a data object into one that is serializable with
+    json so that it can be sent over UDP.
+    """
+    if isinstance(data, list):
+        return [_encode_data(d) for d in data]
+    elif isinstance(data, dict):
+        return {str(k): _encode_data(d) for k, d in data.items()}
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    else:
+        return data
+
+
+def pub_ocs_data(S, data):
+    """
+    Passes data to the OCS pysmurf controller to be set in session.data.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    data : dict
+        Dictionary containing data to send to ocs. This will update the
+        session.data object of the active pysmurf-controller agent operation
+        with the supplied data.
+    """
+    S.pub.publish(_encode_data(data), msgtype='session_data')
+
+
+def pub_ocs_log(S, msg, log=True):
+    """
+    Passes a string to the OCS pysmurf controller to be logged to be passed
+    around the OCS network.
+    """
+    if log:
+        S.log(msg)
+    S.pub.publish(msg, msgtype='session_log')
+
+
+
 def load_bgmap(bands, channels, bgmap_file):
     bgmap_full = np.load(bgmap_file, allow_pickle=True).item()
     idxs = map_band_chans(
@@ -110,7 +152,7 @@ def get_metadata(S, cfg):
     data files created by sodetlib.
     """
     return {
-        'tunefile': S.tune_file,
+        'tunefile': getattr(S, 'tune_file', None),
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,

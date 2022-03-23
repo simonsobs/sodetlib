@@ -29,7 +29,6 @@ class IVAnalysis:
     stop_times : np.ndarray
         Array of stop_times of each bias point
 
-
     Attributes
     -----------
     meta : dict
@@ -70,10 +69,10 @@ class IVAnalysis:
     i_tes : np.ndarray
         Array of shape (nchans, nbiases) containing the current across the TES
         for each channel at each bias point (Amps)
-    R_n : np.ndarry
+    R_n : np.ndarray
         Array of shape (nchans) containing the normal resistance (Ohms) of the
         TES
-    R_L : np.ndarry
+    R_L : np.ndarray
         Array of shape (nchans) containing the non-TES resistance (Ohms).
         Should be shunt resistance + parasitic resistance
     p_sat : np.ndarray
@@ -83,7 +82,7 @@ class IVAnalysis:
         the absence of optical power.
     si : np.ndarray
         Array of shape (nchans, nbiases) containing the responsivity (1/V)
-        of the TES for each bis-step
+        of the TES for each bias-step
     idxs : np.ndarray
         Array of shape (nchans, 3) containing:
             1. Last index of the SC branch
@@ -170,7 +169,8 @@ class IVAnalysis:
     def _load_am(self, arc=None):
         if self.am is None:
             if arc:
-                self.am = arc.load_data(self.start, self.stop)
+                self.am = arc.load_data(self.start_times[0],
+                                        self.stop_times[-1])
             else:
                 self.am = sdl.load_session(self.meta['stream_id'], self.sid)
         return self.am
@@ -444,7 +444,7 @@ def plot_channel_iv(iva, rc):
     return fig, axes
 
 
-sdl.set_action()
+@sdl.set_action()
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,

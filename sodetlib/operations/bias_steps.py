@@ -5,13 +5,14 @@ import numpy as np
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
+from sodetlib.operations import iv
 from pysmurf.client.util.pub import set_action
 
 np.seterr(all='ignore')
 
 
 def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
-                       num_steps=5):
+                       num_steps=5, dacs='pos'):
     """
     Plays bias steps on a group of bias groups stepping with only one DAC
 
@@ -26,10 +27,16 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
             Duration of each step in sec
         num_steps: int
             Number of bias steps
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
     """
     if bias_groups is None:
         bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
+
+    if dacs not in ['pos', 'neg', 'both']:
+        raise ValueError("Arg dac must be in ['pos', 'neg', 'both']")
 
     dac_volt_array_low = S.get_rtm_slow_dac_volt_array()
     dac_volt_array_high = dac_volt_array_low.copy()
@@ -39,7 +46,14 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
     for bg in bias_groups:
         bg_idx = np.ravel(np.where(bias_order == bg))
         dac_positive = dac_positives[bg_idx][0] - 1
-        dac_volt_array_high[dac_positive] += step_voltage
+        dac_negative = dac_negatives[bg_idx][0] - 1
+        if dacs == 'pos':
+            dac_volt_array_high[dac_positive] += step_voltage
+        elif dacs == 'neg':
+            dac_volt_array_high[dac_negative] -= step_voltage
+        elif dacs == 'both':
+            dac_volt_array_high[dac_positive] += step_voltage / 2
+            dac_volt_array_high[dac_negative] -= step_voltage / 2
 
     start = time.time()
     for _ in range(num_steps):
@@ -226,7 +240,7 @@ class BiasStepAnalysis:
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
             arc=None, step_window=0.03, fit_tmin=1.5e-3, transition=None,
-            R0_thresh=30e-3, save=False):
+            R0_thresh=30e-3, save=False, bg_map_file=None):
         """
         Runs the bias step analysis.
 
@@ -260,12 +274,18 @@ class BiasStepAnalysis:
                 crosstalk
             save (bool):
                 If true will save the analysis to a npy file.
+            bg_map_file (optional, path):
+                If create_bg_map is false and this file is not None, use this file
+                to load the bg_map.
         """
         self._load_am(arc=arc)
         self._find_bias_edges()
         if create_bg_map:
             self._create_bg_map(assignment_thresh=assignment_thresh,
                                 save_bg_map=save_bg_map)
+        elif bg_map_file is not None:
+            self.bgmap, self.polarity = sdl.load_bgmap(
+                self.bands, self.channels, bg_map_file)
         else:
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file'])
@@ -473,12 +493,14 @@ class BiasStepAnalysis:
         if not transition:
             # Assumes dRtes / dIb = 0
             I0 = Ib * dIrat
+
         else:
             # Assumes dPj / dIb = 0
             I0 = Ib * dIrat / (2 * dIrat - 1)
 
         Pj = I0 * R_sh * (Ib - I0)
         R0 = Pj / I0**2
+        R0[I0 == 0] = 0
 
         return R0, I0, Pj
 
@@ -665,6 +687,31 @@ class BiasStepAnalysis:
 
         return fig, ax
 
+def plot_iv_res_comparison(bsa, lim=None):
+    iva = iv.IVAnalysis.load(bsa.meta['iv_file'])
+    chmap = sdl.map_band_chans(bsa.bands, bsa.channels,
+                               iva.bands, iva.channels)
+    iv_res = np.full(bsa.nchans, np.nan)
+
+    fig, ax = plt.subplots()
+    for bg in bsa.bgs:
+        m = bsa.bgmap == bg
+        vb = bsa.Vbias[bg]
+        idx = np.argmin(np.abs(iva.v_bias - vb))
+        iv_res = iva.R[chmap[m], idx]
+        ax.scatter(bsa.R0[m]*1000, iv_res*1000, marker='.', alpha=0.2,
+                   label=f'Bias Group {bg}')
+    if lim is None:
+        lim = (-0.1, 10)
+    ax.plot(lim, lim, ls='--', color='grey', alpha=0.4)
+    ax.set(xlim=lim, ylim=lim)
+    ax.set_xlabel("Bias Step Resistance (mOhm)")
+    ax.set_ylabel("IV Resistance (mOhm)")
+
+    return fig, ax
+
+
+
 @set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
@@ -700,6 +747,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
         analysis_kwargs (dict, optional):
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
@@ -712,13 +762,13 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, dc_voltage)
 
-    _analysis_kwargs = {'assignment_thresh': 0.9}
+    _analysis_kwargs = {'assignment_thresh': 0.3}
     _analysis_kwargs.update(analysis_kwargs)
     bsa = take_bias_steps(
         S, cfg, bgs, step_voltage=step_voltage, step_duration=0.05,
         create_bg_map=True, save_bg_map=True, nsteps=nsteps,
         nsweep_steps=nsweep_steps, high_current_mode=high_current_mode,
-        hcm_wait_time=hcm_wait_time, run_analysis=True,
+        hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
         analysis_kwargs=_analysis_kwargs)
 
     return bsa
@@ -727,8 +777,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 @set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     create_bg_map=False, save_bg_map=False, nsteps=20,
-                    nsweep_steps=5, high_current_mode=True, hcm_wait_time=3,
-                    run_analysis=True, analysis_kwargs=None):
+                    nsweep_steps=None, high_current_mode=True, hcm_wait_time=3,
+                    run_analysis=True, analysis_kwargs=None, dacs='pos'):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -772,6 +822,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
+        dacs : str
+            Which group of DACs to play bias-steps on. Can be 'pos',
+            'neg', or 'both'
         run_analysis (bool):
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -814,25 +867,26 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
         bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
-         
+
         bsa.start = time.time()
-        if create_bg_map:
+        if create_bg_map or (nsweep_steps is not None):
             bsa.bg_sweep_start = time.time()
             for bg in bgs:
                 play_bias_steps_dc(
-                    S, cfg, bg, step_duration, step_voltage, nsweep_steps
+                    S, cfg, bg, step_duration, step_voltage, nsweep_steps,
+                    dacs=dacs,
                 )
             bsa.bg_sweep_stop = time.time()
 
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
         bsa.stop = time.time()
     finally:
+        sdl.stream_g3_off(S)
         if high_current_mode:
             sdl.set_current_mode(S, bgs, 0)
 
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
-        sdl.stream_g3_off(S)
 
     if run_analysis:
         S.log("Running bias step analysis")
