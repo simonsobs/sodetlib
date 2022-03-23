@@ -154,7 +154,7 @@ def setup_amps(S, cfg, update_cfg=True):
         }, update_file=True)
 
     summary = {'success': True, **biases}
-    sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
+    sdl.set_session_data(S, 'setup_amps_summary', summary)
     return True, summary
 
 
@@ -198,7 +198,7 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
     if update_cfg:
         cfg.dev.update_file()
 
-    sdl.pub_ocs_data(S, {'setup_phase_delay': summary})
+    sdl.set_session_data(S, 'setup_phase_delay', summary)
     return True, summary
 
 
@@ -386,6 +386,8 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 2. Setup amps
     #############################################################
     summary['timestamps'].append(('setup_amps', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+
     success, summary['setup_amps'] = setup_amps(S, cfg, update_cfg=update_cfg)
     if not success:
         sdl.pub_ocs_log(S, "UXM Setup failed on setup amps step")
@@ -395,6 +397,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 3. Estimate Attens
     #############################################################
     summary['timestamps'].append(('estimate_attens', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     for band in bands:
         bcfg = cfg.dev.bands[band]
         if (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
@@ -407,6 +410,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 4. Estimate Phase Delay
     #############################################################
     summary['timestamps'].append(('setup_phase_delay', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['setup_phase_delay'] = setup_phase_delay(
         S, cfg, bands, update_cfg=update_cfg)
     if not success:
@@ -417,6 +421,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 5. Setup Tune
     #############################################################
     summary['timestamps'].append(('setup_tune', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['setup_tune'] = setup_tune(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg,)
     if not success:
@@ -426,6 +431,8 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     #############################################################
     # 6. Setup Tracking
     #############################################################
+    summary['timestamps'].append(('setup_tracking', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     tracking_res = tracking.setup_tracking_params(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg
     )
@@ -435,13 +442,12 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 7. Noise
     #############################################################
     summary['timestamps'].append(('noise', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     _, summary['noise'] = sdl.noise.take_noise(
         S, cfg, 30, show_plot=show_plots, save_plot=True
     )
-    sdl.pub_ocs_data(S, {'noise_summary': {
-        'band_medians': summary['noise']['noisedict']['band_medians']
-    }})
 
     summary['timestamps'].append(('end', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
     return True, summary

@@ -533,6 +533,11 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     ctime = int(am.timestamps[0])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
                                  nperdecade=nperdecade, **asd_args)
+
+    sdl.set_session_data(S, 'noise', {
+        'band_medians': noisedict['band_medians']
+    })
+
     outdict = noisedict.copy()
     outdict['sid'] = sid
     if plot_band_summary:
