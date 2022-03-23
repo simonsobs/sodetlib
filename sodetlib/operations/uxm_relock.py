@@ -6,55 +6,6 @@ from sodetlib.operations import uxm_setup
 
 
 @sdl.set_action()
-def reload_amps(S, cfg):
-    """
-    Reloads amplifier biases from dev cfg and checks that drain-currents fall
-    within tolerance.
-
-    Args
-    ----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        Det config instance
-    """
-    summary = {}
-
-    exp = cfg.dev.exp
-    sdl.pub_ocs_log(S, 'setting amp voltage')
-    S.set_50k_amp_gate_voltage(cfg.dev.exp['amp_50k_Vg'])
-    S.set_hemt_gate_voltage(cfg.dev.exp['amp_hemt_Vg'])
-    S.C.write_ps_en(0b11)
-    time.sleep(exp['amp_enable_wait_time'])
-
-    biases = S.get_amplifier_biases()
-    summary['biases'] = biases
-
-    exp = cfg.dev.exp
-
-    tol_hemt, tol_50k = exp['amp_hemt_Id_tolerance'], exp['amp_50k_Id_tolerance']
-    in_range_hemt = np.abs(biases['hemt_Id'] - exp['amp_hemt_Id']) < tol_hemt
-    in_range_50k = np.abs(biases['50K_Id'] - exp['amp_50k_Id']) < tol_50k
-
-    if not (in_range_50k and in_range_hemt):
-        S.log("Hemt or 50K Amp drain current not within tolerance")
-        S.log(f"Target hemt Id: {exp['amp_hemt_Id']}")
-        S.log(f"Target 50K Id: {exp['amp_50k_Id']}")
-        S.log(f"tolerance: {(tol_hemt, tol_50k)}")
-        S.log(f"biases: {biases}")
-
-        summary['success'] = False
-        sdl.pub_ocs_log(S, 'Failed to set amp voltages')
-        sdl.pub_ocs_data(S, {'amp_summary': summary})
-        return False, summary
-
-    summary['success'] = True
-    sdl.pub_ocs_log(S, 'Succuessfully to set amp voltages')
-    sdl.pub_ocs_data(S, {'amp_summary': summary})
-    return True, summary
-
-
-@sdl.set_action()
 def reload_tune(S, cfg, bands, setup_notches=False,
                 new_master_assignment=False, tunefile=None, update_cfg=True):
     """
@@ -106,7 +57,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
 @sdl.set_action()
 def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
                setup_notches=False, new_master_assignment=False,
-               reset_rate_khz=None, nphi0=None, setup_amps=True):
+               reset_rate_khz=None, nphi0=None):
     """
     Relocks resonators by running the following steps
 
@@ -175,12 +126,8 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     #############################################################
     summary['timestamps'].append(('setup_amps', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
-    if setup_amps:
-        success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
-    else:
-        success, summary['amp'] = reload_amps(S, cfg)
+    success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
 
-    sdl.set_session_data(S, 'amps', summary['amps'])
     if not success:
         return False, summary
 

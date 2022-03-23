@@ -80,9 +80,9 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
 @sdl.set_action()
 def setup_amps(S, cfg, update_cfg=True):
     """
-    Initial setup for 50k and hemt amplifiers. Determines gate voltages
-    required to reach specified drain currents. Will update detconfig on
-    success.
+    Initial setup for 50k and hemt amplifiers. Will first check if drain
+    currents are in range, and if not will scan gate voltage to find one that
+    hits the target current. Will update the device cfg if successful.
 
     Args
     -----
@@ -113,8 +113,6 @@ def setup_amps(S, cfg, update_cfg=True):
 
     exp = cfg.dev.exp
 
-    S.set_50k_amp_gate_voltage(exp['amp_50k_init_Vg'])
-    S.set_hemt_gate_voltage(exp['amp_hemt_init_Vg'])
     S.C.write_ps_en(0b11)
     time.sleep(exp['amp_enable_wait_time'])
 
@@ -127,23 +125,37 @@ def setup_amps(S, cfg, update_cfg=True):
         'amp_hemt_Vg': None,
     }
 
-    success = find_gate_voltage(
-        S, exp['amp_hemt_Id'], 'hemt', wait_time=exp['amp_step_wait_time'],
-        id_tolerance=exp['amp_hemt_Id_tolerance'])
-    if not success:
-        sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
-        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
-        S.C.write_ps_en(0)
-        return False, summary
+    # First check if amps are within tolerance...
+    amp_biases = S.get_amplifier_biases()
+    delta_hemt = np.abs(amp_biases['hemt_Id'] - exp['amp_hemt_Id'])
+    delta_50k = np.abs(amp_biases['50K_Id'] - exp['amp_50k_Id'])
 
-    success = find_gate_voltage(
-        S, exp['amp_50k_Id'], '50K', wait_time=exp['amp_step_wait_time'],
-        id_tolerance=exp['amp_50k_Id_tolerance'])
-    if not success:
-        sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
-        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
-        S.C.write_ps_en(0)
-        return False, summary
+    # Check / scan hemt voltage
+    if delta_hemt > exp['amp_hemt_Id_tolerance']:
+        S.log("Hemt current not within tolerance, scanning for correct Vg")
+        S.set_hemt_gate_voltage(exp['amp_hemt_init_Vg'])
+        success = find_gate_voltage(
+            S, exp['amp_hemt_Id'], 'hemt', wait_time=exp['amp_step_wait_time'],
+            id_tolerance=exp['amp_hemt_Id_tolerance']
+        )
+        if not success:
+            sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
+            sdl.set_session_data(S, 'setup_amps_summary', summary)
+            S.C.write_ps_en(0)
+            return False, summary
+
+    # Check / scan 50k voltage
+    if delta_50k > exp['amp_50k_Id_tolerance']:
+        S.log("50k current not within tolerance, scanning for correct Vg")
+        success = find_gate_voltage(
+            S, exp['amp_50k_Id'], '50K', wait_time=exp['amp_step_wait_time'],
+            id_tolerance=exp['amp_50k_Id_tolerance']
+        )
+        if not success:
+            sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
+            sdl.set_session_data(S, 'setup_amps_summary', summary)
+            S.C.write_ps_en(0)
+            return False, summary
 
     # Update device cfg
     biases = S.get_amplifier_biases()
