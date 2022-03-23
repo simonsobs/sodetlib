@@ -74,6 +74,12 @@ def _encode_data(data):
         return data
 
 
+def set_session_data(S, key, val):
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.data[key] = _encode_data(val)
+
+
 def pub_ocs_data(S, data):
     """
     Passes data to the OCS pysmurf controller to be set in session.data.
@@ -97,6 +103,11 @@ def pub_ocs_log(S, msg, log=True):
     """
     if log:
         S.log(msg)
+
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.add_message(msg)
+
     S.pub.publish(msg, msgtype='session_log')
 
 
@@ -521,6 +532,7 @@ class Registers:
         'flac_level': _sostream + "FlacLevel",
         'source_enable': _source_root + 'SourceEnable',
         'enable_compression': _sostream + 'EnableCompression',
+        'agg_time': _sostream + 'AggTime',
     }
 
     def __init__(self, S):
