@@ -59,6 +59,52 @@ def make_filename(S, name, ctime=None, plot=False):
     return os.path.join(ddir, f'{ctime}_{name}')
 
 
+def _encode_data(data):
+    """
+    Encodes a data object into one that is serializable with
+    json so that it can be sent over UDP.
+    """
+    if isinstance(data, list):
+        return [_encode_data(d) for d in data]
+    elif isinstance(data, dict):
+        return {str(k): _encode_data(d) for k, d in data.items()}
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    else:
+        return data
+
+
+def set_session_data(S, key, val):
+    """
+    Adds data to the OCS Session data object. If this is being run directly
+    from an OCS PysmurfController operation, the _ocs_session object will be
+    set in the pysmurf instance. If not, publish message so pysmurf monitor can
+    relay data to the correct controller agent.
+    """
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.data[key] = _encode_data(val)
+    else:
+        S.pub.publish(_encode_data({key: val}), msgtype='session_data')
+
+
+
+def pub_ocs_log(S, msg, log=True):
+    """
+    Passes a string to the OCS pysmurf controller to be logged to be passed
+    around the OCS network.
+    """
+    if log:
+        S.log(msg)
+
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.add_message(msg)
+
+    S.pub.publish(msg, msgtype='session_log')
+
+
+
 def load_bgmap(bands, channels, bgmap_file):
     bgmap_full = np.load(bgmap_file, allow_pickle=True).item()
     idxs = map_band_chans(
@@ -110,7 +156,7 @@ def get_metadata(S, cfg):
     data files created by sodetlib.
     """
     return {
-        'tunefile': S.tune_file,
+        'tunefile': getattr(S, 'tune_file', None),
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,
@@ -479,6 +525,7 @@ class Registers:
         'flac_level': _sostream + "FlacLevel",
         'source_enable': _source_root + 'SourceEnable',
         'enable_compression': _sostream + 'EnableCompression',
+        'agg_time': _sostream + 'AggTime',
     }
 
     def __init__(self, S):

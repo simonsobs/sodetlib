@@ -34,10 +34,6 @@ if __name__ == '__main__':
     if args.state == 'off':
         stream_g3_off(S)
     else:
-        #S.pA_per_phi0 = 9e6
-        #S.R_sh=400e-6
-        #S.bias_line_resistance=16400.0
-
         if args.time is not None:
             take_g3_data(S, args.time, tag=args.tag)
         else:

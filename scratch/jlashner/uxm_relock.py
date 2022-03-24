@@ -2,34 +2,35 @@ import time
 import numpy as np
 import sodetlib as sdl
 
-import typing
-if typing.TYPE_CHECKING:
-    from pysmurf.client.base.smurf_control import SmurfControl
-    from sodetlib.det_config import DetConfig
 
-
-def publish_ocs_log(S, msg):
+sdl.set_action()
+def reload_amps(S, cfg, id_tolerance=0.5):
     """
-    Passes a string to the OCS pysmurf controller to be logged to be passed
-    around the OCS network
+    Reloads amplifier biases from dev cfg and checks that drain-currents fall
+    within tolerance.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    id_tolerance : float
+        Max difference between target drain current and actual
+        drain currents for this to be considered success (mA).
+        Defaults to 0.5 mA.
     """
-    S.pub.publish(msg, msgtype='session_log')
-
-
-def publish_ocs_data(S, data):
-    S.pub.publish(data, msgtype='session_data')
-    
-
-def reload_amps(S: SmurfControl, cfg: DetConfig):
     summary = {}
 
-    log_to_controller(S, 'setting amp voltage')
+    sdl.pub_ocs_log(S, 'setting amp voltage')
     S.set_50k_amp_gate_voltage(cfg.dev.exp['amp_50k_Vg'])
     S.set_hemt_gate_voltage(cfg.dev.exp['amp_hemt_Vg'])
     S.C.write_ps_en(3)
     time.sleep(0.1)
     biases = S.get_amplifier_biases()
     summary['biases'] = biases
+
+    exp = cfg.dev.exp
 
     in_range_50k = np.abs(biases['50k_Id'] - exp['amp_50k_Id']) < id_tolerance
     in_range_hemt = np.abs(biases['hemt_Id'] - exp['amp_hemt_Id']) < id_tolerance
@@ -42,24 +43,60 @@ def reload_amps(S: SmurfControl, cfg: DetConfig):
         S.log(f"biases: {biases}")
 
         summary['success'] = False
-        publish_ocs_log(S, 'Failed to set amp voltages')
-        publish_ocs_data(S, {'amp_summary': summary})
+        sdl.pub_ocs_log(S, 'Failed to set amp voltages')
+        sdl.pub_ocs_data(S, {'amp_summary': summary})
         return False, summary
 
-
     summary['success'] = True 
-    publish_ocs_log(S, 'Succuessfully to set amp voltages')
-    publish_ocs_data(S, {'amp_summary': summary})
+    sdl.pub_ocs_log(S, 'Succuessfully to set amp voltages')
+    sdl.pub_ocs_data(S, {'amp_summary': summary})
     return True, summary
 
 
-def reload_tune(S: SmurfControl, cfg: DetConfig, bands,
-                new_master_assignment=False):
-    pass
+sdl.set_action()
+def reload_tune(S, cfg, bands, setup_notches=True,
+                new_master_assignment=False, tunefile=None):
+    """
+    Reloads an existing tune, runs setup-notches and serial grad descent
+    and eta scan.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    bands : list, optional
+        List of bands to run
+    setup_notches : bool
+        Whether to run setup_notches
+    new_master_assignment : bool
+        Whether to create a new master assignment
+    tunefile : str
+        Tunefile to load. Defaults to the tunefile in the device cfg.
+    """
+
+    if tunefile is None:
+        tunefile = cfg.dev.exp['tunefile']
+
+    S.load_tune(tunefile)
+
+    for band in bands:
+        S.set_att_uc(band)
+        sdl.pub_ocs_log(S, f"Relocking tune: Band {band}")
+        S.relock(band)
+        if setup_notches:
+            S.setup_notches(band, new_master_assignment=new_master_assignment)
+
+        S.run_serial_gradient_descent(band)
+        S.run_serial_eta_scan(band)
+
+    return True, None
 
 
-def relock_tracking_setup(S: SmurfControl, cfg: DetConfig, bands,
-                          reset_rate_khz=None, nphi0=None, **kwargs):
+sdl.set_action()
+def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
+                          **kwargs):
     """
     Sets up tracking for smurf. This assumes you already have optimized
     lms_freq and frac-pp for each bands in the device config. This function
@@ -69,8 +106,27 @@ def relock_tracking_setup(S: SmurfControl, cfg: DetConfig, bands,
     This function also allows you to set reset_rate_khz and nphi0. The
     fraction-full-scale, and lms frequencies of each band will be automatically
     adjusted based on their pre-existing optimized values.
-    """
 
+    Additional keyword args specified will be passed to S.tracking_setup.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    reset_rate_khz : float, optional
+        Flux Ramp Reset Rate to set (kHz), defaults to the value in the dev cfg
+    nphi0 : int, optional
+        Number of phi0's to ramp through. Defaults to the value that was used
+        during setup.
+
+    Returns
+    --------
+    res : dict
+        Dictionary of results of all tracking-setup calls, with the bands number
+        as key.
+    """
     bands = np.atleast_1d(bands)
     nbands = len(bands)
 
@@ -113,35 +169,40 @@ def relock_tracking_setup(S: SmurfControl, cfg: DetConfig, bands,
         tk.update({'lms_freq_hz': lms_freqs[i]})
         res[b] = S.tracking_setup(b, **tk)
 
-    return res
+    return True, res
 
 
-
-
-
-
-
-
-
-        
-        
-
-
-
-
-
-def uxm_relock(S: SmurfControl, cfg: DetConfig, bands=None, id_tolerance=0.5,
-               new_master_assignment=False):
+sdl.set_action()
+def uxm_relock(S, cfg, bands=None, id_tolerance=0.5,
+               new_master_assignment=False, setup_notches=True,
+               show_plots=False):
     """
-    Relock steps:
+    Relocks resonators by running the following steps
 
         1. Reset state (all off, disable waveform, etc.)
         2. Set amps and check tolerance 
-        3. load tune
-        4. setup-notches if specified (new_master_assignment=False)
-        5. Serial gradient descent and eta scan 
-        6. Run tracking setup
+        3. load tune, setup_notches, serial grad descent and eta scan
+        6. Tracking setup
         7. Measure noise
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    bands : list, optional
+        List of bands to run on. Defaults to all 8
+    id_tolerance : float
+        Tolerance in amp drain current
+    new_master_assignment : bool
+        Whether to run setup_notches with new_master_assignment.
+        Defaults to False
+
+    Returns
+    --------
+    summary : dict
+        Dictionary containing a summary of all run operations.
     """
     if bands is None:
         bands = np.arange(8)
@@ -155,34 +216,36 @@ def uxm_relock(S: SmurfControl, cfg: DetConfig, bands=None, id_tolerance=0.5,
     S.set_filter_disable(0)
     S.set_downsample_factor(20)
     S.set_mode_dc()
+
     for band in bands:
         band_cfg = cfg.dev.bands[band]
         S.set_att_uc(band, band_cfg['uc_att'])
         S.set_att_dc(band, band_cfg['dc_att'])
+        S.set_synthesis_scale(band, cfg.dev.exp['synthesis_scale'])
         S.amplitude_scale[band] = band_cfg['tone_power']
 
-
     # 2. set amplifiers
-    reload_amps(S, cfg)
+    success, summary['reload_amps'] = reload_amps(S, cfg)
+    if not success:
+        return False, summary
 
     # 3. load tune
-    reload_tune(S, cfg, bands, new_master_assignment=new_master_assignment)
+    success, summary['reload_tune'] = reload_tune(
+        S, cfg, bands, setup_notches=setup_notches,
+        new_master_assignment=new_master_assignment)
+    if not success:
+        return False, summary
 
-    # 4. setup-notches if specified (new_master_assignment=False)
-    for band in bands:
-        S.setup_notches(band, new_master_assignment=new_master_assignment)
+    success, summary['tracking_setup'] = relock_tracking_setup(
+        S, cfg, bands, show_plot=show_plots)
+    if not success:
+        return False, summary
 
-    # 5. Serial gradient descent and eta scan 
-    for band in bands:
-        S.run_serial_gradient_descent(band)
-        S.run_serial_eta_scan(band)
+    _, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,
+                                                show_plot=show_plots,
+                                                save_plot=True)
+    sdl.pub_ocs_data(S, {'noise_summary': {
+        'band_medians': summary['noise']['noisedict']['band_medians']
+    }})
 
-    # 6. Run tracking setup
-    for band in bands:
-        tk = sdl.get_tracking_kwargs(S, cfg)
-        S.tracking_setup(band)
-
-    # 7. Measure noise
-
-
-
+    return True, summary

@@ -5,63 +5,64 @@ import sodetlib as sdl
 from sodetlib import noise
 from tqdm.auto import trange
 import matplotlib.pyplot as plt
+from pysmurf.client.util.pub import set_action
 
-def plot_optimize_attens(S, summary, wlmax=1000, vmin=None, vmax=None):
-    """
-    Plots the results from the optimize_attens functions.
-    """
-    wls = summary['wl_medians']
-    grid = summary['atten_grid']
-    shape = wls[0].shape
 
-    xs = np.reshape(grid[:, 0], shape)
-    ys = np.reshape(grid[:, 1], shape)
-
-    ucs = summary['uc_attens']
-    dcs = summary['dc_attens']
-
-    fig, axes = plt.subplots(2, 4, figsize=(18, 6),
-                             gridspec_kw={'hspace': 0.4, 'wspace': 0.4})
-    fig.patch.set_facecolor('white')
-
-    if len(ucs) == 1:
-        fig.suptitle(f"Median White Noise, UC Atten = {ucs[0]}")
-    elif len(dcs) == 1:
-        fig.suptitle(f"Median White Noise, DC Atten = {dcs[0]}")
+def plot_optimize_attens(data, wlmax=1000, vmin=None, vmax=None,
+                         save_path=None):
+    ucs = data['ucs']
+    dcs = data['dcs']
+    nucs = len(np.unique(ucs))
+    ndcs = len(np.unique(dcs))
+    ucs = ucs.reshape(nucs, ndcs)
+    dcs = dcs.reshape(nucs, ndcs)
+    meds = data['band_medians'].reshape(8, nucs, ndcs)
 
     if vmin is None:
-        vmin = np.min(wls) * 0.9
+        vmin = np.min(meds) * 0.9
     if vmax is None:
-        vmax = min(np.max(wls) * 1.1, 500)  # We don't rly care if wl > 800
+        vmax = min(np.max(meds) * 1.1, 500)  # We don't rly care if wl > 800
 
-    for i, band in enumerate(summary['bands']):
-        ax = axes[band // 4, band % 4]
+    fig, axes = plt.subplots(2, 4, figsize=(24, 12))
+    fig.patch.set_facecolor('white')
 
-        if len(ucs) == 1:  # Sweep is dc only
-            uc = ucs[0]
-            _wls = wls[i, 0, :]
-            ax.plot(dcs, _wls)
+    bbox={'facecolor': 'wheat', 'alpha': 0.9}
+    for band, ax in enumerate(axes.ravel()):
+        if band not in data['run_bands']:
+            continue
+
+        if nucs == 1:  # Sweep is dc only
+            uc = ucs[0, 0]
+            ax.plot(dcs[0, :], meds[band, 0, :])
             ax.set(xlabel="DC atten", ylabel="white noise (pA/rt(Hz))")
             ax.set(title=f"Band {band}")
             ax.set(ylim=(vmin, vmax))
 
-        elif len(dcs) == 1:  # Sweep is uc only
-            dc = dcs[0]
-            _wls = wls[i, :, 0]
-            ax.plot(ucs, _wls)
+        elif ndcs == 1:  # Sweep is uc only
+            dc = dcs[0, 0]
+            ax.plot(ucs[:, 0], meds[band, :, 0])
             ax.set(xlabel="UC atten", ylabel="white noise (pA/rt(Hz))")
             ax.set(title=f"Band {band}")
             ax.set(ylim=(vmin, vmax))
 
         else:  # Do full 2d heat map
-            im = ax.pcolor(ucs, dcs, wls[i].T, vmin=vmin, vmax=vmax)
+            im = ax.pcolor(ucs, dcs, meds[band], vmin=vmin, vmax=vmax,
+                           shading='auto')
             ax.set(xlabel="UC atten", ylabel="DC atten", title=f"Band {band}")
-            if i == 0:
+            txt = '\n'.join([
+                f"Opt UC: {data['opt_ucs'][band]}",
+                f"Opt DC: {data['opt_dcs'][band]}",
+                f"Opt noise: {data['opt_wls'][band]:0.2f}"
+            ])
+            ax.text(0.05, 0.05, txt, transform=ax.transAxes, bbox=bbox, fontsize=13)
+            if band == 0:
                 fig.colorbar(im, label='Median White Noise [pA/rt(Hz)]',
-                             ax=axes.ravel().tolist())
+                             ax=axes)
 
-        fname = su.make_filename(S, f'atten_sweep_b{band}.png', plot=True)
-        fig.savefig(fname)
+    if save_path is not None:
+        fig.savefig(save_path)
+
+    return fig, axes
 
 
 @set_action()
@@ -100,23 +101,22 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
         functions.
     """
     bands = np.atleast_1d(bands)
-    nbands = len(bands)
 
     if uc_attens is None:
         uc_attens = np.arange(30, -2, -2)
-    uc_attens = np.atleast_1d(uc_attens)
+    uc_attens = np.sort(np.atleast_1d(uc_attens))
 
     if dc_attens is None:
         dc_attens = np.arange(30, -2, -2)
-    dc_attens = np.atleast_1d(dc_attens)
+    dc_attens = np.sort(np.atleast_1d(dc_attens))
 
     nsteps = len(uc_attens) * len(dc_attens)
-    ucs = np.zeros(nsteps)
-    dcs = np.zeros(nsteps)
+    ucs = np.zeros(nsteps, dtype=int)
+    dcs = np.zeros(nsteps, dtype=int)
     # Creates uc/dc grid with dc being the fast index and uc being the slow idx
     i = 0
-    for uc in enumerate(uc_attens):
-        for dc in enumerate(dc_attens):
+    for uc in uc_attens:
+        for dc in dc_attens:
             ucs[i] = uc
             dcs[i] = dc
             i += 1
@@ -124,9 +124,9 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     out = {}
     # Run bands to not conflict with ``bands`` key required by normalized
     # datafiles
-    out['run_bands'] = bands  
+    out['run_bands'] = bands
     out['band_medians'] = np.full((8, nsteps), np.inf)
-    out['sids'] = np.zeros(nsteps, dtype=int)
+    out['sid'] = np.zeros(nsteps, dtype=int)
     out['start_times'] = np.zeros(nsteps, dtype=float)
     out['stop_times'] = np.zeros(nsteps, dtype=float)
     out['ucs'] = ucs
@@ -159,9 +159,9 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     for i in trange(nsteps):
         uc, dc = ucs[i], dcs[i]
+        S.log(f"Step {i} / {nsteps},  uc: {uc}, dc: {dc}")
         new_uc = uc != S.get_att_uc(bands[0])
         run_setup_notches = new_uc or setup_notches_every_step
-
 
         for b in bands:
             S.set_att_uc(b, uc)
@@ -179,21 +179,21 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
 
         out['start_times'][i] = time.time()
-        am, outdict = noise.take_noise(S, cfg, meas_time, show_plot=False)
+        am, outdict = noise.take_noise(
+            S, cfg, meas_time, show_plot=False, plot_band_summary=False
+        )
         out['stop_times'][i] = time.time()
-        out['sid'][i] = out
+        out['sid'][i] = outdict['sid']
         if 'bands' not in out:
             out['bands'] = am.ch_info.band
             out['channels'] = am.ch_info.channel
-            out['wls'] = np.full((len(am.signal), nsteps), np.inf)
 
-        out['wls'] = outdict['noisedict']['noise_pars'][:, 0]
-        out['band_medians'][i] = out['noisedict']['band_medians']
+        out['band_medians'][:, i] = outdict['noisedict']['band_medians']
 
-        S.log(f"Band medians for uc,dc = {uc},{dc}: {out['band_medians'][i]}")
+        S.log(f"Band medians for uc,dc = {uc},{dc}: {out['band_medians'][:, i]}")
 
-    opt_ucs = np.full((8, ), np.nan)
-    opt_dcs = np.full((8, ), np.nan)
+    opt_ucs = np.zeros(8, dtype=int)
+    opt_dcs = np.zeros(8, dtype=int)
     opt_wls = np.full((8, ), np.inf)
     for b in bands:
         idx = np.argmin(out['band_medians'][b])
@@ -218,16 +218,21 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     path = sdl.validate_and_save('optimize_atten_summary.npy', out, S=S, cfg=cfg)
 
+    fig_path = sdl.make_filename(S, 'optimize_atten_summary.png', plot=True)
+    fig, axes = plot_optimize_attens(out, save_path=fig_path)
+    S.pub.register_file(fig_path, '', format='png', plot=True)
+
     if set_to_opt:
         for i, b in enumerate(bands):
-            ("Setting attens to opt values and re-running setup notches "
-                      f"for band {b}...")
-            S.set_att_uc(b, opt_ucs[i])
-            S.set_att_dc(b, opt_dcs[i])
-            S.setup_notches(b, tone_power=tone_power,
-                            new_master_assignment=False)
-            S.run_serial_gradient_descent(b)
-            S.run_serial_eta_scan(b)
-            S.tracking_setup(b, **tks[b])
+            S.log("Setting attens to opt values and re-running setup notches "
+                 f"for band {b}...")
+            S.set_att_uc(b, int(opt_ucs[i]))
+            S.set_att_dc(b, int(opt_dcs[i]))
+            if not skip_setup_notches:
+                S.setup_notches(b, tone_power=tone_power,
+                                new_master_assignment=False)
+                S.run_serial_gradient_descent(b)
+                S.run_serial_eta_scan(b)
+                S.tracking_setup(b, **tks[b])
 
     return out, path
