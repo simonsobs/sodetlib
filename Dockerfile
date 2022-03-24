@@ -103,3 +103,5 @@ COPY . /sodetlib
 WORKDIR /sodetlib
 RUN pip3 install -e .
 RUN pip3 install -r requirements.txt
+
+RUN rm -rf /var/lib/apt/lists/*
