@@ -84,30 +84,24 @@ def setup_amps(S, cfg, update_cfg=True):
     currents are in range, and if not will scan gate voltage to find one that
     hits the target current. Will update the device cfg if successful.
 
+    The following parameters can be modified in the device cfg:
+
+        exp:
+         - amp_enable_wait_time (float): Seconds to wait after enabling amps
+           before scanning gate voltages
+         - amp_hemt_Id (float): Target drain current for hemt amp (mA)
+         - amp_50k_Id (float): Target drain current for 50k amp (mA)
+         - amp_hemt_Id_tolerance (float): Tolerance for hemt drain current (mA)
+         - amp_50k_Id_tolerance (float): Tolerance for 50k drain current (mA)
+
     Args
     -----
     S : SmurfControl
         Pysmurf instance
     cfg : DetConfig
         DetConfig instance
-    amp_hemt_Id : float
-        Target hemt drain current (mA)
-    amp_50k_Id : float
-        Target 50k drain current (mA)
-    vgmin_hemt : float
-        Min hemt gate voltage (V)
-    vgmin_50k : float
-        Min 50k gate voltage (V)
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    wait_time : float
-        Time to wait after setting the voltage at each step. Defaults
-        to 0.5 sec
-    id_tolerance : float, tuple
-        Max difference between target drain current and actual drain currents
-        for this to be considered success (mA). Defaults to 0.2 mA. If a tuple
-        is passed, first element corresponds to HEMt amp, and second with
-        50k.
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
@@ -191,8 +185,6 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
     """
     sdl.pub_ocs_log(S, f"Estimating phase delay for bands {bands}")
 
-    exp = cfg.dev.exp
-
     summary = {
         'bands': [],
         'band_delay_us': [],
@@ -228,6 +220,11 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
     the ``optimize_attens`` function from the
     ``sodetlib/operations/optimize.py``
     module.
+
+    The following parameters can be modified in the device cfg:
+
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
 
     Args
     -----
@@ -289,24 +286,22 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     """
     Find freq, setup notches, and serial gradient descent and eta scan
 
+    The following parameters can be modified in the device cfg:
+
+        exp:
+         - res_amp_cut (float): Amplitude cut for peak-finding in find-freq
+         - res_grad_cut (float): Gradient cut for peak-finding in find-freq
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
+
     Args
     -----
     S : SmurfControl
         Pysmurf instance
     cfg : DetConfig
         DetConfig instance
-    tone_power : int, optional
-        Tone power to use. Defaults to what exists in the pysmurf-cfg file.
     show_plots : bool
         If true, will show find_freq plots. Defaults to False
-    amp_cut : float
-        Amplitude cut for peak-finding in find_freq
-    grad_cut : float
-        Gradient cut for peak-finding in find_freq
-    estimate_attens : bool
-        If True, will try to find reasonable uc / dc attens for
-        each band before running fund_freq. See the
-        ``estimate_uc_dc_atten`` function for more details.
     update_cfg : bool
         If true, will update the device cfg and save the file.
     """
@@ -354,6 +349,24 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
         3. Setup tune
         4. setup tracking
         5. Measure noise
+
+    The following device cfg parameters can be changed to modify behavior:
+
+        exp:
+         - downsample_factor (int): Downsample factor to use
+         - coupling_mode (str): Determines whether to run in DC or AC mode. Can
+           be 'dc' or 'ac'.
+         - synthesis_scale (int): Synthesis scale to use
+         - amp_enable_wait_time (float): Seconds to wait after enabling amps
+           before scanning gate voltages
+         - amp_hemt_Id (float): Target drain current for hemt amp (mA)
+         - amp_50k_Id (float): Target drain current for 50k amp (mA)
+         - amp_hemt_Id_tolerance (float): Tolerance for hemt drain current (mA)
+         - amp_50k_Id_tolerance (float): Tolerance for 50k drain current (mA)
+         - res_amp_cut (float): Amplitude cut for peak-finding in find-freq
+         - res_grad_cut (float): Gradient cut for peak-finding in find-freq
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
 
     Args
     -----

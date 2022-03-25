@@ -7,10 +7,12 @@ from functools import wraps
 try:
     import epics
     from pysmurf.client.util.pub import set_action
-except:
-    # Just replace set_action with functool.wraps if we
-    # can't import pysmurf
-    set_action = lambda *args, **kwargs: wraps
+except Exception as e:
+    # Just return base function regularly if can't import set_action
+    def set_action(*args, **kwargs):
+        def dec(func):
+            return func
+        return dec
     os.environ['NO_PYSMURF'] = 'true'
 
 
