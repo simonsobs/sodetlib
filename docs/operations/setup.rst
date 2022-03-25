@@ -269,7 +269,7 @@ To investigate the behavior of an individual channel, you can run:
 
     band, channel = 0, 10
     idx = np.where(
-        (bands == band) & (channels == channel)
+        (res.bands == band) & (res.channels == channel)
     )[0][0]
     tracking.plot_tracking_channel(res, idx)
 
