@@ -5,8 +5,8 @@ First Time Setup
 -----------------
 
 Before being able to properly take data on a new module, there are a number of
-parameters which need to be properly configured. There are a few modules in
-sodetlib which will put you in a fully configured.
+parameters which need to be properly configured, which can be done using the
+``uxm_setup`` and ``uxm_relock`` modules in sodetlib.
 
 For first time setup, many of these parameters must be computed, and a tunefile
 must be made from scratch. The ``uxm_setup`` operation goes through the
@@ -44,8 +44,8 @@ function will first enable the amps and check if they happened to already be
 biased properly. If not, the function will sweep the gate-voltage until it
 finds one that hits the target drain voltages specified in the device cfg. 
 
-Atten Estimation
-```````````````````
+Attenuator Estimation
+````````````````````````
 
 In order for phase-delay-estimation and resonator tuning to work properly,
 the power going into the smurf has to be balanced such that it doesn't
@@ -68,8 +68,7 @@ Estimate Phase Delay
 ``````````````````````
 
 Estimate Phase Delay is run for each band to measure the analog and digital
-phase delay for each band. See the pysmurf docstrings for more detail See the
-pysmurf docstrings for more detail
+phase delay for each band. See the pysmurf docstrings for more detail.
 
 Initial Tune
 ``````````````
@@ -100,13 +99,33 @@ Noise
 ``````
 
 Finally we are able to take detector data! We take a 30 second timestream here
-and calculate the white noise levels for all channels. Since the detectors are
-superconducting, we expect the median white noise level to be about 150
-pA/rt(Hz) for each band. If you're close to this number, you're good to go and
-ready to continue with taking a biasgroup map! If you're seeing white noise
-levels much higher than this, something is probably wrong and you may need to
-go back and run the previous steps individually to debug (see the API section
-for how to run each step individually).
+and calculate the white noise levels for all channels. 
+
+The detectors at this point are superconducting, so the white noise is given by:
+
+.. math::
+
+    NEI = \sqrt{NEI_\mathrm{sh}^2 + NEI_\mathrm{readout}^2}
+
+with
+
+.. math::
+
+    NEI_\mathrm{sh} = \sqrt{4 k_B T_b / R_{sh}} 
+    \qquad \mathrm{and} \qquad
+    NEI_\mathrm{readout} \approx 45 \;\mathrm{pA} / \sqrt{\mathrm{Hz}}
+
+Here you want to plug in values for your bath temperature and shunt resistances
+to see if the median white noise levels make sense.
+For example, with :math:`T_b = 100 \; \mathrm{mK}` and
+:math:`R_\mathrm{sh} = 0.4 \; \mathrm{m}\Omega`, you can expect a white noise level
+of around  :math:`125 \; \mathrm{pA}/\sqrt{\mathrm{Hz}}`. If you're close to
+this number, you're good to go and ready to continue with taking a biasgroup map!
+
+If you're seeing white noise levels much higher than this, something is
+probably wrong and you may need to go back and run the previous steps
+individually to debug (see the API section for how to run each step
+individually).
 
 API
 ````
@@ -114,6 +133,7 @@ API
     :members: 
 
 .. _relock:
+
 Relocking
 ----------
 
@@ -159,6 +179,7 @@ API
     :members: 
 
 .. _tracking:
+
 Tracking
 ----------
 
@@ -171,7 +192,8 @@ When setting up tracking, we are setting three main parameters:
  - The frequency of the flux-ramp wave (``reset_rate_khz``)
  - The amplitude of the flux-ramp wave (as a fraction of the max value output
    by the DAC: ``frac_pp``)
- - The carrier frequency being tracked by smurf for each band ``lms_freq``.
+ - The squid modulation frequency being tracked by smurf for each band
+   ``lms_freq``.
 
 Setup Tracking Params
 ``````````````````````
@@ -227,7 +249,7 @@ kHz and :math:`N \Phi_0 = 1`
     )
 
 Tracking Results and Cutting Channels
-``````````````````
+``````````````````````````````````````
 
 Both ``setup_tracking_params`` and ``relock_tracking_setup`` save and return a
 ``TrackingResults`` object, which contains the tracking data for all channels
