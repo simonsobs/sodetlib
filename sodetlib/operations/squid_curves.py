@@ -5,7 +5,8 @@ from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from pysmurf.client.util.pub import set_action
 import sodetlib as sdl
-
+from sodetlib.analysis import squid_fit as sqf
+import matplotlib.pyplot as plt
 
 def autocorr(wave):
     """
@@ -107,6 +108,7 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
         (phi > lower_phi_full_cycles) & (phi < upper_phi_full_cycles)
     )
     phi_full_cycles = phi[phi_full_cycle_idxs]
+
     # correlate some harmonics and overplot!
     fit_guess = np.zeros_like(noisy_squid_curve) + np.mean(noisy_squid_curve)
     # mean subtract the data and this harmonic
@@ -116,7 +118,7 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
 
     est = [phi0, phioffset, dm]
 
-    for n in range(1, nharmonics_to_estimate):
+    for n in range(1, nharmonics_to_estimate + 1):
         def this_harmonic(ph): return harmonic(n, ph, phioffset, 1/2)
         h = this_harmonic(phi_full_cycles)
         hm = np.mean(h)
@@ -229,22 +231,22 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
             plot_dir = S.plot_dir
         else:
             raise ValueError("Either S or ``plot_dir`` must be specified.")
-    idx = np.where((data['bands'] == band) & (data['channels'] == channel))[0]
-    biases = data['biases']
+    idx = np.where((data['bands']==band) & (data['channels']==channel))[0][0]
+    biases = data['fluxramp_ffs']
 
-    fres = data["fres"][idx]
+    fres = data['res_freq'][idx]
     plt.figure()
-    plt.plot(biases, dat["fvsfr"][idx, :], 'c0o')
+    plt.plot(biases, data["res_freq_vs_fr"][idx, :], 'co')
     plt.plot(biases, squid_curve_model(biases,
                                        *fit_dict['model_params'][idx, :]),
              'C1--')
     ax = plt.gca()
-    plt.text(0.0175, 0.975, fit_dict['plot_txt'], horizontalalignment='left',
+    plt.text(0.0175, 0.975, fit_dict['plt_txt'], horizontalalignment='left',
              verticalalignment='top', transform=ax.transAxes, fontsize=10,
              bbox=dict(facecolor='wheat', alpha=0.5, boxstyle='round'))
     plt.xlabel("Flux Bias [Fraction Full Scale FR DAC]", fontsize=14)
     plt.ylabel("Frequency Swing [kHz]", fontsize=14)
-    plt.title(f"Band {band} Channel {ch} $f_r$ = {np.round(fres,2)}")
+    plt.title(f"Band {band} Channel {channel} $f_r$ = {np.round(fres,2)}")
     if save_plot:
         ctime = int(time.time())
         fig_name = f"{plot_dir}/{ctime}_b{band}c{channel}_dc_squid_curve.png"
@@ -258,7 +260,7 @@ def fit_squid_curves(squid_data, fit_args=None):
     '''
     Function for fitting squid curves taken with ``take_squid_curve``.
     '''
-    fit_out = {'biases': squid_data['biases'],
+    fit_out = {'biases': squid_data['fluxramp_ffs'],
                'bands': squid_data['bands'],
                'channels': squid_data['channels']}
 
@@ -274,16 +276,16 @@ def fit_squid_curves(squid_data, fit_args=None):
     fit_guess = np.zeros((nchans, nharm+3))
     fit_result = np.zeros((nchans, nharm+3))
     derived_params = np.zeros((nchans, nharm+3))
-    for nc in nchans:
+    for nc in range(nchans):
         if fit_args:
-            fit_guess[nc, :] = estimate_fit_parameters(squid_data['biases'],
-                                                       squid_data['resp'],
+            fit_guess[nc, :] = estimate_fit_parameters(squid_data['fluxramp_ffs'],
+                                                       squid_data['res_freq_vs_fr'][nc],
                                                        **fit_args)
         else:
-            fit_guess[nc, :] = estimate_fit_parameters(squid_data['biases'],
-                                                       squid_data['resp'])
-        fit_result[nc, :], _ = curve_fit(squid_curve_model, data['biases'],
-                                         data['resp'][nc, :], p0=fit_guess[nc, :])
+            fit_guess[nc, :] = estimate_fit_parameters(squid_data['fluxramp_ffs'],
+                                                       squid_data['res_freq_vs_fr'][nc])
+        fit_result[nc, :], _ = curve_fit(squid_curve_model, squid_data['fluxramp_ffs'],
+                                         squid_data['res_freq_vs_fr'][nc, :], p0=fit_guess[nc, :])
         plt_txt, derived_params = get_derived_params_and_text(squid_data,
                                                               fit_result[nc, :],
                                                               nc)
@@ -338,7 +340,7 @@ def get_derived_params_and_text(data, model_params, idx):
     fit_dict : dict
         Dictionary of useful parameters derived from the model fit.
     '''
-    fit_curve = sqf.model(data['biases'], *model_params)
+    fit_curve = sqf.model(data['fluxramp_ffs'], *model_params)
     df_khz = np.ptp(fit_curve)*1000
     phi_over_one_cycle = np.linspace(0, model_params[0], 10000)+model_params[1]
     fit_curve_over_one_cycle = squid_curve_model(
@@ -346,13 +348,13 @@ def get_derived_params_and_text(data, model_params, idx):
     phi_over_one_cycle /= model_params[0]
     avg_dfdphi_Hzperuphi0 = np.mean(np.abs(np.gradient(fit_curve_over_one_cycle)) /
                                     (np.gradient(phi_over_one_cycle)))
-    hhpwr = (np.square(channel_fit[3]) /
-             (np.sum(np.square(channel_fit[4:]))))**-1
+    hhpwr = (np.square(model_params[3]) /
+             (np.sum(np.square(model_params[4:]))))**-1
     dfdI = dfduPhi0_to_dfdI(avg_dfdphi_Hzperuphi0, 227e-12)
-    plot_txt = ('$f_{res}$' + f' = {data["fres"][idx]:.1f} MHz\n' +
-                '$\\Phi_0$' + ' = {model_params[0]:.3f} ff\n' +
+    plot_txt = ('$f_{res}$' + f' = {data["res_freq"]:.1f} MHz\n' +
+                '$\\Phi_0$' + f' = {model_params[0]:.3f} ff\n' +
                 '$\\Phi_{offset}$' +
-                ' = {model_params[1]/model_params[0]:.3f} Phi0\n' +
+                f' = {model_params[1]/model_params[0]:.3f} Phi0\n' +
                 f'df = {df_khz:.1f} kHz\n' +
                 '$<df/dI>$' + f' = {dfdI/1e-3:.1f} mHz/pA\n' +
                 f'hhpwr = {hhpwr:.3f}')
@@ -434,7 +436,8 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         for band in bands:
             channels[band] = S.which_on(band)
 
-    band_cfg = cfg.dev.bands[bands[0]]
+
+    band_cfg = cfg.dev.exp
     if frac_pp is None:
         frac_pp = band_cfg['frac_pp']
     if lms_freq is None:
@@ -465,7 +468,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
     data['meta'] = sdl.get_metadata(S, cfg)
     data['bands'] = np.asarray(bands_out)
     data['channels'] = np.asarray(channels_out)
-    data['biases'] = biases
+    data['fluxramp_ffs'] = biases
 
     unique_bands = np.unique(np.asarray(bands_out, dtype=int))
     prev_lms_enable1 = {}
@@ -488,7 +491,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         S.set_lms_enable3(band, 0)
         S.set_lms_gain(band, lms_gain)
 
-        data[band] = {}
+        data['res_freq_vs_fr'] = []
 
     fs = {}
     S.log(
@@ -541,10 +544,10 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         lfovsfr = np.dstack(fs[band])[0]
         fvsfr = np.array([arr+fres for (arr, fres) in zip(lfovsfr, fres_loop)])
         if i == 0:
-            data['resp'] = fvsfr
+            data['res_freq_vs_fr'] = fvsfr
         else:
-            data['resp'] = np.concatenate((data['resp'], fvsfr), axis=0)
-    data['fres'] = np.asarray(fres)
+            data['res_freq_vs_fr'] = np.concatenate((data['res_freq_vs_fr'], fvsfr), axis=0)
+    data['res_freq'] = np.asarray(fres)
     # save dataset for each iteration, just to make sure it gets
     # written to disk
     np.save(out_path, data)
@@ -557,7 +560,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         S.set_lms_enable1(band, prev_lms_enable1[band])
         S.set_lms_enable2(band, prev_lms_enable2[band])
         S.set_lms_enable3(band, prev_lms_enable3[band])
-        S.set_lms_gain(band, lms_gain[band])
+        S.set_lms_gain(band, lms_gain)
     if cur_mode == 'AC':
         S.set_mode_ac()
 
