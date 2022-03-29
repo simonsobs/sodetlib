@@ -785,11 +785,34 @@ def plot_iv_res_comparison(bsa, lim=None):
     return fig, ax
 
 
+def plot_bg_assignment(bsa):
+    """
+    Plots bias group assignment summary
+    """
+    xs = np.arange(13)
+    ys = np.zeros(13)
+
+    xticklabels = []
+    for i in range(12):
+        ys[i] = np.sum(bsa.bgmap == i)
+        xticklabels.append(str(i))
+    ys[12] = np.sum(bsa.bgmap == -1)
+    xticklabels.append('None')
+
+    fig, ax = plt.subplots(figsize=(16, 10))
+    ax.bar(xs, ys)
+    ax.set_xticks(np.arange(13))
+    ax.set_xticklabels(xticklabels)
+    ax.set_xlabel("Bias Group", fontsize=16)
+    ax.set_ylabel("Num Channels", fontsize=16)
+    return fig, ax
+
 
 @set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsweep_steps=10, nsteps=10,
-               high_current_mode=True, hcm_wait_time=0, analysis_kwargs=None):
+               high_current_mode=True, hcm_wait_time=0, analysis_kwargs=None,
+               dacs='pos', use_waveform=False):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -843,6 +866,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         create_bg_map=True, save_bg_map=True, nsteps=nsteps,
         nsweep_steps=nsweep_steps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
+        use_waveform=use_waveform,
         analysis_kwargs=_analysis_kwargs)
 
     return bsa
