@@ -11,6 +11,80 @@ from pysmurf.client.util.pub import set_action
 np.seterr(all='ignore')
 
 
+def _play_tes_bipolar_waveform(S, bias_group, waveform, do_enable=True,
+                                 continuous=True, **kwargs):
+    """
+    Play a bipolar waveform on the bias group.
+    Args
+    ----
+    bias_group : int
+                The bias group
+    waveform : float array
+                The waveform the play on the bias group.
+    do_enable : bool, optional, default True
+                Whether to enable the DACs (similar to what is required
+                for TES bias).
+    continuous : bool, optional, default True
+                Whether to play the TES waveform continuously.
+    """
+    bias_order = S.bias_group_to_pair[:,0]
+
+    dac_positives = S.bias_group_to_pair[:,1]
+    dac_negatives = S.bias_group_to_pair[:,2]
+
+    dac_idx = np.ravel(np.where(bias_order == bias_group))
+
+    dac_positive = dac_positives[dac_idx][0]
+    dac_negative = dac_negatives[dac_idx][0]
+
+    # https://confluence.slac.stanford.edu/display/SMuRF/SMuRF+firmware#SMuRFfirmware-RTMDACarbitrarywaveforms
+    # Target the two bipolar DACs assigned to this bias group:
+    S.set_dac_axil_addr(0, dac_positive)
+    S.set_dac_axil_addr(1, dac_negative)
+
+    # Must enable the DACs (if not enabled already)
+    if do_enable:
+        S.set_rtm_slow_dac_enable(dac_positive, 2, **kwargs)
+        S.set_rtm_slow_dac_enable(dac_negative, 2, **kwargs)
+
+    # Load waveform into each DAC's LUT table.  Opposite sign so
+    # they combine coherenty
+    S.set_rtm_arb_waveform_lut_table(0, waveform)
+    S.set_rtm_arb_waveform_lut_table(1, -waveform)
+
+    # Enable waveform generation (1=on both DACs)
+    S.set_rtm_arb_waveform_enable(3)
+
+    # Continous mode to play the waveform continuously
+    if continuous:
+        S.set_rtm_arb_waveform_continuous(1)
+    else:
+        S.set_rtm_arb_waveform_continuous(0)
+
+def _make_step_waveform(S, step_dur, step_voltage, dc_voltage):
+    ""
+    # Setup waveform
+    sig = np.ones(2048)
+    sig *= dc_voltage / (2*S._rtm_slow_dac_bit_to_volt)
+    sig[1024:] += step_voltage / (2*S._rtm_slow_dac_bit_to_volt)
+    timer_size = int(step_dur/(6.4e-9 * 2048))
+    return sig, timer_size
+
+def play_bias_steps_waveform(S, cfg, bias_group, step_duration, step_voltage,
+                             num_steps=5, dc_bias=None):
+    if dc_bias is None:
+        dc_bias = S.get_tes_bias_bipolar(bias_group)
+    sig, timer_size = _make_step_waveform(S, step_duration, step_voltage, dc_bias)
+    S.set_rtm_arb_waveform_timer_size(timer_size, wait_done=True)
+    _play_tes_bipolar_waveform(S, bias_group, sig)
+    start_time = time.time()
+    time.sleep(step_duration * (num_steps+1))
+    stop_time = time.time()
+    S.set_rtm_arb_waveform_enable(0)
+    S.set_tes_bias_bipolar(bias_group, dc_bias)
+    return start_time, stop_time
+
+
 def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
                        num_steps=5, dacs='pos'):
     """
@@ -778,7 +852,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     create_bg_map=False, save_bg_map=False, nsteps=20,
                     nsweep_steps=None, high_current_mode=True, hcm_wait_time=3,
-                    run_analysis=True, analysis_kwargs=None, dacs='pos'):
+                    run_analysis=True, analysis_kwargs=None, dacs='pos',
+                    use_waveform=True, channel_mask=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -866,16 +941,26 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             time.sleep(hcm_wait_time)
 
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
-        bsa.sid = sdl.stream_g3_on(S, tag='bias_steps')
+
+
+        bsa.sid = sdl.stream_g3_on(
+            S, tag='bias_steps', channel_mask=channel_mask
+        )
 
         bsa.start = time.time()
         if create_bg_map or (nsweep_steps is not None):
             bsa.bg_sweep_start = time.time()
             for bg in bgs:
-                play_bias_steps_dc(
-                    S, cfg, bg, step_duration, step_voltage, nsweep_steps,
-                    dacs=dacs,
-                )
+                if use_waveform:
+                    play_bias_steps_waveform(
+                        S, cfg, bg, step_duration, step_voltage,
+                        num_steps=nsweep_steps
+                    )
+                else:
+                    play_bias_steps_dc(
+                        S, cfg, bg, step_duration, step_voltage,
+                        num_steps=nsweep_steps, dacs=dacs,
+                    )
             bsa.bg_sweep_stop = time.time()
 
         play_bias_steps_dc(S, cfg, bgs, step_duration, step_voltage, nsteps)
