@@ -217,8 +217,16 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
 
     Args
     ----
-    datafile: str
-        Path to data taken with take_squid_open_loop
+    data: dict
+        Output data product from take_squid_curves
+    fit_dict: dict
+        Dictionary of fits. Product of fit_squid_curves
+    band: int
+        Band number
+    channel: int
+        Channel number
+    save_plot: bool
+        Boolean to toggle saving of plot to disk
     S: PysmurfControl object, optional
         Used to grab plot_dir and publish plots
     plot_dir: str
@@ -241,7 +249,7 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
                                        *fit_dict['model_params'][idx, :]),
              'C1--')
     ax = plt.gca()
-    plt.text(0.0175, 0.975, fit_dict['plt_txt'], horizontalalignment='left',
+    plt.text(0.0175, 0.975, fit_dict['plt_txt'][idx], horizontalalignment='left',
              verticalalignment='top', transform=ax.transAxes, fontsize=10,
              bbox=dict(facecolor='wheat', alpha=0.5, boxstyle='round'))
     plt.xlabel("Flux Bias [Fraction Full Scale FR DAC]", fontsize=14)
@@ -259,6 +267,18 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
 def fit_squid_curves(squid_data, fit_args=None):
     '''
     Function for fitting squid curves taken with ``take_squid_curve``.
+    
+    Args
+    ----
+    squid_data: dictionary
+        Output data product from take_squid_curves
+    fit_args: int
+        Number of harmonics to fit to squid curves, defaults to 5.
+    
+    Returns
+    -------
+    fit_out: dictionary
+        Dictionary of fit parameters.
     '''
     fit_out = {'biases': squid_data['fluxramp_ffs'],
                'bands': squid_data['bands'],
@@ -275,7 +295,8 @@ def fit_squid_curves(squid_data, fit_args=None):
     nchans = len(squid_data['channels'])
     fit_guess = np.zeros((nchans, nharm+3))
     fit_result = np.zeros((nchans, nharm+3))
-    derived_params = np.zeros((nchans, nharm+3))
+    plt_txt = []
+    derived_params = []
     for nc in range(nchans):
         if fit_args:
             fit_guess[nc, :] = estimate_fit_parameters(squid_data['fluxramp_ffs'],
@@ -286,9 +307,15 @@ def fit_squid_curves(squid_data, fit_args=None):
                                                        squid_data['res_freq_vs_fr'][nc])
         fit_result[nc, :], _ = curve_fit(squid_curve_model, squid_data['fluxramp_ffs'],
                                          squid_data['res_freq_vs_fr'][nc, :], p0=fit_guess[nc, :])
-        plt_txt, derived_params = get_derived_params_and_text(squid_data,
-                                                              fit_result[nc, :],
-                                                              nc)
+        txt, params = get_derived_params_and_text(squid_data, fit_result[nc, :], nc)
+        params['1h'] = fit_guess[nc, 3]
+        params['2h'] = fit_guess[nc, 4]
+        params['3h'] = fit_guess[nc, 5]
+        params['4h'] = fit_guess[nc, 6]
+        params['5h'] = fit_guess[nc, 7]
+        derived_params.append(params)
+        plt_txt.append(txt)
+        
     fit_out['initial_guess'] = fit_guess
     fit_out['model_params'] = fit_result
     fit_out['derived_params'] = derived_params
@@ -351,7 +378,7 @@ def get_derived_params_and_text(data, model_params, idx):
     hhpwr = (np.square(model_params[3]) /
              (np.sum(np.square(model_params[4:]))))**-1
     dfdI = dfduPhi0_to_dfdI(avg_dfdphi_Hzperuphi0, 227e-12)
-    plot_txt = ('$f_{res}$' + f' = {data["res_freq"]:.1f} MHz\n' +
+    plot_txt = ('$f_{res}$' + f' = {data["res_freq"][idx]:.1f} MHz\n' +
                 '$\\Phi_0$' + f' = {model_params[0]:.3f} ff\n' +
                 '$\\Phi_{offset}$' +
                 f' = {model_params[1]/model_params[0]:.3f} Phi0\n' +
