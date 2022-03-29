@@ -2,55 +2,7 @@ import time
 import numpy as np
 import sodetlib as sdl
 from sodetlib.operations.tracking import relock_tracking_setup
-
-
-@sdl.set_action()
-def reload_amps(S, cfg):
-    """
-    Reloads amplifier biases from dev cfg and checks that drain-currents fall
-    within tolerance.
-
-    Args
-    ----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        Det config instance
-    """
-    summary = {}
-
-    exp = cfg.dev.exp
-    sdl.pub_ocs_log(S, 'setting amp voltage')
-    S.set_50k_amp_gate_voltage(cfg.dev.exp['amp_50k_Vg'])
-    S.set_hemt_gate_voltage(cfg.dev.exp['amp_hemt_Vg'])
-    S.C.write_ps_en(0b11)
-    time.sleep(exp['amp_enable_wait_time'])
-
-    biases = S.get_amplifier_biases()
-    summary['biases'] = biases
-
-    exp = cfg.dev.exp
-
-    tol_hemt, tol_50k = exp['amp_hemt_Id_tolerance'], exp['amp_50k_Id_tolerance']
-    in_range_hemt = np.abs(biases['hemt_Id'] - exp['amp_hemt_Id']) < tol_hemt
-    in_range_50k = np.abs(biases['50K_Id'] - exp['amp_50k_Id']) < tol_50k
-
-    if not (in_range_50k and in_range_hemt):
-        S.log("Hemt or 50K Amp drain current not within tolerance")
-        S.log(f"Target hemt Id: {exp['amp_hemt_Id']}")
-        S.log(f"Target 50K Id: {exp['amp_50k_Id']}")
-        S.log(f"tolerance: {(tol_hemt, tol_50k)}")
-        S.log(f"biases: {biases}")
-
-        summary['success'] = False
-        sdl.pub_ocs_log(S, 'Failed to set amp voltages')
-        sdl.pub_ocs_data(S, {'amp_summary': summary})
-        return False, summary
-
-    summary['success'] = True
-    sdl.pub_ocs_log(S, 'Succuessfully to set amp voltages')
-    sdl.pub_ocs_data(S, {'amp_summary': summary})
-    return True, summary
+from sodetlib.operations import uxm_setup
 
 
 @sdl.set_action()
@@ -173,7 +125,9 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     # 2. Setup amps
     #############################################################
     summary['timestamps'].append(('setup_amps', time.time()))
-    success, summary['reload_amps'] = reload_amps(S, cfg)
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+    success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
+
     if not success:
         return False, summary
 
@@ -181,9 +135,12 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     # 3. Load tune
     #############################################################
     summary['timestamps'].append(('load_tune', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['reload_tune'] = reload_tune(
         S, cfg, bands, setup_notches=setup_notches,
         new_master_assignment=new_master_assignment)
+
+    sdl.set_session_data(S, 'reload_tune', summary['reload_tune'])
     if not success:
         return False, summary
 
@@ -191,6 +148,7 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     # 4. Tracking Setup
     #############################################################
     summary['timestamps'].append(('tracking_setup', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
     tr = relock_tracking_setup(
         S, cfg, bands, show_plots=show_plots,
@@ -198,24 +156,32 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     )
     summary['tracking_setup_results'] = tr
 
+    sdl.set_session_data(S, 'tracking_setup_results', {
+        'bands': tr.bands, 'channels': tr.channels,
+        'r2': tr.r2, 'f_ptp': tr.f_ptp, 'df_ptp': tr.df_ptp,
+        'is_good': tr.is_good,
+    })
+
     # Check that the number of good tracing channels is larger than the
     # min_good_tracking_frac
     if tr.ngood / tr.nchans < cfg.dev.exp['min_good_tracking_frac']:
         return False, summary
 
-
     #############################################################
     # 5. Noise
     #############################################################
     summary['timestamps'].append(('noise', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,
                                                 show_plot=show_plots,
                                                 save_plot=True)
     summary['noise']['am'] = am
-    sdl.pub_ocs_data(S, {'noise_summary': {
+
+    sdl.set_session_data(S, 'noise', {
         'band_medians': summary['noise']['band_medians']
-    }})
+    })
 
     summary['timestamps'].append(('end', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
     return True, summary

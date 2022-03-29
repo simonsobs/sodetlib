@@ -1,0 +1,9 @@
+font.size : 12
+font.family : serif
+axes.titlesize : 16
+axes.labelsize : 16
+xtick.labelsize : 16
+ytick.labelsize : 16
+legend.fontsize : 16
+figure.titlesize : 18
+figure.facecolor : 'white'

@@ -74,20 +74,19 @@ def _encode_data(data):
         return data
 
 
-def pub_ocs_data(S, data):
+def set_session_data(S, key, val):
     """
-    Passes data to the OCS pysmurf controller to be set in session.data.
+    Adds data to the OCS Session data object. If this is being run directly
+    from an OCS PysmurfController operation, the _ocs_session object will be
+    set in the pysmurf instance. If not, publish message so pysmurf monitor can
+    relay data to the correct controller agent.
+    """
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.data[key] = _encode_data(val)
+    else:
+        S.pub.publish(_encode_data({key: val}), msgtype='session_data')
 
-    Args
-    -----
-    S : SmurfControl
-        Pysmurf instance
-    data : dict
-        Dictionary containing data to send to ocs. This will update the
-        session.data object of the active pysmurf-controller agent operation
-        with the supplied data.
-    """
-    S.pub.publish(_encode_data(data), msgtype='session_data')
 
 
 def pub_ocs_log(S, msg, log=True):
@@ -97,6 +96,11 @@ def pub_ocs_log(S, msg, log=True):
     """
     if log:
         S.log(msg)
+
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.add_message(msg)
+
     S.pub.publish(msg, msgtype='session_log')
 
 
@@ -521,6 +525,7 @@ class Registers:
         'flac_level': _sostream + "FlacLevel",
         'source_enable': _source_root + 'SourceEnable',
         'enable_compression': _sostream + 'EnableCompression',
+        'agg_time': _sostream + 'AggTime',
     }
 
     def __init__(self, S):

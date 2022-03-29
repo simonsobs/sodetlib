@@ -15,9 +15,10 @@ except:
 
 
 from sodetlib.util import (
-    make_filename, pub_ocs_data, pub_ocs_log, load_bgmap, map_band_chans,
+    make_filename, pub_ocs_log, load_bgmap, map_band_chans,
     get_metadata, get_tracking_kwargs, get_psd, get_asd, Registers,
-    get_current_mode_array, set_current_mode, validate_and_save
+    get_current_mode_array, set_current_mode, validate_and_save,
+    set_session_data
 )
 
 from sodetlib.stream import (
