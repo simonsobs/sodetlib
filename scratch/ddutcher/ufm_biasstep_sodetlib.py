@@ -1,25 +1,16 @@
 '''
-Code written in Oct 2021 by Yuhan Wang
-to be used through OCS
 UFM testing script in Pton
 loop around different bias voltage and collect biasstep measurement 
 '''
 
-import matplotlib
-matplotlib.use('Agg')
-
-import pysmurf.client
 import argparse
 import numpy as np
 import os
 import time
-import glob
+import sodetlib as sdl
+from sodetlib import noise
 from sodetlib.det_config  import DetConfig
-from sodetlib.smurf_funcs import det_ops
-import numpy as np
-from scipy.interpolate import interp1d
-import argparse
-import time
+from sodetlib.operations.bias_steps import take_bias_steps
 import csv
 
 parser = argparse.ArgumentParser()
@@ -55,7 +46,7 @@ if not os.path.exists(out_fn):
 
 S.overbias_tes_all(
     bias_groups=bias_groups,
-    overbias_wait=1,
+    overbias_wait=2,
     tes_bias=20,
     cool_wait=3,
     high_current_mode=False,
@@ -63,7 +54,7 @@ S.overbias_tes_all(
 )
 time.sleep(300)
 
-step_array = np.arange(bias_high, bias_low, -0.5)
+step_array = np.arange(bias_high, bias_low - 0.5, -0.5)
 #step_size = 0.01 
 for bias_voltage_step in step_array:
     bias_array = np.zeros(S._n_bias_groups)
@@ -73,7 +64,7 @@ for bias_voltage_step in step_array:
     S.set_tes_bias_bipolar_array(bias_array) 
     time.sleep(120)
 
-    bsa = det_ops.take_bias_steps(S, cfg)
+    bsa = take_bias_steps(S, cfg)
 
     row = {}
     row['bath_temp'] = f'{bath_temp}mK'
@@ -86,15 +77,24 @@ for bias_voltage_step in step_array:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writerow(row)
 
-    #take 20s timestream for noise
+    #take 30s timestream for noise
     for bg in bias_groups:
         bias_array[bg] = bias_voltage_step
     S.set_tes_bias_bipolar_array(bias_array)
     time.sleep(10)
-    dat_path = S.stream_data_on()
-    time.sleep(20)
-    S.stream_data_off()
-    row['data_path'] = dat_path
+
+    sid = sdl.take_g3_data(S, 30)
+    am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
+    ctime = int(am.timestamps[0])
+    noisedict = noise.get_noise_params(
+        am, wl_f_range=(10,30), fit=False, nperseg=1024)
+    noisedict['sid'] = sid
+    savename = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
+    sdl.validate_and_save(
+        savename, noisedict, S=S, cfg=cfg, make_path=False
+    )
+
+    row['data_path'] = savename
     row['step_size'] = 0
 
     with open(out_fn, 'a', newline = '') as csvfile:

@@ -4,7 +4,7 @@
 *.pyc
 
 # Analysis outputs
-*.png
+# *.png
 *.pdf
 
 # Byte-compiled / optimized / DLL files

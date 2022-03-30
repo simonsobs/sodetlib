@@ -169,7 +169,8 @@ class IVAnalysis:
     def _load_am(self, arc=None):
         if self.am is None:
             if arc:
-                self.am = arc.load_data(self.start, self.stop)
+                self.am = arc.load_data(self.start_times[0],
+                                        self.stop_times[-1])
             else:
                 self.am = sdl.load_session(self.meta['stream_id'], self.sid)
         return self.am

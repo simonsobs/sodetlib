@@ -1,15 +1,9 @@
-'''
-Code written in Oct 2021 by Yuhan Wang relock UFM with a given tune file
-'''
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-import os,sys
 import sodetlib.smurf_funcs.optimize_params as op
-
-sys.path.append('/sodetlib/scratch/ddutcher')
-from noise_stack_by_band import noise_stack_by_band
+from sodetlib import noise
 
 
 def uxm_relock(S, cfg, bands=None, setup_notches=False, estimate_phase_delay=False):
@@ -43,13 +37,16 @@ def uxm_relock(S, cfg, bands=None, setup_notches=False, estimate_phase_delay=Fal
                 raise
             except Exception:
                 logger.warning("Estimate phase delay failed due to PV timeout.")
+        # load tune now so freq resp not overwritten by estimate_phase_delay
+        # load all bands so that S.tune_file gets updated.
+        S.load_tune(cfg.dev.exp['tunefile'])
 
         print('setting synthesis scale')
         # hard coding it for the current fw
         S.set_synthesis_scale(band,1)
 
-        print('running relock')
         if not setup_notches:
+            print('running relock')
             S.relock(band, tone_power=cfg.dev.bands[band]['drive'])
         else:
             S.load_master_assignment(band, S.freq_resp[band]['channel_assignment'])
@@ -93,9 +90,11 @@ if __name__ == "__main__":
     args = cfg.parse_args(parser)
 
     S = cfg.get_smurf_control()
-    S.load_tune(cfg.dev.exp['tunefile'])
 
-    op.cryo_amp_check(S, cfg)
+    # power amplifiers
+    success = op.cryo_amp_check(S, cfg)
+    if not success:
+        raise OSError("Health check failed")
 
     uxm_relock(
         S,
@@ -104,11 +103,11 @@ if __name__ == "__main__":
         setup_notches=args.setup_notches,
         estimate_phase_delay=args.estimate_phase_delay,
     )
+    S.load_tune(cfg.dev.exp['tunefile'])
 
-    noise_stack_by_band(
-        S,
-        stream_time=20,
-        fmin=5,
-        fmax=50,
-        detrend='constant',
+    acq_time = 30
+    nsamps = S.get_sample_frequency() * acq_time
+    nperseg = 2 ** round(np.log2(nsamps / 5))
+    noise.take_noise(
+        S, cfg, acq_time=acq_time, show_plot=False, save_plot=True, nperseg=nperseg
     )

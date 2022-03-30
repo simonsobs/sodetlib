@@ -52,6 +52,9 @@ class UCTuner:
         self.status = None
         self.wl_list = None
         self.uc_attens = None
+        self.best_wl = None
+        self.best_att = None
+        self.best_tone = None
 
         if band is None:
             raise ValueError("Must specify `band` as int [0-7]")
@@ -88,7 +91,7 @@ class UCTuner:
             am, outdict = noise.take_noise(self._S, self._cfg, acq_time=30, fit=False,
                                            plot_band_summary=False, show_plot=False)
 
-            noise_param = outdict['noisedict']['noise_pars'][:,0]
+            noise_param = outdict['noise_pars'][:,0]
 
             wl_list.append(round(np.nanmedian(noise_param), 1))
             wl_len_list.append(len(noise_param))
@@ -103,7 +106,11 @@ class UCTuner:
         self.estimate_att = estimate_att
         self.lowest_wl_index = lowest_wl_index
         self.wl_median = wl_median
-        self.wl_length= wl_len_list[lowest_wl_index]
+        if self.best_wl is None or self.wl_median < self.best_wl:
+            self.best_wl = wl_median
+            self.best_tone = self.current_tone_power
+            self.best_att = estimate_att
+        self.wl_length = wl_len_list[lowest_wl_index]
         self.status = (f"WL: {self.wl_median:.1f} pA/rtHz with"
                        + f" {self.wl_length} channels.")
 

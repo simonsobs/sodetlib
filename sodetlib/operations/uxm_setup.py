@@ -1,6 +1,9 @@
 import numpy as np
 import time
 import sodetlib as sdl
+from sodetlib.operations import tracking
+
+import matplotlib.pyplot as plt
 
 
 def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
@@ -45,8 +48,9 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
         Id = amp_biases[f"{amp_name}_Id"]
         delta = target_Id - Id
 
+        S.log(delta)
         # Check if Id is within tolerance
-        if np.abs(delta)/target_Id < id_tolerance:
+        if np.abs(delta) < id_tolerance:
             return True
 
         if amp_name == 'hemt':
@@ -76,9 +80,19 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
 @sdl.set_action()
 def setup_amps(S, cfg, update_cfg=True):
     """
-    Initial setup for 50k and hemt amplifiers. Determines gate voltages
-    required to reach specified drain currents. Will update detconfig on
-    success.
+    Initial setup for 50k and hemt amplifiers. Will first check if drain
+    currents are in range, and if not will scan gate voltage to find one that
+    hits the target current. Will update the device cfg if successful.
+
+    The following parameters can be modified in the device cfg:
+
+        exp:
+         - amp_enable_wait_time (float): Seconds to wait after enabling amps
+           before scanning gate voltages
+         - amp_hemt_Id (float): Target drain current for hemt amp (mA)
+         - amp_50k_Id (float): Target drain current for 50k amp (mA)
+         - amp_hemt_Id_tolerance (float): Tolerance for hemt drain current (mA)
+         - amp_50k_Id_tolerance (float): Tolerance for 50k drain current (mA)
 
     Args
     -----
@@ -86,31 +100,13 @@ def setup_amps(S, cfg, update_cfg=True):
         Pysmurf instance
     cfg : DetConfig
         DetConfig instance
-    amp_hemt_Id : float
-        Target hemt drain current (mA)
-    amp_50k_Id : float
-        Target 50k drain current (mA)
-    vgmin_hemt : float
-        Min hemt gate voltage (V)
-    vgmin_50k : float
-        Min 50k gate voltage (V)
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    wait_time : float
-        Time to wait after setting the voltage at each step. Defaults
-        to 0.5 sec
-    id_tolerance : float, tuple
-        Max difference between target drain current and actual drain currents
-        for this to be considered success (mA). Defaults to 0.2 mA. If a tuple
-        is passed, first element corresponds to HEMt amp, and second with
-        50k.
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
     exp = cfg.dev.exp
 
-    S.set_50k_amp_gate_voltage(exp['amp_50k_init_Vg'])
-    S.set_hemt_gate_voltage(exp['amp_hemt_init_Vg'])
     S.C.write_ps_en(0b11)
     time.sleep(exp['amp_enable_wait_time'])
 
@@ -123,23 +119,37 @@ def setup_amps(S, cfg, update_cfg=True):
         'amp_hemt_Vg': None,
     }
 
-    success = find_gate_voltage(
-        S, exp['amp_hemt_Id'], 'hemt', wait_time=exp['amp_step_wait_time'],
-        id_tolerance=exp['amp_hemt_Id_tolerance'])
-    if not success:
-        sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
-        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
-        S.C.write_ps_en(0)
-        return False, summary
+    # First check if amps are within tolerance...
+    amp_biases = S.get_amplifier_biases()
+    delta_hemt = np.abs(amp_biases['hemt_Id'] - exp['amp_hemt_Id'])
+    delta_50k = np.abs(amp_biases['50K_Id'] - exp['amp_50k_Id'])
 
-    success = find_gate_voltage(
-        S, exp['amp_50k_Id'], '50k', wait_time=exp['amp_step_wait_time'],
-        id_tolerance=exp['amp_50k_Id_tolerance'])
-    if not success:
-        sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
-        sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
-        S.C.write_ps_en(0)
-        return False, summary
+    # Check / scan hemt voltage
+    if delta_hemt > exp['amp_hemt_Id_tolerance']:
+        S.log("Hemt current not within tolerance, scanning for correct Vg")
+        S.set_hemt_gate_voltage(exp['amp_hemt_init_Vg'])
+        success = find_gate_voltage(
+            S, exp['amp_hemt_Id'], 'hemt', wait_time=exp['amp_step_wait_time'],
+            id_tolerance=exp['amp_hemt_Id_tolerance']
+        )
+        if not success:
+            sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
+            sdl.set_session_data(S, 'setup_amps_summary', summary)
+            S.C.write_ps_en(0)
+            return False, summary
+
+    # Check / scan 50k voltage
+    if delta_50k > exp['amp_50k_Id_tolerance']:
+        S.log("50k current not within tolerance, scanning for correct Vg")
+        success = find_gate_voltage(
+            S, exp['amp_50k_Id'], '50K', wait_time=exp['amp_step_wait_time'],
+            id_tolerance=exp['amp_50k_Id_tolerance']
+        )
+        if not success:
+            sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
+            sdl.set_session_data(S, 'setup_amps_summary', summary)
+            S.C.write_ps_en(0)
+            return False, summary
 
     # Update device cfg
     biases = S.get_amplifier_biases()
@@ -150,7 +160,7 @@ def setup_amps(S, cfg, update_cfg=True):
         }, update_file=True)
 
     summary = {'success': True, **biases}
-    sdl.pub_ocs_data(S, {'setup_amps_summary': summary})
+    sdl.set_session_data(S, 'setup_amps_summary', summary)
     return True, summary
 
 
@@ -175,8 +185,6 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
     """
     sdl.pub_ocs_log(S, f"Estimating phase delay for bands {bands}")
 
-    exp = cfg.dev.exp
-
     summary = {
         'bands': [],
         'band_delay_us': [],
@@ -194,7 +202,7 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
     if update_cfg:
         cfg.dev.update_file()
 
-    sdl.pub_ocs_data(S, {'setup_phase_delay': summary})
+    sdl.set_session_data(S, 'setup_phase_delay', summary)
     return True, summary
 
 
@@ -212,6 +220,11 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
     the ``optimize_attens`` function from the
     ``sodetlib/operations/optimize.py``
     module.
+
+    The following parameters can be modified in the device cfg:
+
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
 
     Args
     -----
@@ -235,7 +248,7 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
         S.set_att_uc(band, att)
         S.set_att_dc(band, att)
 
-        _, resp = S.full_band_ampl_sweep(band, sbs, cfg.dev.exp['tone_power'], nread)
+        _, resp = S.full_band_ampl_sweep(band, sbs, cfg.dev.bands[band]['tone_power'], nread)
         max_resp = np.max(np.abs(resp))
         S.log(f"att: {att}, max_resp: {max_resp}")
 
@@ -244,17 +257,20 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True):
             success = True
             break
 
-        if step == 0:
-            S.log(f"Cannot achieve resp in range {resp_range}!")
-            success = False
-            break
-
         if max_resp < resp_range[0]:
+            if att == 0:
+                S.log(f"Cannot achieve resp in range {resp_range}! Try increasing tone power")
+                success = False
+                break
             att -= step
-            step = step // 2
+
         elif max_resp > resp_range[1]:
+            if att == 30:
+                S.log(f"Cannot achieve resp in range {resp_range}! Try decreasing tone power")
+                success = False
+                break
             att += step
-            step = step // 2
+        step = int(np.ceil(step / 2))
 
     if success and update_cfg:
         cfg.dev.update_band(band, {
@@ -270,24 +286,22 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     """
     Find freq, setup notches, and serial gradient descent and eta scan
 
+    The following parameters can be modified in the device cfg:
+
+        exp:
+         - res_amp_cut (float): Amplitude cut for peak-finding in find-freq
+         - res_grad_cut (float): Gradient cut for peak-finding in find-freq
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
+
     Args
     -----
     S : SmurfControl
         Pysmurf instance
     cfg : DetConfig
         DetConfig instance
-    tone_power : int, optional
-        Tone power to use. Defaults to what exists in the pysmurf-cfg file.
     show_plots : bool
         If true, will show find_freq plots. Defaults to False
-    amp_cut : float
-        Amplitude cut for peak-finding in find_freq
-    grad_cut : float
-        Gradient cut for peak-finding in find_freq
-    estimate_attens : bool
-        If True, will try to find reasonable uc / dc attens for
-        each band before running fund_freq. See the
-        ``estimate_uc_dc_atten`` function for more details.
     update_cfg : bool
         If true, will update the device cfg and save the file.
     """
@@ -322,115 +336,7 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     return True, summary
 
 
-def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False,
-                          disable_bad_chans=True):
-    """
-    Setups up tracking parameters by determining correct frac-pp and lms-freq
-    for each band.
-
-    Args
-    -----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        DetConfig instance
-    bands : np.ndarray, int
-        Band or list of bands to run on
-    init_fracpp : float, optional
-        Initial frac-pp value to use for tracking estimates
-    nphi0 : int
-        Number of phi0 periods to track on
-    reset_rate_khz : float
-        Flux ramp reset rate in khz
-    update_cfg : bool
-        If true, will update the device cfg and save the file.
-    """
-
-    bands = np.atleast_1d(bands)
-
-    exp = cfg.dev.exp
-    summary = {
-        'success': None,
-        'tracking_results': {}
-    }
-    success = True
-    for band in bands:
-        sdl.pub_ocs_log(S, f"Setting up trackng params: band {band}")
-        tk = sdl.get_tracking_kwargs(
-            S, cfg, band, kwargs={
-                'lms_freq_hz':         None,
-                'show_plot':           False,
-                'meas_lms_freq':       True,
-                'fraction_full_scale': exp['init_frac_pp'],
-                'reset_rate_khz':      exp['flux_ramp_rate_khz'],
-                'lms_gain': exp['lms_gain'],
-                'feedback_gain': exp['feedback_gain'],
-            }
-        )
-        f, df, sync = S.tracking_setup(band, **tk)
-        r2 = sdl.compute_tracking_quality(S, f, df, sync)
-
-        # Cut all but good chans to calc fpp / lms-freq
-        asa_init = S.get_amplitude_scale_array(band)
-        asa_good = asa_init.copy()
-        asa_good[r2 < 0.95] = 0
-        S.set_amplitude_scale_array(band, asa_good)
-
-        # Calculate trracking parameters
-        S.tracking_setup(band, **tk)
-        lms_meas = S.lms_freq_hz[band]
-        lms_freq = exp['nphi0'] * tk['reset_rate_khz'] * 1e3
-        frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
-
-        # Re-enables all channels and re-run tracking setup with correct params
-        S.set_amplitude_scale_array(band, asa_init)
-        tk['meas_lms_freq'] = False
-        tk['fraction_full_scale'] = frac_pp
-        tk['lms_freq_hz'] = lms_freq
-        tk['show_plot'] = show_plots
-        f, df, sync = S.tracking_setup(band, **tk)
-
-        # Make cuts based on tracking-quality, and p2p of tracked f and df
-        r2 = sdl.compute_tracking_quality(S, f, df, sync)
-        f_ptp = np.ptp(f, axis=0)
-        df_ptp = np.ptp(df, axis=0)
-
-        f_ptp_range = exp['f_ptp_range']
-        df_ptp_range = exp['df_ptp_range']
-        good_chans = (r2 > exp['r2_min'])  \
-            & (f_ptp_range[0] < f_ptp) & (f_ptp < f_ptp_range[1])  \
-            & (df_ptp_range[0] < df_ptp) & (df_ptp < df_ptp_range[1])
-        num_good = np.sum(good_chans)
-        num_tot = len(good_chans)
-
-        summary['tracking_results'][band] = {
-            'f': f, 'df': df, 'sync': sync, 'r2': r2, 'good_chans': good_chans
-        }
-
-        if num_good / num_tot < exp['min_good_tracking_frac']:
-            S.log(f"Not enough good channels on band {band}!!")
-            S.log(f"Something is probably wrong")
-            success = False
-
-        if disable_bad_chans:
-            asa = S.get_amplitude_scale_array(band)
-            asa[~good_chans] = 0
-            S.set_amplitude_scale_array(asa)
-
-        # Update det config
-        if update_cfg:
-            cfg.dev.update_band(band, {
-                'frac_pp':            frac_pp,
-                'lms_freq_hz':        lms_freq,
-            }, update_file=True)
-
-        ## Lets add some cuts on p2p(f) and p2p(df) here. What are good numbers
-        ## for that?
-        sdl.pub_ocs_data(S, {'setup_tracking_params_summary': summary})
-
-    return success, summary
-
-
+@sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
@@ -443,6 +349,24 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
         3. Setup tune
         4. setup tracking
         5. Measure noise
+
+    The following device cfg parameters can be changed to modify behavior:
+
+        exp:
+         - downsample_factor (int): Downsample factor to use
+         - coupling_mode (str): Determines whether to run in DC or AC mode. Can
+           be 'dc' or 'ac'.
+         - synthesis_scale (int): Synthesis scale to use
+         - amp_enable_wait_time (float): Seconds to wait after enabling amps
+           before scanning gate voltages
+         - amp_hemt_Id (float): Target drain current for hemt amp (mA)
+         - amp_50k_Id (float): Target drain current for 50k amp (mA)
+         - amp_hemt_Id_tolerance (float): Tolerance for hemt drain current (mA)
+         - amp_50k_Id_tolerance (float): Tolerance for 50k drain current (mA)
+         - res_amp_cut (float): Amplitude cut for peak-finding in find-freq
+         - res_grad_cut (float): Gradient cut for peak-finding in find-freq
+        bands:
+         - tone_power (int): Tone power to use for atten estimation
 
     Args
     -----
@@ -487,6 +411,8 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 2. Setup amps
     #############################################################
     summary['timestamps'].append(('setup_amps', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+
     success, summary['setup_amps'] = setup_amps(S, cfg, update_cfg=update_cfg)
     if not success:
         sdl.pub_ocs_log(S, "UXM Setup failed on setup amps step")
@@ -496,6 +422,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 3. Estimate Attens
     #############################################################
     summary['timestamps'].append(('estimate_attens', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     for band in bands:
         bcfg = cfg.dev.bands[band]
         if (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
@@ -508,6 +435,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 4. Estimate Phase Delay
     #############################################################
     summary['timestamps'].append(('setup_phase_delay', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['setup_phase_delay'] = setup_phase_delay(
         S, cfg, bands, update_cfg=update_cfg)
     if not success:
@@ -518,6 +446,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     # 5. Setup Tune
     #############################################################
     summary['timestamps'].append(('setup_tune', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['setup_tune'] = setup_tune(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg,)
     if not success:
@@ -527,25 +456,23 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     #############################################################
     # 6. Setup Tracking
     #############################################################
-    summary['timestamps'].append(('setup_tracking_params', time.time()))
-    success, summary['setup_tracking_params'] = setup_tracking_params(
+    summary['timestamps'].append(('setup_tracking', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+    tracking_res = tracking.setup_tracking_params(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg
     )
-    if not success:
-        S.log("UXM Setup failed on setup tracking step")
-        return False, summary
+    summary['tracking_res'] = tracking_res
 
     #############################################################
     # 7. Noise
     #############################################################
     summary['timestamps'].append(('noise', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     _, summary['noise'] = sdl.noise.take_noise(
         S, cfg, 30, show_plot=show_plots, save_plot=True
     )
-    sdl.pub_ocs_data(S, {'noise_summary': {
-        'band_medians': summary['noise']['noisedict']['band_medians']
-    }})
 
     summary['timestamps'].append(('end', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
     return True, summary

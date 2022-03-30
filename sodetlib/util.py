@@ -67,27 +67,26 @@ def _encode_data(data):
     if isinstance(data, list):
         return [_encode_data(d) for d in data]
     elif isinstance(data, dict):
-        return {k: _encode_data(d) for k, d in data.items()}
+        return {str(k): _encode_data(d) for k, d in data.items()}
     elif isinstance(data, np.ndarray):
         return data.tolist()
     else:
         return data
 
 
-def pub_ocs_data(S, data):
+def set_session_data(S, key, val):
     """
-    Passes data to the OCS pysmurf controller to be set in session.data.
+    Adds data to the OCS Session data object. If this is being run directly
+    from an OCS PysmurfController operation, the _ocs_session object will be
+    set in the pysmurf instance. If not, publish message so pysmurf monitor can
+    relay data to the correct controller agent.
+    """
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.data[key] = _encode_data(val)
+    else:
+        S.pub.publish(_encode_data({key: val}), msgtype='session_data')
 
-    Args
-    -----
-    S : SmurfControl
-        Pysmurf instance
-    data : dict
-        Dictionary containing data to send to ocs. This will update the
-        session.data object of the active pysmurf-controller agent operation
-        with the supplied data.
-    """
-    S.pub.publish(_encode_data(data), msgtype='session_data')
 
 
 def pub_ocs_log(S, msg, log=True):
@@ -97,6 +96,11 @@ def pub_ocs_log(S, msg, log=True):
     """
     if log:
         S.log(msg)
+
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        session.add_message(msg)
+
     S.pub.publish(msg, msgtype='session_log')
 
 
@@ -152,7 +156,7 @@ def get_metadata(S, cfg):
     data files created by sodetlib.
     """
     return {
-        'tunefile': S.tune_file,
+        'tunefile': getattr(S, 'tune_file', None),
         'high_low_current_ratio': S.high_low_current_ratio,
         'R_sh': S.R_sh,
         'pA_per_phi0': S.pA_per_phi0,
@@ -233,7 +237,7 @@ def validate_and_save(fname, data, S=None, cfg=None, register=True,
 def get_tracking_kwargs(S, cfg, band, kwargs=None):
     band_cfg = cfg.dev.bands[band]
     tk = {
-        'reset_rate_khz': cfg.dev.exp['flux_ramp_rate_khz'],
+        'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
         'lms_gain': band_cfg.get('lms_gain', 0),
         'fraction_full_scale': band_cfg['frac_pp'],
@@ -521,6 +525,7 @@ class Registers:
         'flac_level': _sostream + "FlacLevel",
         'source_enable': _source_root + 'SourceEnable',
         'enable_compression': _sostream + 'EnableCompression',
+        'agg_time': _sostream + 'AggTime',
     }
 
     def __init__(self, S):
@@ -635,44 +640,3 @@ def set_current_mode(S, bgs, mode, const_current=True):
         S._caput(S.C.writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
-
-
-def compute_tracking_quality(S, f, df, sync):
-    """
-    Computes the tracking quality parameter from tracking_setup results.
-
-    Args
-    ------
-    S : SmurfControl
-        Pysmurf instance
-    f : np.ndarray
-        Array of the tracked frequency for each channel, as returned by
-        tracking_setup
-    df : np.ndarray
-        Array of the tracked frequency error for each channel, as returned
-        by tracking_setup
-    sync : np.ndarray
-        Array containing tracking sync flags, as returned by tracking_setup
-    """
-    sync_idxs = S.make_sync_flag(sync)
-    seg_size = np.min(np.diff(sync_idxs))
-    nstacks = len(sync_idxs) - 1
-
-    fstack = np.zeros((seg_size, len(f[0])))
-    for i in range(nstacks):
-        fstack += f[sync_idxs[i]:sync_idxs[i]+seg_size] / nstacks
-
-
-    # calculates quality of estimate wrt real data
-    y_real = f[sync_idxs[0]:sync_idxs[-1], :]
-    y_est = np.vstack([fstack for _ in range(nstacks)])
-    # Force these to be the same len in case all segments are not the same size
-    y_est = y_est[:len(y_real)]
-
-    with np.errstate(invalid='ignore'):
-        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
-        ssres = np.sum((y_real - y_est)**2, axis=0)
-        r2 = 1 - ssres/sstot
-
-    return r2
-
