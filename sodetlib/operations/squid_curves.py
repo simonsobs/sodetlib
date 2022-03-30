@@ -166,47 +166,88 @@ def squid_curve_model(phi, *p):
         ret += this_harmonic(phi)
     return ret
 
-# def plot_squid_fit_summary(nbins = 30):
-#     '''
-#     Makes summary plots of squid curve fit parameters.
-#     '''
-#     plt.figure(figsize = (25,10))
-#     offsets = np.asarray([fit_dict[key]['phi_offset'] for key in fit_dict.keys()])
-#     plt.subplot(2,2,1)
-#     plt.hist(offsets,bins = nbins,alpha = 0.7)
-#     plt.axvline(np.median(offsets),color = 'C1',ls = ':',lw = 3)
-#     plt.legend(['Data',f'Median : {np.round(np.median(offsets),3)}'],
-#               fontsize = 14)
-#     plt.xlabel('$\\Phi_0$ Offset',fontsize = 16)
-#     plt.ylabel('Counts',fontsize = 16)
-#
-#     dfs = np.asarray([fit_dict[key]['df'] for key in fit_dict.keys()])
-#     plt.subplot(2,2,2)
-#     plt.hist(dfs[dfs > 30],bins = nbins,alpha = 0.7)
-#     plt.axvline(np.median(dfs[dfs > 30]),color = 'C1',ls = ':',lw = 3)
-#     plt.legend(['Data',f'Median : {np.round(np.median(dfs[dfs > 30]),1)}'],
-#               fontsize = 14)
-#     plt.xlabel('$df_{pp}$ [kHz]',fontsize = 16)
-#     plt.ylabel('Counts',fontsize = 16)
-#
-#     dfdIs = np.asarray([fit_dict[key]['dfdI'] for key in fit_dict.keys()])
-#     plt.subplot(2,2,3)
-#     plt.hist(dfdIs[dfs > 30]/1e-3,bins = nbins,alpha = 0.7)
-#     plt.axvline(np.median(dfdIs[dfs > 30])/1e-3,color = 'C1',ls = ':',lw = 3)
-#     plt.legend(['Data',f'Median : {np.round(np.median(dfdIs[dfs > 30])/1e-3,2)}'],
-#               fontsize = 14)
-#     plt.xlabel('<df/dI> [mHz/pA]',fontsize = 16)
-#     plt.ylabel('Counts',fontsize = 16)
-#
-#     hhpwrs = np.asarray([fit_dict[key]['hhpwr'] for key in fit_dict.keys()])
-#     plt.subplot(2,2,4)
-#     plt.hist(hhpwrs[dfs > 30]*100,bins = nbins,alpha = 0.7)
-#     plt.axvline(np.median(hhpwrs[dfs > 30])*100,color = 'C1',ls = ':',lw = 3)
-#     plt.legend(['Data',f'Median : {np.round(np.median(hhpwrs[dfs > 30])*100,2)}'],
-#               fontsize = 14)
-#     plt.xlabel('Higher Harmonic Power [%]',fontsize = 16)
-#     plt.ylabel('Counts',fontsize = 16)
-#     return
+
+def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
+    '''
+    Makes summary plots of squid curve fit parameters. 
+    Specifically, Phi_offset, df, dfdI, hhpwr, phi0.
+    
+    Args
+    ----
+    fit_dict: dict
+        Dictionary output from fit_squid_curves
+    quantile: float
+        Plot data that falls within the quantile given.
+    '''
+#     Plot offsets
+    fig = plt.figure(figsize = (20,15))
+    fig.set_facecolor('white')
+    offsets = fit_dict['model_params'][:,1] / fit_dict['model_params'][:,0]
+    offsets = offsets[(offsets>=np.quantile(offsets, 1-quantile)) & (offsets<=np.quantile(offsets, quantile))]
+    plt.subplot(3,2,1)
+    plt.hist(offsets,bins = nbins,alpha = 0.7)
+    plt.axvline(np.median(offsets),color = 'C1',ls = ':',lw = 3)
+    plt.legend([f'Median : {np.round(np.median(offsets),3)}', f'Data (Inner {quantile*100}%)\n {offsets.size} / {fit_dict["bands"].size} channels used'],
+              fontsize = 14)
+    plt.xlabel('$\\Phi_0$ Offset',fontsize = 16)
+    plt.ylabel('Counts',fontsize = 16)
+    plt.tick_params(axis='both', which='major', labelsize=12)
+
+#     Plot dfs
+    dfs = np.zeros(fit_dict['bands'].size)
+    for idx, params in enumerate(fit_dict['derived_params']):
+        dfs[idx] = params['df']
+    dfs = dfs[(dfs>=np.quantile(dfs, 1-quantile)) & (dfs<=np.quantile(dfs,quantile))]
+    plt.subplot(3,2,2)
+    plt.hist(dfs,bins = nbins,alpha = 0.7)
+    plt.axvline(np.median(dfs),color = 'C1',ls = ':',lw = 3)
+    plt.legend([f'Median : {np.round(np.median(dfs),1)}', f'Data (Inner {quantile*100}%)\n {dfs.size} / {fit_dict["bands"].size} channels used'],
+              fontsize = 14)
+    plt.xlabel('$df_{pp}$ [kHz]',fontsize = 16)
+    plt.ylabel('Counts',fontsize = 16)
+    plt.tick_params(axis='both', which='major', labelsize=12)
+
+#     Plot dfdIs
+    dfdIs = np.zeros(fit_dict['bands'].size)
+    for idx, params in enumerate(fit_dict['derived_params']):
+        dfdIs[idx] = params['dfdI']
+    dfdIs = dfdIs[(dfdIs>=np.quantile(dfdIs, 1-quantile)) & (dfdIs<=np.quantile(dfs,quantile))]    
+    plt.subplot(3,2,3)
+    plt.hist(dfdIs/1e-3,bins = nbins,alpha = 0.7)
+    plt.axvline(np.median(dfdIs)/1e-3,color = 'C1',ls = ':',lw = 3)
+    plt.legend([f'Median : {np.round(np.median(dfdIs)/1e-3,2)}', f'Data (Inner {quantile*100}%)\n {dfdIs.size} / {fit_dict["bands"].size} channels used'],
+              fontsize = 14)
+    plt.xlabel('<df/dI> [mHz/pA]',fontsize = 16)
+    plt.ylabel('Counts',fontsize = 16)
+    plt.tick_params(axis='both', which='major', labelsize=12)
+
+#     Plot hhpwrs
+    hhpwrs = np.zeros(fit_dict['bands'].size)
+    for idx, params in enumerate(fit_dict['derived_params']):
+        hhpwrs[idx] = params['hhpwr']
+    hhpwrs = hhpwrs[(hhpwrs>=np.quantile(hhpwrs, 1-quantile)) & (hhpwrs<=np.quantile(hhpwrs,quantile))]
+    plt.subplot(3,2,4)
+    plt.hist(hhpwrs*100,bins = nbins,alpha = 0.7)
+    plt.axvline(np.median(hhpwrs)*100,color = 'C1',ls = ':',lw = 3)
+    plt.legend([f'Median : {np.round(np.median(hhpwrs)*100,2)}', f'Data (Inner {quantile*100}%)\n {hhpwrs.size} / {fit_dict["bands"].size} channels used'],
+              fontsize = 14)
+    plt.xlabel('Higher Harmonic Power [%]',fontsize = 16)
+    plt.ylabel('Counts',fontsize = 16)
+    plt.tick_params(axis='both', which='major', labelsize=12)
+    
+#     Plot phio0s
+    phi0s = fit_dict['model_params'][:,0]
+    phi0s = phi0s[(phi0s>=np.quantile(phi0s, 1-quantile))& (phi0s<=np.quantile(phi0s,quantile))]
+    plt.subplot(3,2,5)
+    plt.hist(phi0s,bins = nbins,alpha = 0.7)
+    plt.axvline(np.median(phi0s),color = 'C1',ls = ':',lw = 3)
+    plt.legend([f'Median : {np.round(np.median(phi0s),3)}', f'Data (Inner {quantile*100}%)\n {phi0s.size} / {fit_dict["bands"].size} channels used'],
+              fontsize = 14)
+    plt.xlabel('$\\Phi_0$ [ff]',fontsize = 16)
+    plt.ylabel('Counts',fontsize = 16)
+    plt.tight_layout()
+    plt.tick_params(axis='both', which='major', labelsize=12)
+    return
 
 
 def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
@@ -243,7 +284,8 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
     biases = data['fluxramp_ffs']
 
     fres = data['res_freq'][idx]
-    plt.figure()
+    fig = plt.figure()
+    fig.set_facecolor('white')
     plt.plot(biases, data["res_freq_vs_fr"][idx, :], 'co')
     plt.plot(biases, squid_curve_model(biases,
                                        *fit_dict['model_params'][idx, :]),
