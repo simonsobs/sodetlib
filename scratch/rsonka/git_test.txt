@@ -1,0 +1,1 @@
+# This is a useless file made to test my comprehension of git pull --rebase
