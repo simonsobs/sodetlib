@@ -4,15 +4,15 @@
 # python3 uxm_setup.py -h
 # to see the available options and required formatting.
 
-import os, sys
+import os
 import numpy as np
 from scipy import signal
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sodetlib.smurf_funcs.optimize_params as op
+from sodetlib import noise
 import logging
-
-sys.path.append('/sodetlib/scratch/ddutcher')
-from noise_stack_by_band import noise_stack_by_band
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +44,11 @@ def uxm_setup(S, cfg, bands=None):
             "band {} tone power {}".format(band, S.amplitude_scale[band])
         )
 
-        # logger.info("estimating phase delay")
-        # try:
-        #     S.estimate_phase_delay(band)
-        # except Exception:
-        #     logger.warning('Estimate phase delay failed due to PV timeout.')
+        logger.info("estimating phase delay")
+        try:
+            S.estimate_phase_delay(band)
+        except Exception:
+            logger.warning('Estimate phase delay failed due to PV timeout.')
         logger.info("setting synthesis scale")
         # hard coding it for the current fw
         S.set_synthesis_scale(band, 1)
@@ -89,7 +89,6 @@ if __name__ == "__main__":
     
     cfg = DetConfig()
 
-    # set up the parser for this Script
     parser = argparse.ArgumentParser(
         description="Parser for uxm_setup.py script."
     )
@@ -102,36 +101,12 @@ if __name__ == "__main__":
         + "listed in the pysmurf configuration file."
     )
 
-    # optional arguments
     parser.add_argument(
-        "--stream-time",
-        dest="stream_time",
+        "--acq-time",
         type=float,
-        default=20.0,
-        help="float, optional, default is 20.0. The amount of time to sleep in seconds while "
+        default=30.0,
+        help="float, optional, default is 30.0. The amount of time to sleep in seconds while "
         + "streaming SMuRF data for analysis.",
-    )
-    parser.add_argument(
-        "--fmin",
-        dest="fmin",
-        type=float,
-        default=5.0,
-        help="float, optional, default is 5.0. The lower frequency (Hz) bound used "
-        + "when creating a mask of white noise levels Suggested value of 5.0",
-    )
-    parser.add_argument(
-        "--fmax",
-        dest="fmax",
-        type=float,
-        default=50.0,
-        help="float, optional, default is 50.0. The upper frequency (Hz) bound used "
-        + "when creating a mask of white noise levels Suggested value of 50.0",
-    )
-    parser.add_argument(
-        "--detrend",
-        dest="detrend",
-        default="constant",
-        help="str, optional, default is 'constant'. Passed to scipy.signal.welch.",
     )
     parser.add_argument(
         "--loglevel",
@@ -142,7 +117,6 @@ if __name__ == "__main__":
         +"$LOGLEVEL, defaulting to INFO if not set.",
     )
 
-    # parse the args for this script
     args = cfg.parse_args(parser)
     if args.loglevel is None:
         args.loglevel = os.environ.get("LOGLEVEL","INFO")
@@ -154,14 +128,15 @@ if __name__ == "__main__":
     S = cfg.get_smurf_control(dump_configs=True, make_logfile=(numeric_level != 10))
 
     # power amplifiers
-    op.cryo_amp_check(S, cfg)
+    success = op.cryo_amp_check(S, cfg)
+    if not success:
+        raise OSError("Health check failed.")
     # run the defs in this file
     uxm_setup(S=S, cfg=cfg, bands=args.bands)
-    # plot noise histograms
-    noise_stack_by_band(
-        S,
-        stream_time=args.stream_time,
-        fmin=args.fmin,
-        fmax=args.fmax,
-        detrend=args.detrend,
+    # take noise and plot histograms
+    nsamps = S.get_sample_frequency() * args.acq_time
+    nperseg = 2 ** round(np.log2(nsamps/5))
+    noise.take_noise(
+        S, cfg, acq_time=args.acq_time, show_plot=False, save_plot=True,
+        nperseg=nperseg,
     )

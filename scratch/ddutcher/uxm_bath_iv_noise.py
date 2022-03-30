@@ -1,6 +1,4 @@
 '''
-Code written in Oct 2021 by Yuhan Wang
-to be used through OCS
 takes SC noise and takes IV
 '''
 
@@ -15,6 +13,7 @@ import time
 import glob
 from sodetlib.det_config  import DetConfig
 from sodetlib.smurf_funcs import det_ops
+import sodetlib as sdl
 import numpy as np
 from scipy.interpolate import interp1d
 import argparse
@@ -65,14 +64,26 @@ bias_array = np.zeros(S._n_bias_groups)
 for bg in bias_groups:
     bias_array[bg] = bias_v
 S.set_tes_bias_bipolar_array(bias_array)
-time.sleep(30)
-datafile_self = S.stream_data_on()
-time.sleep(20)
-S.stream_data_off()
+time.sleep(10)
+# datafile_self = S.stream_data_on()
+# time.sleep(20)
+# S.stream_data_off()
+
+#take 30s timestream for noise
+sid = sdl.take_g3_data(S, 30)
+am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
+ctime = int(am.timestamps[0])
+noisedict = sdl.noise.get_noise_params(
+    am, wl_f_range=(10,30), fit=False, nperseg=1024)
+noisedict['sid'] = sid
+savename = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
+sdl.validate_and_save(
+    savename, noisedict, S=S, cfg=cfg, make_path=False
+)
 
 fieldnames = ['bath_temp','bias_voltage', 'bias_line', 'band', 'data_path','type'] 
 row = {}
-row['data_path'] = datafile_self
+row['data_path'] = savename
 row['bias_voltage'] = bias_v
 row['type'] = 'noise'
 row['bias_line'] = 'all'
