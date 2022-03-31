@@ -184,7 +184,7 @@ def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
     fig = plt.figure(figsize = (20,15))
     fig.set_facecolor('white')
     offsets = fit_dict['model_params'][:,1] / fit_dict['model_params'][:,0]
-    offsets = offsets[(offsets>=np.quantile(offsets, 1-quantile)) & (offsets<=np.quantile(offsets, quantile))]
+    offsets = offsets[(offsets>=np.nanquantile(offsets, 1-quantile)) & (offsets<=np.nanquantile(offsets, quantile))]
     plt.subplot(3,2,1)
     plt.hist(offsets,bins = nbins,alpha = 0.7)
     plt.axvline(np.median(offsets),color = 'C1',ls = ':',lw = 3)
@@ -193,12 +193,13 @@ def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
     plt.xlabel('$\\Phi_0$ Offset',fontsize = 16)
     plt.ylabel('Counts',fontsize = 16)
     plt.tick_params(axis='both', which='major', labelsize=12)
+    print(offsets.size)
 
 #     Plot dfs
     dfs = np.zeros(fit_dict['bands'].size)
     for idx, params in enumerate(fit_dict['derived_params']):
         dfs[idx] = params['df']
-    dfs = dfs[(dfs>=np.quantile(dfs, 1-quantile)) & (dfs<=np.quantile(dfs,quantile))]
+    dfs = dfs[(dfs>=np.nanquantile(dfs, 1-quantile)) & (dfs<=np.nanquantile(dfs,quantile))]
     plt.subplot(3,2,2)
     plt.hist(dfs,bins = nbins,alpha = 0.7)
     plt.axvline(np.median(dfs),color = 'C1',ls = ':',lw = 3)
@@ -212,7 +213,7 @@ def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
     dfdIs = np.zeros(fit_dict['bands'].size)
     for idx, params in enumerate(fit_dict['derived_params']):
         dfdIs[idx] = params['dfdI']
-    dfdIs = dfdIs[(dfdIs>=np.quantile(dfdIs, 1-quantile)) & (dfdIs<=np.quantile(dfs,quantile))]    
+    dfdIs = dfdIs[(dfdIs>=np.nanquantile(dfdIs, 1-quantile)) & (dfdIs<=np.nanquantile(dfs,quantile))]    
     plt.subplot(3,2,3)
     plt.hist(dfdIs/1e-3,bins = nbins,alpha = 0.7)
     plt.axvline(np.median(dfdIs)/1e-3,color = 'C1',ls = ':',lw = 3)
@@ -226,7 +227,7 @@ def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
     hhpwrs = np.zeros(fit_dict['bands'].size)
     for idx, params in enumerate(fit_dict['derived_params']):
         hhpwrs[idx] = params['hhpwr']
-    hhpwrs = hhpwrs[(hhpwrs>=np.quantile(hhpwrs, 1-quantile)) & (hhpwrs<=np.quantile(hhpwrs,quantile))]
+    hhpwrs = hhpwrs[(hhpwrs>=np.nanquantile(hhpwrs, 1-quantile)) & (hhpwrs<=np.nanquantile(hhpwrs,quantile))]
     plt.subplot(3,2,4)
     plt.hist(hhpwrs*100,bins = nbins,alpha = 0.7)
     plt.axvline(np.median(hhpwrs)*100,color = 'C1',ls = ':',lw = 3)
@@ -238,7 +239,7 @@ def plot_squid_fit_summary(fit_dict, nbins = 35, quantile = .95):
     
 #     Plot phio0s
     phi0s = fit_dict['model_params'][:,0]
-    phi0s = phi0s[(phi0s>=np.quantile(phi0s, 1-quantile))& (phi0s<=np.quantile(phi0s,quantile))]
+    phi0s = phi0s[(phi0s>=np.nanquantile(phi0s, 1-quantile))& (phi0s<=np.nanquantile(phi0s,quantile))]
     plt.subplot(3,2,5)
     plt.hist(phi0s,bins = nbins,alpha = 0.7)
     plt.axvline(np.median(phi0s),color = 'C1',ls = ':',lw = 3)
