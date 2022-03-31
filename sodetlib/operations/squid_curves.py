@@ -7,6 +7,7 @@ from pysmurf.client.util.pub import set_action
 import sodetlib as sdl
 from sodetlib.analysis import squid_fit as sqf
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 
 def autocorr(wave):
@@ -295,8 +296,8 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
              verticalalignment='top', transform=ax.transAxes, fontsize=10,
              bbox=dict(facecolor='wheat', alpha=0.5, boxstyle='round'))
     plt.xlabel("Flux Bias [Fraction Full Scale FR DAC]", fontsize=14)
-    plt.ylabel("Frequency Swing [kHz]", fontsize=14)
-    plt.title(f"Band {band} Channel {channel} $f_r$ = {np.round(fres,2)}")
+    plt.ylabel("Frequency Swing [MHz]", fontsize=14)
+    plt.title(f"Band {band} Channel {channel} $f_r$ = {np.round(fres,2)} [MHz]")
     if save_plot:
         ctime = int(time.time())
         fig_name = f"{plot_dir}/{ctime}_b{band}c{channel}_dc_squid_curve.png"
@@ -304,7 +305,6 @@ def plot_squid_fit(data, fit_dict, band, channel, save_plot=False, S=None,
         if S is not None:
             S.pub.register_file(fig_name, 'dc_squid_curve', plot=True)
     return
-
 
 def fit_squid_curves(squid_data, fit_args=None):
     '''
@@ -433,10 +433,10 @@ def get_derived_params_and_text(data, model_params, idx):
     return plot_txt, derived_params
 
 @set_action()
-def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
-                     bands=None, channels=None, frac_pp=None, lms_freq=None,
-                     reset_rate_khz=None, lms_gain=None, out_path=None,
-                     run_analysis=True, analysis_kwargs=None):
+def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
+                     bands=None, channels=None, lms_gain=None, out_path=None,
+                     run_analysis=True, analysis_kwargs=None, show_pb=False,
+                     run_serial_ops=True, frac_full_scale_max=0.3):
     """
     Takes data in open loop (only slow integral tracking) and steps through flux
     values to trace out a SQUID curve. This can be compared against the tracked
@@ -453,10 +453,6 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         how long you wait between flux step point in seconds
     Npts : int
         number of points you take at each flux bias step to average
-    Nphi0s : int
-        number of phi0's or periods of your squid curve you want to take at
-        least 3 is recommended and more than 5 just takes longer without much
-        benefit.
     Nsteps : int
         Number of flux points you will take total.
     bands : int, list
@@ -465,21 +461,16 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         default is None and will run on all channels that are on
         otherwise pass a dictionary with a key for each band
         with values equal to the list of channels to run in each band.
-    frac_pp : float
-        fraction full scale (flux ramp amplitude) used during ``tracking_setup``
-        defaults to ``None`` and pulls from ``det_config``
-    lms_freq : float
-        flux ramp tracking (demodulation) frequency used in ``tracking_setup``
-        defaults to ``None`` and pulls from ``det_config``
-    reset_rate_khz : float
-        flux ramp reset rate in khz used in ``tracking_setup``
-        defaults to ``None`` and pulls from ``det_config``
     lms_gain : int
         gain used in tracking loop filter and set in ``tracking_setup``
         defaults to ``None`` and pulls from ``det_config``
     out_path : str, filepath
         directory to output npy file to. defaults to ``None`` and uses pysmurf
         plot directory (``S.plot_dir``)
+    run_serial_ops : bool
+        If true, will run serial grad descent and eta scan
+    frac_full_scale_max : float
+        Max value of fraction full scale to use.
     Returns
     -------
     data : dict
@@ -503,16 +494,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         for band in bands:
             channels[band] = S.which_on(band)
 
-
-    band_cfg = cfg.dev.exp
-    if frac_pp is None:
-        frac_pp = band_cfg['frac_pp']
-    if lms_freq is None:
-        lms_freq = band_cfg['lms_freq_hz']
-    if reset_rate_khz is None:
-        reset_rate_khz = band_cfg['flux_ramp_rate_khz']
-    frac_pp_per_phi0 = frac_pp/(lms_freq/(reset_rate_khz*1e3))
-    bias_peak = frac_pp_per_phi0*NPhi0s
+    bias_peak = frac_full_scale_max
 
     # This is the step size calculated from range and number of steps
     bias_step = np.abs(2*bias_peak)/float(Nsteps)
@@ -536,6 +518,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
     data['bands'] = np.asarray(bands_out)
     data['channels'] = np.asarray(channels_out)
     data['fluxramp_ffs'] = biases
+    data['res_freq_vs_fr'] = []
 
     unique_bands = np.unique(np.asarray(bands_out, dtype=int))
     prev_lms_enable1 = {}
@@ -558,23 +541,17 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         S.set_lms_enable3(band, 0)
         S.set_lms_gain(band, lms_gain)
 
-        data['res_freq_vs_fr'] = []
-
     fs = {}
     S.log(
         '\rSetting flux ramp bias to 0 V\033[K before tune'.format(-bias_peak))
     S.set_fixed_flux_ramp_bias(0.)
 
-    # begin retune on all bands with tones
     for band in unique_bands:
         fs[band] = []
-        S.log('Retuning')
-        for i in range(2):
+        if run_serial_ops:
             S.run_serial_gradient_descent(band)
             S.run_serial_eta_scan(band)
-        time.sleep(5)
         S.toggle_feedback(band)
-    # end retune
 
     small_steps_to_starting_bias = np.arange(-bias_peak, 0, bias_step)[::-1]
 
@@ -591,7 +568,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
 
     S.log('Starting to take flux ramp.')
 
-    for b in biases:
+    for b in tqdm(biases, disable=(not show_pb)):
         S.set_fixed_flux_ramp_bias(b, do_config=False)
         time.sleep(wait_time)
         for band in unique_bands:
@@ -604,8 +581,9 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
 
     S.log('Done taking flux ramp data.')
     fres = []
+
     for i, band in enumerate(unique_bands):
-        fres_loop = [S.channel_to_freq(band, ch) for ch in channels[band]]
+        fres_loop = S.channel_to_freq(band).tolist()
         fres.extend(fres_loop)
         # stack
         lfovsfr = np.dstack(fs[band])[0]
@@ -613,8 +591,11 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
         if i == 0:
             data['res_freq_vs_fr'] = fvsfr
         else:
-            data['res_freq_vs_fr'] = np.concatenate((data['res_freq_vs_fr'], fvsfr), axis=0)
+            data['res_freq_vs_fr'] = np.concatenate(
+                (data['res_freq_vs_fr'], fvsfr), axis=0)
+
     data['res_freq'] = np.asarray(fres)
+    data['filepath'] = out_path
 
     # save dataset for each iteration, just to make sure it gets
     # written to disk
