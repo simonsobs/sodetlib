@@ -17,7 +17,6 @@ Contents
    analysis
    stream
    noise
-   resonator_fitting
 
 .. toctree::
    :caption: Sodetlib Operations

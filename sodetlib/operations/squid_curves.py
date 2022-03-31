@@ -432,9 +432,7 @@ def get_derived_params_and_text(data, model_params, idx):
                       'hhpwr': hhpwr}
     return plot_txt, derived_params
 
-# @set_action()
-
-
+@set_action()
 def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, NPhi0s=4, Nsteps=500,
                      bands=None, channels=None, frac_pp=None, lms_freq=None,
                      reset_rate_khz=None, lms_gain=None, out_path=None,
