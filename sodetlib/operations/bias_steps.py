@@ -62,16 +62,60 @@ def _play_tes_bipolar_waveform(S, bias_group, waveform, do_enable=True,
         S.set_rtm_arb_waveform_continuous(0)
 
 def _make_step_waveform(S, step_dur, step_voltage, dc_voltage):
-    ""
+    """
+    Returns a waveform for a bias step. Waveform will contain step-up
+    to (dc_voltage + step_voltage) for `step_dur` seconds, and then a
+    step-down to (dc_voltage) for `step_dur` seconds.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    step_dur : float
+        Duration of each step (sec)
+    step_voltage : float
+        Amplitude of step (V)
+    dc_voltage : float
+        DC voltage of step
+
+    Returns
+    ---------
+    sig : np.ndarray
+        Waveform to use
+    timer_size : float
+        Waveform timer size
+    """
     # Setup waveform
     sig = np.ones(2048)
     sig *= dc_voltage / (2*S._rtm_slow_dac_bit_to_volt)
     sig[1024:] += step_voltage / (2*S._rtm_slow_dac_bit_to_volt)
-    timer_size = int(step_dur/(6.4e-9 * 2048))
+    # Use twice the step dur because the signal contains two steps
+    timer_size = int(step_dur*2/(6.4e-9 * 2048))
     return sig, timer_size
 
 def play_bias_steps_waveform(S, cfg, bias_group, step_duration, step_voltage,
                              num_steps=5, dc_bias=None):
+    """
+    Plays bias steps  on a single bias line using the Arb waveform generator
+
+    Args
+    ----
+    S:
+        Pysmurf control instance
+    cfg:
+        DetConfig instance
+    bias_group: int
+        Bias groups to play bias step on. Defaults to all 12
+    step_duration: float
+        Duration of each step in sec
+    step_voltage : float
+        Step size (volts)
+    num_steps: int
+        Number of bias steps
+    dacs : str
+        Which group of DACs to play bias-steps on. Can be 'pos',
+        'neg', or 'both'
+    """
     if dc_bias is None:
         dc_bias = S.get_tes_bias_bipolar(bias_group)
     sig, timer_size = _make_step_waveform(S, step_duration, step_voltage, dc_bias)
@@ -99,6 +143,8 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
             Bias groups to play bias step on. Defaults to all 12
         step_duration: float
             Duration of each step in sec
+        step_voltage : float
+            Step size (volts)
         num_steps: int
             Number of bias steps
         dacs : str
@@ -630,7 +676,7 @@ class BiasStepAnalysis:
         for bg in range(nbgs):
             if len(self.edge_idxs[bg]) == 0:
                 continue
-            b0 = self.am.biases[bg, self.edge_idxs[bg][0]]
+            b0 = self.am.biases[bg, self.edge_idxs[bg][0] - 3]
             b1 = self.am.biases[bg, self.edge_idxs[bg][0] + 3]
             Ibias[bg] = b0 * amp_per_bit
             dIbias[bg] = (b1 - b0) * amp_per_bit
@@ -744,7 +790,12 @@ class BiasStepAnalysis:
 # Plotting functions
 ####################################################################
 
-def plot_steps(bsa, rc, nsteps=5):
+def plot_steps(bsa, rc, nsteps=5, offset=0, ax=None, **kw):
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
+
     bg = bsa.bgmap[rc]
     i0 = bsa.edge_idxs[bg][2]
     if 3 + nsteps < len(bsa.edge_idxs[bg]):
@@ -753,8 +804,12 @@ def plot_steps(bsa, rc, nsteps=5):
         i1 = bsa.edge_idxs[bg][-1]
 
     sl = slice(i0, i1)
-    fig, ax = plt.subplots()
-    ax.plot(bsa.am.timestamps[sl], bsa.am.signal[rc, sl])
+    ts = bsa.am.timestamps[sl]
+    ts = ts - ts[0]
+    sig = bsa.am.signal[rc, sl]
+    sig = bsa.am.biases[bg, sl]
+    sig = sig - np.mean(sig) + offset
+    ax.plot(ts, sig, **kw)
 
     return fig, ax
 
@@ -802,6 +857,7 @@ def plot_iv_res_comparison(bsa, lim=None, bgs=None, ax=None):
 
     if ax is None:
         fig, ax = plt.subplots()
+        fig.patch.set_facecolor('white')
     else:
         fig = ax.figure
 
@@ -895,7 +951,7 @@ def plot_Rfrac(bsa):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True):
+               use_waveform=True, show_plots=True):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -957,6 +1013,10 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 
     fig, ax = plot_bg_assignment(bsa)
     sdl.save_fig(S, fig, 'bg_assignments.png')
+    if show_plots:
+        plt.show(fig)
+    else:
+        plt.close(fig)
 
     return bsa
 
