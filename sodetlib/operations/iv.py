@@ -170,8 +170,8 @@ class IVAnalysis:
             # Data was taken before we started saving timestamps for each
             # BG separately. Convert this to the 2d array that's now expected
             # by analysis.
-            iva.start_times = np.vstack([iva.start_times for _ in range(12)])
-            iva.stop_times = np.vstack([iva.stop_times for _ in range(12)])
+            iva.start_times = np.vstack([iva.start_times for _ in range(15)])
+            iva.stop_times = np.vstack([iva.stop_times for _ in range(15)])
 
         return iva
 
