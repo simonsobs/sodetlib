@@ -165,6 +165,14 @@ class IVAnalysis:
         iva = cls()
         for key, val in np.load(path, allow_pickle=True).item().items():
             setattr(iva, key, val)
+
+        if len(iva.start_times) == 1:
+            # Data was taken before we started saving timestamps for each
+            # BG separately. Convert this to the 2d array that's now expected
+            # by analysis.
+            iva.start_times = np.vstack([iva.start_times for _ in range(12)])
+            iva.stop_times = np.vstack([iva.stop_times for _ in range(12)])
+
         return iva
 
     def _load_am(self, arc=None):
@@ -308,14 +316,15 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     # Calculate phase response and bias_voltages / currents
     for i in range(iva.nbiases):
         # Start from back because analysis is easier low->high voltages
-        t0, t1 = iva.start_times[-(i+1)], iva.stop_times[-(i+1)]
+        for j, bg in enumerate(iva.bias_groups):
+            t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
+            chan_mask = iva.bgmap == bg
+            m = (t0 < am.timestamps) & (am.timestamps < t1)
+            iva.resp[chan_mask, i] = np.mean(am.signal[chan_mask, m], axis=1)
 
-        m = (t0 < am.timestamps) & (am.timestamps < t1)
-        iva.resp[:, i] = np.mean(am.signal[:, m], axis=1)
-
-        # Assume all bias groups have the same bias during IV
-        bias_bits = np.median(am.biases[iva.bias_groups[0], m])
-        iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
+            if j == 0:
+                bias_bits = np.median(am.biases[bg, m])
+                iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
 
     if iva.run_kwargs['high_current_mode']:
         iva.v_bias *= iva.meta['high_low_current_ratio']
@@ -449,8 +458,8 @@ def plot_channel_iv(iva, rc):
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
-            wait_time=0.1, run_analysis=True, show_plots=True,
-            **analysis_kwargs):
+            show_plots=True, wait_time=0.1, run_analysis=True,
+            run_serially=False, serial_wait_time=10, **analysis_kwargs):
     """
     Takes an IV.
 
@@ -500,6 +509,11 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         cfg. (unless otherwise specified in analysis_kwargs)
     show_plots : bool
         If true, will show summary plots
+    run_serially : bool
+        If True, will run IV sweeps in serial, running each of the specified
+        bias groups independently instead of all together.
+    serial_wait_time : float
+        Time to sleep between serial IV sweeps (sec)
     analysis_kwargs : dict
         Keyword arguments to pass to analysis
 
@@ -527,43 +541,55 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         'cool_wait': cool_wait, 'cool_voltage': cool_voltage,  'biases': biases,
         'bias_high': bias_high, 'bias_low': bias_low, 'bias_step': bias_step,
         'wait_time': wait_time, 'run_analysis': run_analysis,
+        'run_serially': run_serially, 'serial_wait_time': serial_wait_time,
         'analysis_kwargs': analysis_kwargs
     }
 
-    if high_current_mode:
-        biases /= S.high_low_current_ratio
-
-    try:
-        sid = sdl.stream_g3_on(S)
-
+    start_times = np.zeros((S._n_bias_groups, len(biases)))
+    stop_times = np.zeros((S._n_bias_groups, len(biases)))
+    def overbias_and_sweep(bgs):
+        """
+        Helper function to run IV sweep for a single bg or group of bgs.
+        """
+        bgs = np.atleast_1d(bgs, dtype=int)
+        S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
         if overbias_voltage > 0:
             if cool_voltage is None:
                 cool_voltage = np.max(biases)
             S.overbias_tes_all(
-                bias_groups=bias_groups, overbias_wait=overbias_wait,
+                bias_groups=bgs, overbias_wait=overbias_wait,
                 tes_bias=cool_voltage, cool_wait=cool_wait,
                 high_current_mode=high_current_mode,
                 overbias_voltage=overbias_voltage
             )
 
-        S.log("Starting TES Bias Ramp", S.LOG_USER)
-        bias_group_bool = np.zeros((S._n_bias_groups))
-        bias_group_bool[bias_groups] = 1
-        start_times = np.zeros_like(biases)
-        stop_times = np.zeros_like(biases)
+        bias_group_bool = np.zeros(S._n_bias_groups)
+        bias_group_bool[bgs] = 1
+        S.log(f"Starting TES Bias Ramp on bg {bgs}")
         for i, bias in enumerate(biases):
             S.log(f"Setting bias to {bias:4.3f}")
             S.set_tes_bias_bipolar_array(bias * bias_group_bool)
-            start_times[i] = time.time()
+            start_times[bgs, i] = time.time()
             time.sleep(wait_time)
-            stop_times[i] = time.time()
+            stop_times[bgs, i] = time.time()
 
+    if high_current_mode:
+        biases /= S.high_low_current_ratio
+    try:
+        sid = sdl.stream_g3_on(S)
+        if run_serially:
+            for bg in bias_groups:
+                overbias_and_sweep(bg)
+                time.sleep(serial_wait_time)
+        else:
+            overbias_and_sweep(bias_groups)
     finally:
+        sdl.stream_g3_off(S)
+
         # Turn off biases and streaming on error
         for bg in bias_groups:
             S.set_tes_bias_bipolar(bg, 0)
 
-        sdl.stream_g3_off(S)
 
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
