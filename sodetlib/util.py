@@ -640,3 +640,23 @@ def set_current_mode(S, bgs, mode, const_current=True):
         S._caput(S.C.writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
+
+
+def save_fig(S, fig, name, tag=''):
+    """
+    Saves figure to pysmurf plots directory and publishes result.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instantc
+    fig : Figure
+        Matplotlib figure to save
+    name : Figure name
+        This will be passed to ``make_filename`` so it is timestamped
+        and placed in the pysmurf plots directory.
+    """
+    fname = make_filename(S, name, plot=True)
+    fig.savefig(fname)
+    S.pub.register_file(fname, tag, plot=True)
+    return fname

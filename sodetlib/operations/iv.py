@@ -4,8 +4,9 @@ from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 
+import warnings
+warnings.filterwarnings('ignore')
 np.seterr(all="ignore")
-
 
 class IVAnalysis:
     """
@@ -448,7 +449,8 @@ def plot_channel_iv(iva, rc):
 def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
-            wait_time=0.1, run_analysis=True, **analysis_kwargs):
+            wait_time=0.1, run_analysis=True, show_plots=True,
+            **analysis_kwargs):
     """
     Takes an IV.
 
@@ -496,6 +498,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     run_analysis : bool
         If True, will automatically run analysis, save it, and update device
         cfg. (unless otherwise specified in analysis_kwargs)
+    show_plots : bool
+        If true, will show summary plots
     analysis_kwargs : dict
         Keyword arguments to pass to analysis
 
@@ -567,6 +571,28 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         _analysis_kwargs = {'save': True, 'update_cfg': True}
         _analysis_kwargs.update(analysis_kwargs)
         analyze_iv(iva, **_analysis_kwargs)
+
+        # Save and publish plots
+        is_interactive = plt.isinteractive()
+        try:
+            if not show_plots:
+                plt.ioff()
+            fig, ax = plot_Rfracs(iva)
+            fname = sdl.make_filename(S, 'iv_rfracs.png', plot=True)
+            fig.savefig(fname)
+            S.pub.register_file(fname, 'iv', format='png', plot=True)
+            if not show_plots:
+                plt.close(fig)
+
+            fig, ax = plot_Rn_hist(iva)
+            fname = sdl.make_filename(S, 'iv_rns.png', plot=True)
+            fig.savefig(fname)
+            S.pub.register_file(fname, 'iv', format='png', plot=True)
+            if not show_plots:
+                plt.close(fig)
+        finally:
+            if is_interactive:
+                plt.ion()
 
     return iva
 

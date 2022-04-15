@@ -10,6 +10,8 @@ import scipy.signal as signal
 import sodetlib.smurf_funcs.optimize_params as op
 from uc_tuner import UCTuner
 import logging
+import matplotlib
+matplotlib.use('Agg')
 
 sys.path.append("/sodetlib/scratch/ddutcher")
 from optimize_fracpp import optimize_fracpp
@@ -111,7 +113,7 @@ def uxm_optimize(
 
         uctuner = UCTuner(S, cfg, band=opt_band)
 
-        uctuner.uc_tune(uc_attens=uctuner.current_uc_att, initial_attempt=True)
+        uctuner.uc_tune(uc_attens=uctuner.current_uc_att)
         logger.info(f"UC attens: {uctuner.uc_attens}")
         logger.info(f"Noise levels: {uctuner.wl_list}")
         logger.info(f"Number of active channels: {uctuner.wl_length}")
@@ -132,23 +134,24 @@ def uxm_optimize(
 
             # If needed, adjust the tone powers so the attenuations can have
             # some dynamic range.
-            if uctuner.estimate_att < 16:
+            if uctuner.estimate_att < 4:
                 uctuner.increase_tone_power()
                 logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
-                            + f" and uc_att to {uctuner.current_att_uc}"
+                            + f" and uc_att to {uctuner.current_uc_att}"
                 )
 
             if uctuner.estimate_att > 26:
                 uctuner.decrease_tone_power()
                 logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
-                            + f" and uc_att to {uctuner.current_att_uc}"
+                            + f" and uc_att to {uctuner.current_uc_att}"
                 )
 
-            uctuner.fine_tune()
+            status_tune(logger, uctuner, "fine")
 
             if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
                 # Best noise was found at the edge of uc_att range explored;
                 # re-center and repeat.
+                uctuner.current_uc_att = uctuner.estimate_att
                 status_tune(logger, uctuner, "fine")
 
         elif med_noise_thresh < uctuner.wl_median < high_noise_thresh:
@@ -165,23 +168,24 @@ def uxm_optimize(
 
                 # If needed, adjust the tone powers so the attenuations can have
                 # some dynamic range.
-                if uctuner.estimate_att < 16:
+                if uctuner.estimate_att < 4:
                     uctuner.increase_tone_power()
                     logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
-                                + f" and uc_att to {uctuner.current_att_uc}"
+                                + f" and uc_att to {uctuner.current_uc_att}"
                     )
 
                 if uctuner.estimate_att > 26:
                     uctuner.decrease_tone_power()
                     logger.info(f"Adjusting tone power to {uctuner.current_tone_power}"
-                                + f" and uc_att to {uctuner.current_att_uc}"
+                                + f" and uc_att to {uctuner.current_uc_att}"
                     )
 
-                uctuner.fine_tune()
+                status_tune(logger, uctuner, "fine")
 
                 if uctuner.lowest_wl_index == 0 or uctuner.lowest_wl_index == -1:
                     # Best noise was found at the edge of uc_att range explored;
                     # re-center and repeat.
+                    uctuner.current_uc_att = uctuner.estimate_att
                     status_tune(logger, uctuner, "fine")
 
         else:
@@ -189,13 +193,14 @@ def uxm_optimize(
             raise ValueError(f"WL={uctuner.wl_median:.1f} is off, please investigate")
             
         logger.info(uctuner.status)
-        logger.info(f"achieved at uc att {uctuner.estimate_att} drive"
-                    + f" {uctuner.current_tone_power}.")
+        logger.info(f"Best noise {uctuner.best_wl:.1f} pA/rtHz achieved at"
+                    + f" uc att {uctuner.best_att} drive {uctuner.best_tone}."
+        )
         logger.info(f"plotting directory is:\n{S.plot_dir}")
 
         cfg.dev.update_band(
             opt_band,
-            {"uc_att": uctuner.estimate_att, "drive": uctuner.current_tone_power},
+            {"uc_att": uctuner.best_att, "drive": uctuner.best_tone},
             update_file=True,
         )
 
@@ -272,7 +277,9 @@ if __name__ == "__main__":
         raise ValueError("Assembly must be either 'ufm' or 'umm'.")
 
     # power amplifiers
-    op.cryo_amp_check(S, cfg)
+    success = op.cryo_amp_check(S, cfg)
+    if not success:
+        raise OSError("Health check failed")
 
     # run the def in this file
     uxm_optimize(

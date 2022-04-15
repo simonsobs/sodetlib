@@ -16,28 +16,29 @@ import csv
 import pysmurf.client
 from sodetlib.det_config  import DetConfig
 from sodetlib.smurf_funcs import det_ops
-from sodetlib.analysis import det_analysis
+from sodetlib.operations.bias_steps import take_bgmap
 from pysmurf.client.util.pub import set_action
 import logging
 
 logger = logging.getLogger(__name__)
 
 def tickle_and_iv(
-        S, target_bg, bias_high, bias_low, bias_step, bath_temp, start_time, current_mode
+        S, target_bg, bias_high, bias_low, bias_step,
+        bath_temp, start_time, current_mode, make_bgmap,
 ):
-    overbias_voltage = 18
     target_bg = np.array(target_bg)
     save_name = '{}_tes_yield.csv'.format(start_time)
     tes_yield_data = os.path.join(S.output_dir, save_name)
     logger.info(f'Saving data to {tes_yield_data}')
     out_fn = os.path.join(S.output_dir, tes_yield_data) 
 
+    if make_bgmap:
+        bsa = take_bgmap(S, cfg, bgs=target_bg)
+
     fieldnames = ['bath_temp', 'bias_line', 'band', 'data_path','notes']
     with open(out_fn, 'w', newline = '') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-
-    logger.info(f'Taking tickle on bias line all band')
 
     if current_mode.lower() in ['high, hi']:
         high_current_mode = True
@@ -46,21 +47,6 @@ def tickle_and_iv(
         bias_step /= S.high_low_current_ratio
     else:
         high_current_mode = False
-
-    tickle_file = det_ops.take_tickle(
-        S, cfg, target_bg, tickle_freq=5, tickle_voltage=0.005, high_current=True
-    )
-    tsum, tsum_fp = det_analysis.analyze_tickle_data(S, tickle_file, normal_thresh=0.002)
-
-    row = {}
-    row['bath_temp'] = str(bath_temp)
-    row['bias_line'] = str(target_bg)
-    row['band'] = 'all'
-    row['data_path'] = tickle_file
-
-    with open(out_fn, 'a', newline = '') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writerow(row)
 
     for bg in target_bg:
         row = {}
@@ -88,12 +74,9 @@ def tickle_and_iv(
 
 @set_action()
 def tes_yield(S, target_bg, out_fn, start_time):
-    data_dict = np.genfromtxt(out_fn, delimiter=",",unpack=True, dtype=None, names=True, encoding=None)
+    data_dict = np.genfromtxt(out_fn, delimiter=",", dtype=None, names=True)
     
-    data = []
-    for ind in np.arange(1,len(target_bg) + 1):
-        file_path = str(data_dict['data_path'][ind])
-        data.append(file_path)
+    data = data_dict['data_path']
     
     good_chans = 0
     all_data_IV = dict()
@@ -169,6 +152,7 @@ def tes_yield(S, target_bg, out_fn, start_time):
     S.pub.register_file(target_vbias_fp, "tes_yield", format='npy')
 
     fig, axs = plt.subplots(6, 4,figsize=(25,30), gridspec_kw={'width_ratios': [2, 1,2,1]})
+    tes_total = 0
     for ind, bl in enumerate(target_bg):
         if np.isnan(target_vbias_dict[bl]):
             continue
@@ -176,7 +160,9 @@ def tes_yield(S, target_bg, out_fn, start_time):
         for sb in all_data_IV[bl].keys():
             for ch,d in all_data_IV[bl][sb].items():
                 axs[bl//2,bl%2*2].plot(d['v_bias'], d['R'], alpha=0.6)
-                count_num = count_num + 1
+                count_num += 1
+        tes_total += count_num
+
         axs[bl//2,bl%2*2].set_xlabel('V_bias [V]')
         axs[bl//2,bl%2*2].set_ylabel('R [Ohm]')
         axs[bl//2,bl%2*2].grid()
@@ -193,6 +179,7 @@ def tes_yield(S, target_bg, out_fn, start_time):
             target_vbias_dict[bl],np.round(np.median(operating_r[bl][target_vbias_dict[bl]]),2))
         )
 
+    plt.suptitle(f"TES total yield: {tes_total}")
     save_name = os.path.join(S.plot_dir, f'{start_time}_IV_yield.png')
     logger.info(f'Saving plot to {save_name}')
     plt.savefig(save_name)
@@ -200,15 +187,22 @@ def tes_yield(S, target_bg, out_fn, start_time):
     S.pub.register_file(save_name, "tes_yield", plot=True)
 
     fig, axs = plt.subplots(6, 4, figsize=(25,30))
+    tes_total = 0
     for bl in target_bg:
         count_num = 0
         Rn = []
         psat = []
         for sb in all_data_IV[bl].keys():
-            for ch,d in all_data_IV[bl][sb].items():
+            for ch, d in all_data_IV[bl][sb].items():
+                # lazy try/except until I actually figure this out
+                try:
+                    now_psat = d['p_sat'].item()
+                except AttributeError:
+                    now_psat = d['p_sat']
                 Rn.append(d['R_n'])
-                psat.append(d['p_sat'].item())
+                psat.append(now_psat)
                 count_num += 1
+        tes_total += count_num
 
         axs[bl//2,bl%2*2].set_xlabel('P_sat (pW)')
         axs[bl//2,bl%2*2].set_ylabel('count')
@@ -224,8 +218,10 @@ def tes_yield(S, target_bg, out_fn, start_time):
         axs[bl//2,bl%2*2+1].set_ylabel('count')
         axs[bl//2,bl%2*2+1].set_title('bl {}, median Rn {:.4f} Ohm'.format(bl,np.median(Rn)))
 
+    plt.suptitle(f"TES total yield: {tes_total}")
     save_name = os.path.join(S.plot_dir, f'{start_time}_IV_psat.png')
     logger.info(f'Saving plot to {save_name}')
+    logger.info(f"TES total yield: {tes_total}")
     plt.savefig(save_name)
 
     S.pub.register_file(save_name, "tes_yield", plot=True)
@@ -233,12 +229,14 @@ def tes_yield(S, target_bg, out_fn, start_time):
     return target_vbias_dict
 
 
-def run(S, cfg, bias_high=20, bias_low=0, bias_step=0.025, bath_temp=100, current_mode='low'):
+def run(S, cfg, bias_high=20, bias_low=0, bias_step=0.025, bath_temp=100,
+        current_mode='low', make_bgmap=False):
     start_time = S.get_timestamp()
     target_bg = np.arange(12)
 
     out_fn = tickle_and_iv(
-        S, target_bg, bias_high, bias_low, bias_step, bath_temp, start_time, current_mode)
+        S, target_bg, bias_high, bias_low, bias_step, bath_temp, start_time,
+        current_mode, make_bgmap)
     target_vbias = tes_yield(S, target_bg, out_fn, start_time)
     logger.info(f'Saving data to {out_fn}')
     return target_vbias
@@ -250,10 +248,11 @@ if __name__ == "__main__":
     parser.add_argument('--temp', type=str,
                         help="For record-keeping, not controlling,"
     )
-    parser.add_argument('--bias-high', type=float, default=20)
+    parser.add_argument('--bias-high', type=float, default=19)
     parser.add_argument('--bias-low', type=float, default=0)
     parser.add_argument('--bias-step', type=float, default=0.025)
     parser.add_argument('--current-mode', type=str, default='low')
+    parser.add_argument('--make-bgmap', default=False, action='store_true')
     parser.add_argument(
         "--loglevel",
         type=str.upper,
@@ -276,11 +275,7 @@ if __name__ == "__main__":
 
     S.load_tune(cfg.dev.exp['tunefile'])
 
-    bath_temp = args.temp
-    bias_high = args.bias_high
-    bias_low = args.bias_low
-    bias_step = args.bias_step
-    current_mode = args.current_mode
-
-    run(S, cfg, bias_high=bias_high, bias_low=bias_low,
-        bias_step=bias_step, bath_temp=bath_temp, current_mode=current_mode)
+    run(S, cfg, bias_high=args.bias_high, bias_low=args.bias_low,
+        bias_step=args.bias_step, bath_temp=args.temp, current_mode=args.current_mode,
+        make_bgmap=args.make_bgmap
+    )

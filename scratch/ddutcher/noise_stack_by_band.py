@@ -1,153 +1,124 @@
 # noise_stack_by_band.py
 
 import os
-import time
 import matplotlib
 import numpy as np
-from scipy import signal
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pysmurf.client.util.pub import set_action
+import sodetlib as sdl
+from sodetlib import noise
 import logging
 
 logger = logging.getLogger(__name__)
 
-
+"""
 @set_action()
-def noise_stack_by_band(
-        S,
-        stream_time=20.0,
-        fmin=5,
-        fmax=50,
-        detrend='constant',
-):
-    logger.info(f"taking {stream_time}s timestream")
+def noise_stack_by_band(S, cfg, acq_time=30.0, wl_f_range=(10, 30), nperseg=1024):
+    logger.info(f"taking {acq_time}s timestream")
 
-    # non blocking statement to start time stream and return the dat filename
-    dat_path = S.stream_data_on()
-    # collect stream data
-    time.sleep(stream_time)
-    # end the time stream
-    S.stream_data_off()
+    sid = sdl.take_g3_data(S, acq_time)
+    am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
+    noisedict = noise.get_noise_params(
+        am, wl_f_range=wl_f_range, fit=False, nperseg=nperseg)
+    bands = am.ch_info.band
+    wls = noisedict['noise_pars'][:,0]
+    fknees = noisedict['noise_pars'][:,2]
+    band_medians = noisedict['band_medians']
 
-    start_time = dat_path[-14:-4]
+    #Plot white noise histograms
+    fig_wnl, axes_wnl = plt.subplots(4, 2, figsize=(16, 8),
+                             gridspec_kw={'hspace': 0})
+    fig_wnl.patch.set_facecolor('white')
+    max_bins = 0
 
-    timestamp, phase, mask, tes_bias = S.read_stream_data(
-        dat_path, return_tes_bias=True
-    )
-    logger.info(f"loaded the .dat file at: {dat_path}")
+    for b in range(8):
+        ax = axes_wnl[b % 4, b // 4]
+        m = bands == b
+        x = ax.hist(wls[m], range=(0,300), bins=60)
+        text  = f"Median: {band_medians[b]:0.1f} pA/rtHz\n"
+        text += f"Chans pictured: {np.sum(x[0]):0.0f}"
+        ax.text(0.7, .7, text, transform=ax.transAxes)
+        ax.axvline(np.median(wls[m]), color='red', alpha=0.6)
+        max_bins = max(np.max(x[0]), max_bins)
+        ax.set(ylabel=f'Band {b}')
+        ax.grid(linestyle='--')
 
-    # hard coded variables
-    fs = S.get_sample_frequency()
-    bands, channels = np.where(mask != -1)
-    phase *= S.pA_per_phi0 / (2.0 * np.pi)  # uA
-    sample_nums = np.arange(len(phase[0]))
-    t_array = sample_nums / fs
-
-    # reorganize the data by band then channel
-    stream_by_band_by_channel = {}
-    for band, channel in zip(bands, channels):
-        if band not in stream_by_band_by_channel.keys():
-            stream_by_band_by_channel[band] = {}
-        ch_idx = mask[band, channel]
-        stream_by_band_by_channel[band][channel] = phase[ch_idx]
-
-    # plot the band channel data
-    fig, axs = plt.subplots(4, 2, figsize=(12, 24), dpi=50)
-    for band in sorted(stream_by_band_by_channel.keys()):
-        wl_list_temp = []
-        stream_single_band = stream_by_band_by_channel[band]
-        ax_this_band = axs[band // 2, band % 2]
-        for channel in sorted(stream_single_band.keys()):
-            stream_single_channel = stream_single_band[channel]
-            nsamps = len(stream_single_channel)
-            f, Pxx = signal.welch(
-                stream_single_channel, fs=fs, detrend=detrend, nperseg=nsamps
-            )
-            Pxx = np.sqrt(Pxx)
-            fmask = (fmin < f) & (f < fmax)
-            wl = np.median(Pxx[fmask])
-            wl_list_temp.append(wl)
-            stream_single_channel_norm = stream_single_channel - np.mean(
-                stream_single_channel
-            )
-            ax_this_band.plot(
-                t_array, stream_single_channel_norm, color="C0", alpha=0.002
-            )
-        wl_median = np.median(wl_list_temp)
-        band_yield = len(stream_single_band)
-        ax_this_band.set_xlabel("time [s]")
-        ax_this_band.set_ylabel("Phase [pA]")
-        ax_this_band.grid()
-        ax_this_band.set_title(
-            f"band {band} yield {band_yield} median noise {wl_median:.2f}"
-        )
-        ax_this_band.set_ylim([-10000, 10000])
-
-    save_name = os.path.join(S.plot_dir, f"{start_time}_band_noise_stack.png")
-    logger.info(f"Saving plot to {save_name}")
-    plt.savefig(save_name)
-    S.pub.register_file(save_name, "smurfband_noise", plot=True)
-
-    fig, axs = plt.subplots(4, 4, figsize=(24, 24), dpi=50)
-    for band in sorted(stream_by_band_by_channel.keys()):
-        wl_list_temp = []
-        stream_single_band = stream_by_band_by_channel[band]
-        ax_this_band = axs[band // 2, band % 2 * 2]
-        for channel in sorted(stream_single_band.keys()):
-            stream_single_channel = stream_single_band[channel]
-            nsamps = len(stream_single_channel)
-            f, Pxx = signal.welch(
-                stream_single_channel, fs=fs, detrend=detrend, nperseg=nsamps
-            )
-            Pxx = np.sqrt(Pxx)
-            fmask = (fmin < f) & (f < fmax)
-            wl = np.median(Pxx[fmask])
-            wl_list_temp.append(wl)
-            ax_this_band.loglog(f, Pxx, color="C0", alpha=0.02)
-
-        wl_median = np.median(wl_list_temp)
-
-        band_yield = len(stream_single_band)
-        ax_this_band.set_xlabel("Frequency [Hz]")
-        ax_this_band.set_ylabel("Amp [pA/rtHz]")
-        ax_this_band.grid()
-        ax_this_band.axvline(1.4, linestyle="--", alpha=0.6, label="1.4 Hz", color="C1")
-        ax_this_band.axvline(60, linestyle="--", alpha=0.6, label="60 Hz", color="C2")
-        ax_this_band.set_title(f"band {band} yield {band_yield}")
-        ax_this_band.set_ylim([1, 5e3])
-
-        ax_this_band_2 = axs[band // 2, band % 2 * 2 + 1]
-        ax_this_band_2.set_xlabel("Amp [pA/rtHz]")
-        ax_this_band_2.set_ylabel("count")
-        ax_this_band_2.hist(wl_list_temp, range=(0, 300), bins=60)
-        ax_this_band_2.axvline(wl_median, linestyle="--", color="gray")
-        ax_this_band_2.grid()
-        ax_this_band_2.set_title(
-            f"band {band} yield {band_yield} median noise {wl_median:.2f}"
-        )
-        ax_this_band_2.set_xlim([0, 300])
-
-    save_name = os.path.join(S.plot_dir, f"{start_time}_band_psd_stack.png")
-    logger.info(f"Saving plot to {save_name}")
-    plt.savefig(save_name)
-    S.pub.register_file(save_name, "smurfband_noise", plot=True)
-
+    axes_wnl[0][0].set(title="AMC 0")
+    axes_wnl[0][1].set(title="AMC 1")
+    axes_wnl[-1][0].set(xlabel="White Noise (pA/rt(Hz))")
+    axes_wnl[-1][1].set(xlabel="White Noise (pA/rt(Hz))")
+    for _ax in axes_wnl:
+        for ax in _ax:
+            ax.set(ylim=(0, max_bins * 1.1))
+    plt.suptitle(
+        f'Total yield {len(wls)}, Overall median noise {np.nanmedian(wls):0.1f} pA/rtHz')
+    ctime = int(am.timestamps[0])
+    savename = os.path.join(S.plot_dir, f'{ctime}_white_noise_summary.png')
+    plt.savefig(savename)
+    plt.close()
+    S.pub.register_file(savename, "smurfband_noise", plot=True)
     logger.info(f"plotting directory is:\n{S.plot_dir}")
 
+    outdict = {'sid': sid, 'noisedict': noisedict, 'stream_id': cfg.stream_id,
+               'base_dir': cfg.sys['g3_dir']}
+    savename = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
+    np.save(savename, outdict, allow_pickle=True)
+    S.pub.register_file(savename, "smurfband_noise", format='npy')
+
+    #Plot ASDs
+    fig_wnl, axes_wnl = plt.subplots(4, 2, figsize=(16, 8),
+                             gridspec_kw={'hspace': 0})
+    fig_wnl.patch.set_facecolor('white')
+
+    for b in range(8):
+        ax = axes_wnl[b % 4, b // 4]
+        m = bands == b
+        med_wl = np.nanmedian(wls[m])
+        f_arr = np.tile(noisedict['f'], (sum(m),1))
+        x = ax.loglog(f_arr.T, noisedict['axx'][m].T, color='C0', alpha=0.1)
+        ax.axvline(1.4, linestyle='--', alpha=0.6, color='C1')
+        ax.axvline(60, linestyle='--', alpha=0.6, color='C2')
+        ax.axhline(med_wl, color='red', alpha=0.6,
+                   label=f'Med. WL: {med_wl:.1f} pA/rtHz')
+        ax.set(ylabel=f'ASD (pA/rtHz)')
+        ax.grid(linestyle='--', which='both')
+        ax.legend(loc='upper right')
+
+    axes_wnl[0][0].set(title="AMC 0")
+    axes_wnl[0][1].set(title="AMC 1")
+    axes_wnl[-1][0].set(xlabel="Frequency (Hz)")
+    axes_wnl[-1][1].set(xlabel="Frequency (Hz)")
+    for _ax in axes_wnl:
+        for ax in _ax:
+            ax.set(ylim=[1, 5e3])
+    savename = os.path.join(S.plot_dir, f'{ctime}_band_asds.png')
+    plt.savefig(savename)
+    S.pub.register_file(savename, "smurfband_noise", plot=True)
+    logger.info(f"plotting directory is:\n{S.plot_dir}")
+"""
 
 if __name__ == "__main__":
     import argparse
     from sodetlib.det_config import DetConfig
 
     cfg = DetConfig()
-    args = cfg.parse_args()
-    S = cfg.get_smurf_control(dump_configs=False, make_logfile=True)
+    parser = argparse.ArgumentParser()
 
-    noise_stack_by_band(
-        S,
-        stream_time=20.0,
-        fmin=5,
-        fmax=50,
-        detrend='constant',
+    parser.add_argument(
+    "--acq-time",
+    type=float,
+    default=30.0,
+    help="float, optional, default is 30.0. The amount of time to sleep in seconds while "
+    + "streaming SMuRF data for analysis.",
+)
+
+    args = cfg.parse_args(parser)
+    S = cfg.get_smurf_control(dump_configs=False, make_logfile=True)
+    S.load_tune(cfg.dev.exp['tunefile'])
+
+    nsamps = S.get_sample_frequency() * args.acq_time
+    nperseg = 2 ** round(np.log2(nsamps / 5))
+    noise.take_noise(
+        S, cfg, acq_time=args.acq_time, show_plot=False, save_plot=True, nperseg=nperseg,
     )
