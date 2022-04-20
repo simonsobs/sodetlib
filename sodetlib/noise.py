@@ -279,13 +279,13 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
                 ax.set(ylim=(0, max_bins * 1.1))
         plt.suptitle(
             f'Total yield {len(wls)}, Overall median noise {np.nanmedian(wls):0.1f} pA/rtHz')
-        if show_plot:
-            plt.show()
         if save_plot:
             plt.savefig(os.path.join(save_dir,
                                     f'{ctime}_white_noise_summary.png'))
-            if not(show_plot):
-                plt.close()
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
 
         #Plot f_knee histograms
         fig_fk, axes_fk = plt.subplots(4, 2, figsize=(16, 8),
@@ -326,6 +326,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
                                  gridspec_kw={'hspace': 0})
         fig_asd.patch.set_facecolor('white')
 
+        min_x, max_x = (1, 0)
         for b in range(8):
             ax = axes_asd[b % 4, b // 4]
             m = bands == b
@@ -337,6 +338,8 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             ax.set(ylabel=f'Band {b}\nASD (pA/rtHz)')
             ax.grid(linestyle='--', which='both')
             ax.legend(loc='upper right')
+            min_x = min(ax.get_xlim()[0], min_x)
+            max_x = max(ax.get_xlim()[1], max_x)
 
         axes_asd[0][0].set(title="AMC 0")
         axes_asd[0][1].set(title="AMC 1")
@@ -344,14 +347,14 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
         axes_asd[-1][1].set(xlabel="Frequency (Hz)")
         for _ax in axes_asd:
             for ax in _ax:
-                ax.set(ylim=[1, 5e3])
-        if show_plot:
-            plt.show()
+                ax.set(xlim=[min_x, max_x], ylim=[1, 5e3])
         if save_plot:
             plt.savefig(os.path.join(save_dir,
                                     f'{ctime}_band_asds.png'))
-            if not(show_plot):
-                plt.close()
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
 
     finally:
         if isinteractive:
@@ -445,14 +448,15 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
         ax2.set_xlabel('Frequency [Hz]', fontsize=14)
         ax2.set_ylabel('ASD [pA/rtHz]', fontsize=14)
 
-        if show_plot:
-            plt.show()
         if save_plot:
             ctime = int(am.timestamps[0])
             plt.savefig(os.path.join(save_dir,
                                      f'{ctime}_b{band}c{chan}_noise.png'))
-            if not(show_plot):
-                plt.close()
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
+
     finally:
         if isinteractive:
             plt.ion()
