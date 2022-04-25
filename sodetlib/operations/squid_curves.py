@@ -241,7 +241,7 @@ def plot_squid_fit_summary(data, nbins = 35, quantile = .95):
     plt.legend([f'Median : {np.round(np.median(phi0s),3)}', f'Data (Inner {quantile*100}%)\n {phi0s.size} / {data["bands"].size} channels used'],
               fontsize = 14)
     plt.xlabel('$\\Phi_0$ [ff]',fontsize = 16)
-    plt.ylabel('Counts',fontsize = k16)
+    plt.ylabel('Counts',fontsize = 16)
     plt.tight_layout()
     plt.tick_params(axis='both', which='major', labelsize=12)
     return
