@@ -25,3 +25,4 @@ Contents
    operations/setup
    operations/bias_steps
    operations/iv
+   operations/squid_curves
