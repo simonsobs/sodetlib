@@ -495,11 +495,11 @@ class _Register:
         self.S = S
         self.addr = S.epics_root + ":" + addr
 
-    def get(self):
-        return self.S._caget(self.addr)
+    def get(self, **kw):
+        return self.S._caget(self.addr, **kw)
 
-    def set(self, val):
-        self.S._caput(self.addr, val)
+    def set(self, val, **kw):
+        self.S._caput(self.addr, val, **kw)
 
 class Registers:
     """
