@@ -228,7 +228,7 @@ def validate_and_save(fname, data, S=None, cfg=None, register=True,
     else:
         path = fname
 
-    np.save(path, data, allow_pickle=True)
+    np.save(path, _data, allow_pickle=True)
     if S is not None and register:
         S.pub.register_file(path, 'sodetlib_data', format='npy')
     return path
