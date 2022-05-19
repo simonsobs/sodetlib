@@ -39,13 +39,14 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
         Returns a boolean signaling whether voltage scan has been successful.
         The set voltages can be read with S.get_amplifier_biases().
     """
-    if amp_name not in ['hemt', '50K']:
-        raise ValueError("amp_name must be either 'hemt' or '50K'")
+    all_amps = S.C.list_of_c02_and_c04_amps
+    if amp_name not in all_amps:
+        raise ValueError(f"amp_name must be one of {all_amps}")
 
     for _ in range(max_iter):
         amp_biases = S.get_amplifier_biases(write_log=True)
-        Vg = amp_biases[f"{amp_name}_Vg"]
-        Id = amp_biases[f"{amp_name}_Id"]
+        Vg = amp_biases[f"{amp_name}_gate_volt"]
+        Id = amp_biases[f"{amp_name}_drain_current"]
         delta = target_Id - Id
 
         S.log(delta)
@@ -53,26 +54,26 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
         if np.abs(delta) < id_tolerance:
             return True
 
-        if amp_name == 'hemt':
+        if 'hemt' in amp_name:
             step = np.sign(delta) * (0.1 if np.abs(delta) > 1.5 else 0.01)
         else:
             step = np.sign(delta) * (0.01 if np.abs(delta) > 1.5 else 0.001)
 
         Vg_next = Vg + step
         if not (vg_min < Vg_next < vg_max):
-            S.log(f"Vg adjustment would go out of range ({vg_min}, {vg_max}). "
-                  f"Unable to change {amp_name}_Id to desired value", False)
+            S.log(f"Gate voltage adjustment would go out of range ({vg_min}, {vg_max}). "
+                  f"Unable to change {amp_name}_drain_current to desired value", False)
             return False
 
-        if amp_name == 'hemt':
-            S.set_hemt_gate_voltage(Vg_next, override=True)
+        if 'hemt' in amp_name:
+            S.set_amp_gate_voltage(amp_name, Vg_next, override=True)
         else:
-            S.set_50k_amp_gate_voltage(Vg_next, override=True)
+            S.set_amp_gate_voltage(amp_name, Vg_next, override=True)
 
         time.sleep(wait_time)
 
     S.log(f"Max allowed Vg iterations ({max_iter}) has been reached. "
-          f"Unable to get target Id for {amp_name}.", False)
+          f"Unable to get target drain current for {amp_name}.", False)
 
     return False
 
@@ -84,15 +85,15 @@ def setup_amps(S, cfg, update_cfg=True):
     currents are in range, and if not will scan gate voltage to find one that
     hits the target current. Will update the device cfg if successful.
 
-    The following parameters can be modified in the device cfg:
+    The following parameters can be modified in the device cfg, where {amp}
+    is one of ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2']:
 
         exp:
          - amp_enable_wait_time (float): Seconds to wait after enabling amps
            before scanning gate voltages
-         - amp_hemt_Id (float): Target drain current for hemt amp (mA)
-         - amp_50k_Id (float): Target drain current for 50k amp (mA)
-         - amp_hemt_Id_tolerance (float): Tolerance for hemt drain current (mA)
-         - amp_50k_Id_tolerance (float): Tolerance for 50k drain current (mA)
+         - amp_{amp}_drain_current (float): Target drain current (mA)
+         - amp_{amp}_drain_current_tolerance (float): Tolerance for drain current (mA)
+         - amp_{amp}_drain_volt (float) : Drain voltage (V). C04 cryocards only.
 
     Args
     -----
@@ -107,46 +108,51 @@ def setup_amps(S, cfg, update_cfg=True):
 
     exp = cfg.dev.exp
 
-    S.C.write_ps_en(0b11)
-    time.sleep(exp['amp_enable_wait_time'])
+    # Determine cryocard rev
+    major, minor, patch = S.C.get_fw_version()
+    if major == 4:
+        cc_rev = 'c04'
+        amp_list = S.C.list_of_c04_amps
+    elif major == 1:
+        cc_rev = 'c02'
+        amp_list = S.C.list_of_c02_amps
+        S.C.write_ps_en(0b11)
+        time.sleep(exp['amp_enable_wait_time'])
+    else:
+        raise ValueError(f"Unrecognized cryocard firmware version "
+                         + "({major},{minor},{patch})")
 
     # Data to be passed back to the ocs-pysmurf-controller clients
-    summary = {
-        'success':     False,
-        'amp_50k_Id':  None,
-        'amp_hemt_Id': None,
-        'amp_50k_Vg':  None,
-        'amp_hemt_Vg': None,
-    }
+    summary = {'success': False}
+    for amp in amp_list:
+        summary[f'{amp}_gate_volt'] = None
+        summary[f'{amp}_drain_current'] = None
+        amp_dict[amp + '_enable'] = None
+        if cc_rev == 'c04':
+            summary[f'{amp}_drain_volt'] = None
 
-    # First check if amps are within tolerance...
     amp_biases = S.get_amplifier_biases()
-    delta_hemt = np.abs(amp_biases['hemt_Id'] - exp['amp_hemt_Id'])
-    delta_50k = np.abs(amp_biases['50K_Id'] - exp['amp_50k_Id'])
 
-    # Check / scan hemt voltage
-    if delta_hemt > exp['amp_hemt_Id_tolerance']:
-        S.log("Hemt current not within tolerance, scanning for correct Vg")
-        S.set_hemt_gate_voltage(exp['amp_hemt_init_Vg'])
-        success = find_gate_voltage(
-            S, exp['amp_hemt_Id'], 'hemt', wait_time=exp['amp_step_wait_time'],
-            id_tolerance=exp['amp_hemt_Id_tolerance']
-        )
-        if not success:
-            sdl.pub_ocs_log(S, "Failed determining hemt gate voltage")
-            sdl.set_session_data(S, 'setup_amps_summary', summary)
-            S.C.write_ps_en(0)
-            return False, summary
+    # For C04, first check drain voltages
+    if cc_rev == 'c04':
+        for amp in amp_list:
+            Vd = amp_biases[f"{amp}_drain_volt"]
+            if Vd != exp[f"amp_{amp}_drain_volt"]:
+                S.set_amp_drain_voltage(amp, exp[f"amp_{amp}_drain_volt"]) 
 
-    # Check / scan 50k voltage
-    if delta_50k > exp['amp_50k_Id_tolerance']:
-        S.log("50k current not within tolerance, scanning for correct Vg")
-        success = find_gate_voltage(
-            S, exp['amp_50k_Id'], '50K', wait_time=exp['amp_step_wait_time'],
-            id_tolerance=exp['amp_50k_Id_tolerance']
-        )
+    # Check drain currents / scan gate voltages
+    delta_drain_currents = dict()
+    for amp in amp_list:
+        delta_Id = np.abs(amp_biases[amp] - exp[amp])
+        if delta_Id > exp[f'amp_{amp}_drain_current_tolerance']:
+            S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
+            S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'])
+            success = find_gate_voltage(
+                S, exp[f'amp_{amp}_drain_current'], amp, wait_time=exp['amp_step_wait_time'],
+                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
+            )
         if not success:
-            sdl.pub_ocs_log(S, "Failed determining 50k gate voltage")
+            sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
             sdl.set_session_data(S, 'setup_amps_summary', summary)
             S.C.write_ps_en(0)
             return False, summary
@@ -154,10 +160,9 @@ def setup_amps(S, cfg, update_cfg=True):
     # Update device cfg
     biases = S.get_amplifier_biases()
     if update_cfg:
-        cfg.dev.update_experiment({
-            'amp_50k_Vg':  biases['50K_Vg'],
-            'amp_hemt_Vg': biases['hemt_Vg'],
-        }, update_file=True)
+        for amp in amp_list:
+            cfg.dev.update_experiment({f'amp_{amp}_gate_volt': biases[f'{amp}_gate_volt']},
+                                      update_file=True)
 
     summary = {'success': True, **biases}
     sdl.set_session_data(S, 'setup_amps_summary', summary)
