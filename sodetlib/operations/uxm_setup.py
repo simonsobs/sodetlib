@@ -23,7 +23,7 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
     vg_max: float
         Maximum allowable gate voltage
     amp_name: str
-        Name of amplifier. Must be either "hemt" or "50K'.
+        Name of amplifier. Must be one of ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'].
     max_iter: int, optional
         Maximum number of iterations to find voltage. Defaults to 30.
     wait_time : float
@@ -44,7 +44,7 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
         raise ValueError(f"amp_name must be one of {all_amps}")
 
     for _ in range(max_iter):
-        amp_biases = S.get_amplifier_biases(write_log=True)
+        amp_biases = S.get_amplifier_biases()
         Vg = amp_biases[f"{amp_name}_gate_volt"]
         Id = amp_biases[f"{amp_name}_drain_current"]
         delta = target_Id - Id
@@ -113,21 +113,27 @@ def setup_amps(S, cfg, update_cfg=True):
     if major == 4:
         cc_rev = 'c04'
         amp_list = S.C.list_of_c04_amps
-    elif major == 1:
+    elif major == 0:
+        if sum((major,minor,patch)) == 0:
+               raise ValueError("Error communicatin with cryocard; "
+                                + "is it connected?")
+        else:
+               raise ValueError(f"Unrecognized cryocard firmware version "
+                                + "({major},{minor},{patch}).")
+    else:
         cc_rev = 'c02'
         amp_list = S.C.list_of_c02_amps
         S.C.write_ps_en(0b11)
         time.sleep(exp['amp_enable_wait_time'])
-    else:
-        raise ValueError(f"Unrecognized cryocard firmware version "
-                         + "({major},{minor},{patch})")
+        if S.C.read_ps_en() != 3:
+            raise ValueError("Could not enable amps.")
 
     # Data to be passed back to the ocs-pysmurf-controller clients
     summary = {'success': False}
     for amp in amp_list:
         summary[f'{amp}_gate_volt'] = None
         summary[f'{amp}_drain_current'] = None
-        amp_dict[amp + '_enable'] = None
+        summary[amp + '_enable'] = None
         if cc_rev == 'c04':
             summary[f'{amp}_drain_volt'] = None
 
@@ -143,12 +149,12 @@ def setup_amps(S, cfg, update_cfg=True):
     # Check drain currents / scan gate voltages
     delta_drain_currents = dict()
     for amp in amp_list:
-        delta_Id = np.abs(amp_biases[amp] - exp[amp])
+        delta_Id = np.abs(amp_biases[f"{amp}_drain_current"] - exp[f"amp_{amp}_drain_current"])
         if delta_Id > exp[f'amp_{amp}_drain_current_tolerance']:
             S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
             S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'])
             success = find_gate_voltage(
-                S, exp[f'amp_{amp}_drain_current'], amp, wait_time=exp['amp_step_wait_time'],
+                S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
                 id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
             )
         if not success:
