@@ -26,3 +26,4 @@ Contents
    operations/bias_steps
    operations/iv
    operations/squid_curves
+   operations/complex_impedance
