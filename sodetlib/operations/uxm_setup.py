@@ -129,6 +129,11 @@ def setup_amps(S, cfg, update_cfg=True):
         if S.C.read_ps_en() != 3:
             raise ValueError("Could not enable amps.")
 
+    amp_list = list(set(amp_list) & set(exp['amps_to_bias']))
+    if len(amp_list) == 0:
+        raise ValueError(
+            f"exp['amps_to_bias']: {exp['amps_to_bias']} contains no valid amps."
+        )
     # Data to be passed back to the ocs-pysmurf-controller clients
     summary = {'success': False}
     for amp in amp_list:
@@ -158,11 +163,11 @@ def setup_amps(S, cfg, update_cfg=True):
                 S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
                 id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
             )
-        if not success:
-            sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
-            sdl.set_session_data(S, 'setup_amps_summary', summary)
-            S.C.write_ps_en(0)
-            return False, summary
+            if not success:
+                sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
+                sdl.set_session_data(S, 'setup_amps_summary', summary)
+                S.C.write_ps_en(0)
+                return False, summary
 
     # Update device cfg
     biases = S.get_amplifier_biases()

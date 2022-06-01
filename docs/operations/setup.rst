@@ -45,8 +45,9 @@ can be biased via smurf. Additionally, the C04/C05 cryocards allow the drain
 voltages to be specified, while for C02 cryocards these are fixed.
 
 The ``setup_amps`` function will first determine which revision cryocard is
-connected based on firmware version, and therefore how many amplifiers need
-to be biased. It then enables the amps / sets the drain voltages if necessary.
+connected based on firmware version, and therefore which amplifiers are able
+to be biased. To be biased, these amps must also be listed in the device cfg.
+It then enables the amps / sets the drain voltages if necessary.
 It then checks if the amps happen to already be
 biased properly. If not, the function will sweep the gate-voltage until it
 finds one that hits the target drain voltages specified in the device cfg. 
