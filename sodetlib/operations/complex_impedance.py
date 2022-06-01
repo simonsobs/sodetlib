@@ -31,8 +31,7 @@ def restrict_to_times(am, t0, t1, in_place=False):
 
 def dict_to_am(d, skip_bad_types=False):
     """
-    Attempts to convert a dictionary into an axis manager. This can be used on
-    dicts containing basic types such as (str, int, float) along with numpy
+    Attempts to convert a dictionary into an axis manager. This can be used on dicts containing basic types such as (str, int, float) along with numpy
     arrays. The AxisManager will not have any structure such as "axes", but
     this is useful if you want to nest semi-arbitrary data such as the "meta"
     dict into an axis manager.
@@ -97,10 +96,10 @@ def remap_dets(src, dst, load_axes=False, idxmap=None):
         axes.extend([v for k, v in src._axes.items() if k != 'dets'])
 
     am_new = AxisManager(*axes)
-    for k, axes in src._assignments:
+    for k, axes in src._assignments.items():
         f = src._fields[k]
         if isinstance(f, AxisManager):
-            am_new.wrap(k, remap_dets(dst, f, load_axes=load_axes))
+            am_new.wrap(k, remap_dets(f, dst, load_axes=load_axes, idxmap=idxmap))
         elif isinstance(f, np.ndarray):
             assignments = []
             if load_axes:
@@ -113,7 +112,7 @@ def remap_dets(src, dst, load_axes=False, idxmap=None):
                 f = np.rollaxis(np.rollaxis(f, i)[idxmap], -i)
             am_new.wrap(k, f, assignments)
         else:  # Literals
-            am_new.wrap(k, f, assignments)
+            am_new.wrap(k, f)
 
     am_new.wrap('unmapped', idxmap == -1, [(0, 'dets')])
     return am_new
@@ -132,7 +131,8 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         IndexAxis('steps', count=nsteps),
         IndexAxis('biaslines', count=NBGS),
     )
-    ds.wrap('meta', dict_to_am(sdl.gt_metadata(S, cfg)))
+    ds.wrap('meta', dict_to_am(sdl.get_metadata(S, cfg)))
+    ds.meta.wrap('g3_dir', cfg.sys['g3_dir'])
     if run_kwargs is not None:
         ds.wrap('run_kwargs', dict_to_am(run_kwargs))
 
@@ -140,9 +140,9 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
     ds.wrap('channels', chans, [(0, 'dets')])
     ds.wrap('freqs', freqs, [(0, 'steps')])
 
-    ds.wrap_new('start_times', ('biaslines', 'freqs'))
-    ds.wrap_new('stop_times', ('biaslines', 'freqs'))
-    ds.wrap_new('sids', ('biaslines', 'freqs'))
+    ds.wrap_new('start_times', ('biaslines', 'steps'))
+    ds.wrap_new('stop_times', ('biaslines', 'steps'))
+    ds.wrap_new('sids', ('biaslines',), dtype=int)
 
     # Load bgmap stuff
     bgmap, polarity = sdl.load_bgmap(
@@ -151,11 +151,18 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
     ds.wrap('bgmap', bgmap, [(0, 'dets')])
     ds.wrap('polarity', polarity, [(0, 'dets')])
 
-    if ob_path is not None:
+
+    ob_path = cfg.dev.exp.get('complex_impedance_ob_path')
+    sc_path = cfg.dev.exp.get('complex_impedance_sc_path')
+    if ds.run_kwargs.state == 'transition':
+        if ob_path is None:
+            raise ValueError("No ob CI path found in the device cfg")
+        if sc_path is None:
+            raise ValueError("No ob CI path found in the device cfg")
+
         ob = remap_dets(AxisManager.load(ob_path), ds, load_axes=False)
         ds.wrap('ob', ob)
 
-    if sc_path is not None:
         sc = remap_dets(AxisManager.load(sc_path), ds, load_axes=False)
         ds.wrap('sc', sc)
 
@@ -179,8 +186,8 @@ def load_tod(ds, bg, arc=None):
         stop = ds.stop_times[bg, -1]
         seg = arc.load_data(start, stop, show_pb=False)
     else:
-        sid = ds.sid[bg]
-        seg = sdl.load_session(ds.meta.stream_id, sid)
+        sid = ds.sids[bg]
+        seg = sdl.load_session(ds.meta.stream_id, sid, base_dir=ds.meta.g3_dir)
     return seg
 
 def downsample(am, axis_name, ds_factor, in_place=True):
@@ -352,7 +359,7 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
       - res_freqs(dets): Resonance frequency of each channel detectors.
     """
     if bgs is None:
-        bgs = ds.bgs
+        bgs = ds.run_kwargs.bgs
     bgs = np.atleast_1d(bgs)
 
     # Delete temp fields if they exist
@@ -360,17 +367,18 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
         if f in ds._fields:
             ds.move(f, None)
 
-    ds.wrap_new('_Ites', ('dets', 'steps'), cls=np.full,
+    nsteps = len(ds.freqs)
+    ds.wrap_new('_Ites', ('dets', nsteps), cls=np.full,
                 fill_value=np.nan, dtype=np.complex128)
-    ds.wrap_new('_Ibias', ('biaslines',), cls=np.full, fill_value=np.nan)
-    ds.wrap_new('_Ibias_dc', ('biaslines',), cls=np.full, fill_value=np.nan)
+    ds.wrap_new('_Ibias', (NBGS,), cls=np.full, fill_value=np.nan)
+    ds.wrap_new('_Ibias_dc', (NBGS,), cls=np.full, fill_value=np.nan)
     ds.wrap_new('_res_freqs', ('dets',), cls=np.full, fill_value=np.nan)
 
     pA_per_bit = 2 * ds.meta['rtm_bit_to_volt']        \
         / ds.meta['bias_line_resistance']              \
         * ds.meta['high_low_current_ratio'] * 1e12
 
-    ntot = len(bgs) * ds.steps.count
+    ntot = len(bgs) * len(ds.freqs)
     pb = tqdm(total=ntot, disable=(not show_pb))
     for bg in bgs:
         if tod is None:
@@ -383,18 +391,19 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
             ds.bands, ds.channels
         )
 
-        ds._Ibias_dc[bg] = np.mean(_tod.biases[bg] * pA_per_bit)
-        ds._Ibias[bg] = 0.5 * np.ptp(_tod.biases[bg] * pA_per_bit)
-        ds._res_freqs[chmap] = _tod.ch_info.frequency
-
         pb.set_description(f"Analyzing segments for bg {bg}")
-        for i in range(ds.steps.count):
+        for i in range(len(ds.freqs)):
             try:
                 seg = analyze_seg(ds, _tod, bg, i)
             except RestrictionException:
                 # Means there's no data at the specified time
                 pb.update()
                 continue
+            if i == 0:
+                ds._Ibias_dc[bg] = np.mean(seg.biases[bg])
+                ds._Ibias[bg] = 0.5 * np.ptp(seg.biases[bg])
+                ds._res_freqs[chmap] = seg.ch_info.frequency
+
             ds._Ites[chmap, i] = seg.Ites
             pb.update()
         del _tod
@@ -439,8 +448,12 @@ def get_ztes(ds):
     Pj = I0 * ds.meta.R_sh * (Ib - I0)
     ds._Rtes = np.abs(Pj / I0**2)
 
-    Ites_ob = np.interp(ds.freqs, ob.freqs, ob.Ites)
-    Ites_sc = np.interp(ds.freqs, sc.freqs, sc.Ites)
+    Ites_ob = np.zeros_like(ds.Ites)
+    Ites_sc = np.zeros_like(ds.Ites)
+    for rc in range(len(ob.channels)):
+        Ites_ob[rc, :] = np.interp(ds.freqs, ob.freqs, ob.Ites[rc])
+        Ites_sc[rc, :] = np.interp(ds.freqs, sc.freqs, sc.Ites[rc])
+        
     ds._Vth = 1./((1./Ites_ob - 1./Ites_sc) / ds._Rn[:, None])
     ds._Zeq = ds._Vth / Ites_sc
 
@@ -520,7 +533,7 @@ def fit_det_params(ds, pb=False, fmax=None):
         if f in ds._fields:
             ds.move(f, None)
 
-    for f in ['_tau_eff', '_Rfit', '_beta_I', '_L_I']:
+    for f in ['_tau_eff', '_Rfit', '_beta_I', '_L_I', '_tau_I']:
         ds.wrap_new(f, ('dets', ), cls=np.full, fill_value=np.nan)
     ds.wrap('_fit_labels', np.array(['R', 'beta_I', 'L_I', 'tau_I']))
     ds.wrap_new('_fit_x', ('dets', 4), cls=np.full, fill_value=np.nan)
@@ -528,12 +541,12 @@ def fit_det_params(ds, pb=False, fmax=None):
     for i in trange(len(ds.channels), disable=(not pb)):
         if ds.bgmap[i] == -1: continue
 
-        res, dx = fit_single_det_params(ds, i, fmax=fmax)
+        res = fit_single_det_params(ds, i, fmax=fmax)
         ds._fit_x[i, :] = res.x
     
     # Compute tau_eff
     RL = ds.meta.R_sh
-    ds._Rfit, ds._beta_I, ds._L_I, ds._tau_I = ds.fit_x.T
+    ds._Rfit, ds._beta_I, ds._L_I, ds._tau_I = ds._fit_x.T
     ds.tau_eff = ds._tau_I * (1 - ds._L_I) * (1 + ds._beta_I + RL / ds._Rfit) \
         / (1 + ds._beta_I + RL / ds._Rfit + ds._L_I * (1 - RL / ds._Rfit))
 
@@ -547,7 +560,7 @@ def analyze_full(ds):
     Performs the full CI analysis on a dataset.
     """
     analyze_tods(ds)
-    if ds.state == 'transition':
+    if ds.run_kwargs.state == 'transition':
         get_ztes(ds)
         fit_det_params(ds)
     return ds
@@ -613,7 +626,7 @@ def plot_ztes(ds, rc, x=None, write_text=True):
         r'$\beta_I$ = ' + f'{x[1]:.2f}',
         r'$\mathcal{L}_I$ = ' + f'{x[2]:.2f}',
         r'$\tau_I$ = ' + f'{x[3]*1000:.2f} ms',
-        r'$r^2$ = ' + f'{ds.ztes_rsquared[rc]:.2f}',
+        # r'$r^2$ = ' + f'{ds.ztes_rsquared[rc]:.2f}',
     ])
     if write_text:
         ax.text(0.05, 0.05, txt, transform=ax.transAxes, fontsize=12,
@@ -673,7 +686,7 @@ def take_complex_impedance(
         freqs = np.logspace(0, np.log10(4e3), 20)
     freqs = np.atleast_1d(freqs)
 
-    run_kwargs = locals()
+    run_kwargs = {k: v for k, v in locals().items() if k not in ['S', 'cfg']}
 
     # First, determine which bands and channels we'll try to run on.
     scale_array = np.array([S.get_amplitude_scale_array(b) for b in range(8)])
@@ -695,7 +708,7 @@ def take_complex_impedance(
         init_biases = S.get_tes_bias_bipolar_array()
         for bg in bgs:
             m = ds.bgmap == bg
-            channel_mask = ds.bands[m] * S.get_number_channels + ds.channels[m]
+            channel_mask = ds.bands[m] * S.get_number_channels() + ds.channels[m]
 
             ds.sids[bg] = sdl.stream_g3_on(S, channel_mask=channel_mask)
             for j, freq in enumerate(freqs):
@@ -758,6 +771,8 @@ def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
         Any additional kwargs will be passed directly to the
         ``take_complex_impedance`` function.
     """
+    bgs = np.atleast_1d(bgs)
+
     # Takes SC sweep
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, 0)
