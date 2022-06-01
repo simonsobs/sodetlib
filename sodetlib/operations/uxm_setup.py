@@ -81,7 +81,8 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
 @sdl.set_action()
 def setup_amps(S, cfg, update_cfg=True):
     """
-    Initial setup for 50k and hemt amplifiers. Will first check if drain
+    Initial setup for 50k and hemt amplifiers. For C04/C05 cryocards, will first
+    check if the drain voltages are set. Then checks if drain
     currents are in range, and if not will scan gate voltage to find one that
     hits the target current. Will update the device cfg if successful.
 
@@ -93,7 +94,7 @@ def setup_amps(S, cfg, update_cfg=True):
            before scanning gate voltages
          - amp_{amp}_drain_current (float): Target drain current (mA)
          - amp_{amp}_drain_current_tolerance (float): Tolerance for drain current (mA)
-         - amp_{amp}_drain_volt (float) : Drain voltage (V). C04 cryocards only.
+         - amp_{amp}_drain_volt (float) : Drain voltage (V). C04/C05 cryocards only.
 
     Args
     -----

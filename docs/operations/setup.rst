@@ -39,8 +39,15 @@ object before passing it to the setup function, for example
 Amplifier Setup
 ````````````````
 
-First we must bias the cold 50k and hemt amplifiers. The ``setup_amps``
-function will first enable the amps and check if they happened to already be
+First we must bias the cold 50k and hemt amplifiers. Depending on the
+cryocard revision, either one set (C02) or two sets (C04/C05) of amplifiers
+can be biased via smurf. Additionally, the C04/C05 cryocards allow the drain
+voltages to be specified, while for C02 cryocards these are fixed.
+
+The ``setup_amps`` function will first determine which revision cryocard is
+connected based on firmware version, and therefore how many amplifiers need
+to be biased. It then enables the amps / sets the drain voltages if necessary.
+It then checks if the amps happen to already be
 biased properly. If not, the function will sweep the gate-voltage until it
 finds one that hits the target drain voltages specified in the device cfg. 
 
