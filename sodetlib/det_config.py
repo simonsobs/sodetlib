@@ -39,10 +39,27 @@ exp_defaults = {
     'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
 
     # Amp stuff
-    "amp_50k_init_Vg": -0.5, "amp_hemt_init_Vg": -1.0, "amp_hemt_Id": 8.0,
-    "amp_50k_Id": 15.0, "amp_50k_Vg": None, "amp_hemt_Vg": None,
+    "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
     "amp_enable_wait_time": 10.0, "amp_step_wait_time": 0.2,
-    "amp_hemt_Id_tolerance": 0.2, "amp_50k_Id_tolerance": 0.2,
+
+    "amp_50k_init_gate_volt": -0.5, "amp_50k_drain_current": 15.0,
+    "amp_50k_gate_volt": None, "amp_50k_drain_current_tolerance": 0.2,
+    "amp_hemt_init_gate_volt": -1.0, "amp_hemt_drain_current": 8.0,
+    "amp_hemt_gate_volt": None, "amp_hemt_drain_current_tolerance": 0.2,
+
+    "amp_50k1_init_gate_volt": -0.5, "amp_50k1_drain_current": 15.0,
+    "amp_50k1_gate_volt": None, "amp_50k1_drain_current_tolerance": 0.2,
+    "amp_50k1_drain_volt": 4,
+    "amp_50k2_init_gate_volt": -0.5, "amp_50k2_drain_current": 15.0,
+    "amp_50k2_gate_volt": None, "amp_50k2_drain_current_tolerance": 0.2,
+    "amp_50k2_drain_volt": 4,
+
+    "amp_hemt1_init_gate_volt": -1.0, "amp_hemt1_drain_current": 8.0,
+    "amp_hemt1_gate_volt": None, "amp_hemt1_drain_current_tolerance": 0.2,
+    "amp_hemt1_drain_volt": 0.6,
+    "amp_hemt2_init_gate_volt": -1.0, "amp_hemt2_drain_current": 8.0,
+    "amp_hemt2_gate_volt": None, "amp_hemt2_drain_current_tolerance": 0.2,
+    "amp_hemt2_drain_volt": 0.6,
 
     # Find freq
     'res_amp_cut': 0.01, 'res_grad_cut': 0.01,
