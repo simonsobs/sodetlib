@@ -218,10 +218,13 @@ def compute_psats(iva, psat_level=0.9):
             continue
 
         iva.idxs[i, 2] = cross_idx
-        iva.p_sat[i] = interp1d(
-            R[cross_idx-1:cross_idx+1]/R_n,
-            p_tes[cross_idx-1:cross_idx+1]
-        )(level)
+        try:
+            iva.p_sat[i] = interp1d(
+                R[cross_idx-1:cross_idx+1]/R_n,
+                p_tes[cross_idx-1:cross_idx+1]
+            )(level)
+        except ValueError:
+            iva.p_sat[i] = np.nan
 
     return iva.p_sat
 
