@@ -333,7 +333,6 @@ def hammer_func(args):
         cmd += f'clia setfanlevel all {init_fan_level}'
         print(f"Setting crate fans to {init_fan_level}...")
         run_on_shelf_manager(cmd)
-        start_services('smurf-jupyter')
 
     if reboot:
         cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
@@ -361,8 +360,11 @@ def hammer_func(args):
 
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
+    if all_slots:
+        services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
+    else:
+        services = []
 
-    services = ['ocs-pysmurf-monitor', 'smurf-util']
     for slot in slots:
         services.append(f'smurf-streamer-s{slot}')
         services.append(f'ocs-pysmurf-s{slot}')
