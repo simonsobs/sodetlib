@@ -193,56 +193,101 @@ def fit_tune(tunefile):
     dres : dict
         a dictionary containing all of the fit results for all resonances in the provided tunefile. The keys are organized as::
         
-          {band: smurf band
-              {resonator_index: index ordered by ascending frequency
-                  {model_params : dict - 9 parameters of resonator_cable
-                   abs_chan : int - smurf_band*512 + smurf_channel
-                   find_freq_ctime : str - ctime find_freq was taken
-                   S21_mag : float ndarray - array of fit S21 magnitude
-                   chi2 : float - chi-squared goodness of fit
-                   derived_params : 
-                       {Qi : float - internal quality factor
-                        br : float - resonator bandwidth
-                        depth : float - dip depth in S21 magnitude
-         }}}}
+          {
+            tunefile: str, filepath - full directories of one tunning file
+            band: 1d int array with shape (ndets) - smurf band for each detector
+            channels : 1d int array with shape (ndets) - smurf_band*512 + smurf_channel
+            resonator_index: 2d int array with shape(ndets x 2) - (band, channel_index) smurf band, and channel index by ascending frequency
+            model_params : dictionary for 9 parameters of resonator_cable 
+                f_0 : 1d array with shape (ndets)
+                Q : 1d array with shape (ndets)
+                Q_e_real : 1d array with shape (ndets)
+                Q_e_imag: 1d array with shape (ndets)
+                delay: 1d array with shape (ndets)
+                phi: 1d array with shape (ndets)
+                f_min: 1d array with shape (ndets)
+                A_mag: 1d array with shape (ndets)
+                A_slope: 1d array with shape (ndets)
+            derived_params : dictionary for derived parameters
+                Qi: 1d array with shape (ndets)
+                br: 1d array with shape (ndets)
+                depth: 1d array with shape (ndets)
+            find_freq_ctime : 1d string array with shape (ndets) - ctime find_freq was taken
+            S21_mag : 2d float ndarray with shape(ndets x nsamples?) - array of fit S21 magnitude
+            chi2 : 2d float array of shape (ndets x 2) - chi-squared goodness of fit
+            sid : str, session ID
+          }
     """
     dres = {}
     data = np.load(tunefile,allow_pickle=True).item()
+
+    dres['tunefile'] = tunefile
+    model_params = {'f_0': [], 'Q': [], 'Q_e_real' : [], 'Q_e_imag': [],
+                   'delay': [], 'phi': [], 'f_min': [], 'A_mag': [],
+                    'A_slope': []}
+    derived_params = {'Qi': [], 'br': [], 'depth': []}
+    bands = []
+    channels = []
+    res_index = []
+    chi2 = []
+    sid = []
+    find_freq_ctime = []
+    S21_mag = []
+    
     for band in list(data.keys()):
         if 'resonances' in list(data[band].keys()):
-            dres[band] = {}
             for idx in list(data[band]['resonances'].keys()):
-                dres[band][idx] = {}
-
                 scan=data[band]['resonances'][idx]
                 f=scan['freq_eta_scan']
                 S21=scan['resp_eta_scan']
                 result=full_fit(f,S21.real,S21.imag)
-                dres[band][idx]['model_params'] = {
-                                    'f_0': result.best_values['f_0'],
-                                    'Q': result.best_values['Q'],
-                                    'Q_e_real': result.best_values['Q_e_real'],
-                                    'Q_e_imag': result.best_values['Q_e_imag'],
-                                    'delay': result.best_values['delay'],
-                                    'phi': result.best_values['phi'],
-                                    'f_min': result.best_values['f_min'],
-                                    'A_mag': result.best_values['A_mag'],
-                                    'A_slope': result.best_values['A_slope']}
 
-                dres[band][idx]['abs_chan'] = scan['channel']+band*512
-                dres[band][idx]['find_freq_ctime']=\
-                                        data[band]['find_freq']['timestamp'][0]
                 # Need to check if this plays well with being in a dict/pickling
-                S21_mod = result.best_fit.real+1j*result.best_fit.imag
-                dres[band][idx]['S21_mag']= np.abs(S21_mod)
-                dres[band][idx]['chi2'],_= reduced_chi_squared(S21, S21_mod)
+                S21_mod = result.best_fit.real+1j*result.best_fit.imag                
+                
+                bands.append(band)
+                channels.append(scan['channel']+band*512)
+                res_index.append((band, idx))
+                chi2.append(reduced_chi_squared(S21, S21_mod))
+                find_freq_ctime.append(data[band]['find_freq']['timestamp'][0])
+                S21_mag.append(np.abs(S21_mod))
 
-                dres[band][idx]['derived_params'] = {
-                                'Qi': get_qi(result.best_values['Q'],
-                                             result.best_values['Q_e_real']),
-                                'br': get_br(result.best_values['Q'],
-                                             result.best_values['f_0']),
-                                'depth': np.ptp(np.abs(S21_mod))}
+                model_params['f_0'].append(result.best_values['f_0'])
+                model_params['Q'].append(result.best_values['Q'])
+                model_params['Q_e_real'].append(result.best_values['Q_e_real'])
+                model_params['Q_e_imag'].append(result.best_values['Q_e_imag'])
+                model_params['delay'].append(result.best_values['delay'])
+                model_params['phi'].append(result.best_values['phi'])
+                model_params['f_min'].append(result.best_values['f_min'])
+                model_params['A_mag'].append(result.best_values['A_mag'])
+                model_params['A_slope'].append(result.best_values['A_slope'])
+                
+                Qi = get_qi(result.best_values['Q'], result.best_values['Q_e_real'])
+                br = get_br(result.best_values['Q'], result.best_values['f_0'])
+                depth = np.ptp(np.abs(S21_mod))
+                derived_params['Qi'].append(Qi)
+                derived_params['br'].append(br) 
+                derived_params['depth'].append(depth)
+                
+    bands = np.array(bands)
+    channels = np.array(channels)
+    res_index = np.array(res_index)
+    S21_mag = np.array(S21_mag)
+    chi2 = np.array(chi2)
+    sid = np.array(sid)
+    for par in model_params:
+        model_params[par] = np.array(model_params[par])
+    for par in derived_params:
+        derived_params[par] = np.array(derived_params[par])
+
+    dres['bands'] = bands
+    dres['channels'] = channels
+    dres['res_index'] = res_index
+    dres['sid'] = sid
+    dres['S21_mag'] = S21_mag
+    dres['chi2'] = chi2
+    dres['model_params'] = model_params
+    dres['derived_params'] = derived_params
     return dres
 
 def get_resfit_plot_txt(resfit_dict, band, rix):
@@ -265,16 +310,19 @@ def get_resfit_plot_txt(resfit_dict, band, rix):
     text : str
         text block to add to resonator fit channel plot.
     '''
-    mparams = resfit_dict[band][rix]['model_params']
-    dparams = resfit_dict[band][rix]['derived_params']
-    achan = resfit_dict[band][rix]['abs_chan']
-    chi2 = resfit_dict[band][rix]['chi2']
-    print(achan, type(achan))
+#     Get index of band, rix pair provided by user
+    idx = int(np.where((fit_dict1['res_index'][:,0] == bnd) \
+                 & (fit_dict1['res_index'][:,1] == rix))[0])
+            
+    mparams = resfit_dict['model_params']
+    dparams = resfit_dict['derived_params']
+    achan = resfit_dict['channels'][idx]
+    chi2 = resfit_dict['chi2'][idx]
     text = f'Band {achan//512} Channel {achan%512}'
-    text += '\n$f_r$: '+ f"{np.round(mparams['f_0'],1)} MHz"
-    text += '\n$Q_i$: '+ f"{int(dparams['Qi'])}"
-    text += '\nBW: '+ f"{int(dparams['br']*1e3)} kHz"
-    #text += '\nfit $\chi^2$: ' + f"{np.round(chi2,3)}"
+    text += '\n$f_r$: '+ f"{np.round(mparams['f_0'][idx],1)} MHz"
+    text += '\n$Q_i$: '+ f"{int(dparams['Qi'][idx])}"
+    text += '\nBW: '+ f"{int(dparams['br'][idx]*1e3)} kHz"
+#     text += '\nfit $\chi^2$: ' + f"{np.round(chi2,3)}"
     return text
 
 def plot_channel_fit(tunefile, fit_dict, band, channel):
@@ -293,17 +341,25 @@ def plot_channel_fit(tunefile, fit_dict, band, channel):
     channel : int
         smurf channel of resonator to plot
     '''
-    chans = np.asarray([fit_dict[band][ix]['abs_chan']%512\
-                        for ix in range(len(fit_dict[band].keys()))])
-    rix = int(np.where(chans == channel)[0])
+    channels = np.where(fit_dict['channels']%512 == channel)[0]
+    chan_matches = fit_dict['res_index'][channels]
+    matched_band = int(np.where(chan_matches[:,0] == band)[0])
+    idx = channels[matched_band]
+    rix = fit_dict['res_index'][idx][1]    
+    ix = channels[matched_band]
     data = np.load(tunefile,allow_pickle=True).item()
-
+    
     freqs = data[band]['resonances'][rix]['freq_eta_scan']
     freqs_plot = 1e3*(data[band]['resonances'][rix]['freq_eta_scan']-\
                 data[band]['resonances'][rix]['freq'])
     resp_data = data[band]['resonances'][rix]['resp_eta_scan']
-    resp_model = resonator_cable(freqs,**fit_dict[band][rix]['model_params'])
-    fr_idx = np.argmin(np.abs(freqs - fit_dict[band][rix]['model_params']['f_0']))
+    
+    params = {}
+    for p_opt in fit_dict['model_params']:
+        params[p_opt] = fit_dict['model_params'][p_opt][ix]
+    
+    resp_model = resonator_cable(freqs,**params)
+    fr_idx = np.argmin(np.abs(freqs - fit_dict['model_params']['f_0'][ix]))
 
     fig = plt.figure(figsize = (12,6),constrained_layout=True)
     gs = GridSpec(2, 6, figure=fig)
@@ -346,11 +402,13 @@ def plot_channel_fit(tunefile, fit_dict, band, channel):
                        alpha=0.5,
                       boxstyle="round",),
             transform=ax3.transAxes)
-    return
-def plot_fit_summary(fit_dict, plot_style=None):
+    return fig, ax1, ax2, ax3
+
+def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     '''
-    Function for plotting single channel eta_scan data from a tunefile with
-    a fit to an asymmetric resonator model ``resonator_cable``.
+    Function for plotting full wafer eta_scan data from a tunefile.
+        Plots distributions of Qi, dip depth, bandwidth, and frequencies
+        for all resonators within specified quantile.
 
     Args
     ----
@@ -358,25 +416,24 @@ def plot_fit_summary(fit_dict, plot_style=None):
         fit results dictionary from ``fit_tune``
     plot_style : dict
         keyword arguments to pass to the histogram plotting for formatting.
+    quantile: float
+        inner X percent to graph
     '''
-    Qis = []
-    depths = []
-    bws = []
-    frs = []
-    for band in fit_dict.keys():
-        Qis.extend([fit_dict[band][ix]['derived_params']['Qi']\
-                    for ix in fit_dict[band].keys()])
-        depths.extend([fit_dict[band][ix]['derived_params']['depth']\
-                      for ix in fit_dict[band].keys()])
-        bws.extend([fit_dict[band][ix]['derived_params']['br']\
-                    for ix in fit_dict[band].keys()])
-        frs.extend([fit_dict[band][ix]['model_params']['f_0']\
-                    for ix in fit_dict[band].keys()])
-    Qis = np.asarray(Qis)
-    depths = np.asarray(depths)
-    bws = np.asarray(bws)
-    frs = np.asarray(frs)
+    
+    Qis = fit_dict['derived_params']['Qi']
+    depths = fit_dict['derived_params']['depth']
+    bws = fit_dict['derived_params']['br']
+    frs = fit_dict['model_params']['f_0']
 
+    Qi_quant = Qis[(Qis>=np.nanquantile(Qis, 1-quantile)) \
+                   & (Qis<=np.nanquantile(Qis, quantile))]
+    depth_quant = depths[(depths>=np.nanquantile(depths, 1-quantile)) \
+                   & (depths<=np.nanquantile(depths, quantile))]
+    bw_quant = bws[(bws>=np.nanquantile(bws, 1-quantile)) \
+                   & (bws<=np.nanquantile(bws, quantile))]
+    fr_quant = frs[(frs>=np.nanquantile(frs, 1-quantile)) \
+                   & (frs<=np.nanquantile(frs, quantile))]
+    
     plt.figure(figsize = (16,8))
 
     if plot_style is None:
@@ -387,9 +444,9 @@ def plot_fit_summary(fit_dict, plot_style=None):
                       'lw': 2}
     #Qi plot
     plt.subplot(2,2,1)
-    plt.hist(Qis/1e5,label = '$Q_i$',**plot_style)
-    Qi_med = np.median(Qis/1e5)
-    plt.axvline(np.median(Qis/1e5),color = 'purple',
+    plt.hist(Qi_quant/1e5,label = '$Q_i$',**plot_style)
+    Qi_med = np.median(Qi_quant/1e5)
+    plt.axvline(np.median(Qi_quant/1e5),color = 'purple',
                 label = f'Median: {np.round(Qi_med,2)} $\\times10^5$')
     plt.legend(loc = 'upper right')
     plt.xlabel('$Q_i\\times10^5$')
@@ -397,8 +454,8 @@ def plot_fit_summary(fit_dict, plot_style=None):
 
     #Dip depth plot
     plt.subplot(2,2,2)
-    plt.hist(20*np.log10(depths),label = 'Dip Depth',**plot_style)
-    dep_med = np.median(20*np.log10(depths))
+    plt.hist(20*np.log10(depth_quant),label = 'Dip Depth',**plot_style)
+    dep_med = np.median(20*np.log10(depth_quant))
     plt.axvline(dep_med,color = 'purple',
                 label = f'Median: {np.round(dep_med,2)} dB')
     plt.legend(loc = 'upper right')
@@ -407,8 +464,8 @@ def plot_fit_summary(fit_dict, plot_style=None):
 
     #Bandwidth plot
     plt.subplot(2,2,3)
-    plt.hist(bws*1e3,label = 'Bandwidth', **plot_style)
-    bw_med = np.median(bws*1e3)
+    plt.hist(bw_quant*1e3,label = 'Bandwidth', **plot_style)
+    bw_med = np.median(bw_quant*1e3)
     plt.axvline(bw_med,color = 'purple',
                 label = f'Median: {np.round(bw_med,2)} kHz')
     plt.legend(loc = 'upper right')
@@ -417,9 +474,9 @@ def plot_fit_summary(fit_dict, plot_style=None):
 
     #Frequency Separation plot
     plt.subplot(2,2,4)
-    plt.hist(np.diff(np.sort(frs)),label = 'Resonator Separation [MHz]',
+    plt.hist(np.diff(np.sort(fr_quant)),label = 'Resonator Separation [MHz]',
              **plot_style)
-    fsep_med = np.median(np.diff(np.sort(frs)))
+    fsep_med = np.median(np.diff(np.sort(fr_quant)))
     plt.axvline(fsep_med,color = 'purple',
                 label = f'Median: {np.round(fsep_med,2)} MHz')
     plt.legend(loc = 'upper right')
