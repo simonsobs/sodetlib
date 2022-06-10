@@ -23,7 +23,8 @@ autodoc_mock_imports = [
     'sotodlib',
     'sotodlib.io',
     'sotodlib.tod_ops.fft_ops',
-    'sotodlib', 'sotodlib.tod_ops',
+    'sotodlib.tod_ops',
+    'sotodlib.core',
     'tqdm.auto'
 ]
 
