@@ -53,7 +53,7 @@ so this mode of operation may not be as useful. For example, this should work:
 
     bsa = take_bias_steps(
         S, cfg, high_current_mode=False, step_duration=2,
-        nsteps=5, nsweep_steps=2, analysis_kwargs={'step_window': 2}
+        nsteps=5, analysis_kwargs={'step_window': 2}
     )
 
 How it works
@@ -61,10 +61,7 @@ How it works
 Data Taking
 `````````````
 With the default parameters, the ``take_bias_steps`` function will play
-``nsweep_steps`` steps on each bias line individually. This will be used
-to generate the bias group map. Then it plays ``nsteps`` on each bias group
-at once. This way it is able to very quickly get the detector response for all
-detectors at once.
+``nsteps`` on each of the specified bias groups one at a time.
 
 Generating the Bias Group Map
 ``````````````````````````````

@@ -17,10 +17,12 @@ Contents
    analysis
    stream
    noise
-   resonator_fitting
 
 .. toctree::
    :caption: Sodetlib Operations
    :maxdepth: 2
 
+   operations/setup
    operations/bias_steps
+   operations/iv
+   operations/squid_curves

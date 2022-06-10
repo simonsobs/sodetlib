@@ -1,39 +1,60 @@
 # uc_tuner.py
-# The core code is from Princeton, created by Yuhan Wang and Daniel Dutcher Oct/Nov 2021.
-# The code was refactored by Caleb Wheeler Nov 2021.
 
 import os
 import time
 import numpy as np
-import scipy.signal
-
+from sodetlib import noise
 
 class UCTuner:
     """
-    This is a description of UCTuner
+    UCTuner is the object used to perform and hold the information from
+    uc_att and tone power optimization, designed for use in the
+    uxm_optimize_quick function.
 
     Args
     ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    band : int
+        SMuRF band on which to operate.
+
+    Other Parameters
+    ----------------
+    stream_time, fmin, fmax, detrend:
+        Used for noise taking and white noise calculation.
 
     Attributes
     ----------
+    current_tone_power : int
+        The SMuRF RF tone power used for `band`.
+    estimate_att : int
+        The uc_att setting resulting in the lowest noise thus far.
+    lowest_wl_index : int
+        Index corresponding to estimate_att from a list of uc_att settings.
+    wl_median : float
+        Median white noise level in pA/rtHz
+    wl_length : int
+        Number of channels used in wl_median determination.
+    status : str
+        Status string containing wl_median, wl_length, and channel_length.
     """
-    def __init__(self, S, cfg, band=None, stream_time=20,
-                 fmin=5., fmax=50., detrend='constant'):
+    def __init__(self, S, cfg, band=None):
         self._S = S
         self._cfg = cfg
         self.band = band
-        self.stream_time = stream_time
-        self.fmin = fmin
-        self.fmax = fmax
-        self.detrend = detrend
         self.current_tone_power = None
         self.estimate_att = None
         self.lowest_wl_index = None
         self.wl_median = None
         self.wl_length = None
-        self.channel_length = None
         self.status = None
+        self.wl_list = None
+        self.uc_attens = None
+        self.best_wl = None
+        self.best_att = None
+        self.best_tone = None
 
         if band is None:
             raise ValueError("Must specify `band` as int [0-7]")
@@ -42,66 +63,38 @@ class UCTuner:
         self.current_tone_power = S.amplitude_scale[band]
 
     
-    def uc_tune(self, uc_attens, initial_attempt=False):
+    def uc_tune(self, uc_attens):
         """
         Find the uc_att from those provided that yields the lowest noise.
         """
         uc_attens = np.atleast_1d(uc_attens)
+        self.uc_attens = uc_attens
         wl_list = []
         wl_len_list = []
-        noise_floors_list = []
         for atten in uc_attens:
-            if not initial_attempt:
-                self._S.set_att_uc(self.band, atten)
-                self._S.tracking_setup(
-                    self.band,
-                    reset_rate_khz=self._cfg.dev.bands[self.band]["flux_ramp_rate_khz"],
-                    fraction_full_scale=self._cfg.dev.bands[self.band]["frac_pp"],
-                    make_plot=False,
-                    save_plot=False,
-                    show_plot=False,
-                    channel=self._S.which_on(self.band),
-                    nsamp=2 ** 18,
-                    lms_freq_hz=self._cfg.dev.bands[self.band]["lms_freq_hz"],
-                    meas_lms_freq=self._cfg.dev.bands[self.band]["meas_lms_freq"],
-                    feedback_start_frac=self._cfg.dev.bands[self.band]["feedback_start_frac"],
-                    feedback_end_frac=self._cfg.dev.bands[self.band]["feedback_end_frac"],
-                    lms_gain=self._cfg.dev.bands[self.band]["lms_gain"],
-                )
-
-            dat_path = self._S.stream_data_on()
-            # collect stream data
-            time.sleep(self.stream_time)
-            # end the time stream
-            self._S.stream_data_off()
-            fs = self._S.get_sample_frequency()
-            wl_list_temp = []
-            timestamp, phase, mask, tes_bias = self._S.read_stream_data(
-                dat_path, return_tes_bias=True
+            self._S.set_att_uc(self.band, atten)
+            self._S.tracking_setup(
+                self.band,
+                reset_rate_khz=self._cfg.dev.bands[self.band]["flux_ramp_rate_khz"],
+                fraction_full_scale=self._cfg.dev.bands[self.band]["frac_pp"],
+                make_plot=False,
+                save_plot=False,
+                show_plot=False,
+                channel=self._S.which_on(self.band),
+                nsamp=2 ** 18,
+                lms_freq_hz=self._cfg.dev.bands[self.band]["lms_freq_hz"],
+                meas_lms_freq=self._cfg.dev.bands[self.band]["meas_lms_freq"],
+                feedback_start_frac=self._cfg.dev.bands[self.band]["feedback_start_frac"],
+                feedback_end_frac=self._cfg.dev.bands[self.band]["feedback_end_frac"],
+                lms_gain=self._cfg.dev.bands[self.band]["lms_gain"],
             )
+            am, outdict = noise.take_noise(self._S, self._cfg, acq_time=30, fit=False,
+                                           plot_band_summary=False, show_plot=False)
 
-            bands, channels = np.where(mask != -1)
-            phase *= self._S.pA_per_phi0 / (2.0 * np.pi)  # uA
+            noise_param = outdict['noise_pars'][:,0]
 
-            for c, (b, ch) in enumerate(zip(bands, channels)):
-                if ch < 0:
-                    continue
-                ch_idx = mask[b, ch]
-                nsamps = len(phase[ch_idx])
-                f, Pxx = scipy.signal.welch(
-                    phase[ch_idx], nperseg=nsamps, fs=fs, detrend=self.detrend
-                )
-                Pxx = np.sqrt(Pxx)
-                fmask = (self.fmin < f) & (f < self.fmax)
-
-                wl = np.median(Pxx[fmask])
-                wl_list_temp.append(wl)
-
-            noise_param = wl_list_temp
-
-            wl_list.append(np.nanmedian(noise_param))
+            wl_list.append(round(np.nanmedian(noise_param), 1))
             wl_len_list.append(len(noise_param))
-            noise_floors_list.append(np.median(noise_param))
 
         lowest_wl_index = wl_list.index(min(wl_list))
         if lowest_wl_index == len(wl_list):
@@ -109,14 +102,17 @@ class UCTuner:
         estimate_att = uc_attens[lowest_wl_index]
         wl_median = wl_list[lowest_wl_index]
 
+        self.wl_list = wl_list
         self.estimate_att = estimate_att
         self.lowest_wl_index = lowest_wl_index
         self.wl_median = wl_median
-        self.wl_length= wl_len_list[lowest_wl_index]
-        if self.channel_length is None:
-            self.channel_length = wl_len_list[lowest_wl_index]
+        if self.best_wl is None or self.wl_median < self.best_wl:
+            self.best_wl = wl_median
+            self.best_tone = self.current_tone_power
+            self.best_att = estimate_att
+        self.wl_length = wl_len_list[lowest_wl_index]
         self.status = (f"WL: {self.wl_median:.1f} pA/rtHz with"
-                       + f" {self.wl_length} channels out of {self.channel_length}")
+                       + f" {self.wl_length} channels.")
 
 
     def rough_tune(self):
@@ -191,4 +187,3 @@ class UCTuner:
             tone_power=self.current_tone_power - 2,
             uc_att=np.max([self.current_uc_att - 11, 0])
         )
-

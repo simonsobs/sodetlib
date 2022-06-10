@@ -116,9 +116,9 @@ def take_g3_data(S, dur, **stream_kw):
     session_id : int
         Id used to read back stream data
     """
-    stream_g3_on(S, **stream_kw)
+    sid = stream_g3_on(S, **stream_kw)
     time.sleep(dur)
-    sid = stream_g3_off(S, emulator=stream_kw.get('emulator', False))
+    stream_g3_off(S, emulator=stream_kw.get('emulator', False))
     return sid
 
 

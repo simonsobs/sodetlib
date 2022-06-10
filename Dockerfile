@@ -1,5 +1,5 @@
 # sodetlib dockerfile.
-FROM tidair/pysmurf-client:v5.0.3
+FROM tidair/pysmurf-client:v6.0.0
 
 #################################################################
 # SPT3G Install
@@ -77,7 +77,7 @@ WORKDIR /usr/local/src
 RUN git clone https://github.com/simonsobs/ocs.git
 
 RUN pip3 install cryptography==3.3.2
-RUN pip3 install -r ocs/requirements.txt
+# RUN pip3 install -r ocs/requirements.txt
 RUN pip3 install ./ocs
 
 # Sets ocs configuration environment
