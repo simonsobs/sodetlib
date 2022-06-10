@@ -31,6 +31,7 @@ merged.
 
 ## Licence
 
-This project is licensed under the BSD 2-Clause License - see the
-[Licence.txt](https://github.com/simonsobs/sodetlib/blob/master/LICENSE.txt)
+This project is licensed under the BSD 2-Clause License - see the [LICENSE]
 file for details.
+
+[LICENSE]: LICENSE
