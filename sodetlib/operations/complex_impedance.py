@@ -3,119 +3,13 @@ from tqdm.auto import tqdm, trange
 import time
 import numpy as np
 import sodetlib as sdl
+from sodetlib.constants import *
 from scipy.signal import welch, hilbert
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from sotodlib.tod_ops.filters import gaussian_filter, fourier_filter 
 from sotodlib.core import IndexAxis, AxisManager, OffsetAxis, LabelAxis
 
-
-NBGS = 12
-
-################################################################################
-# AxisManager Utility Functions
-################################################################################
-
-class RestrictionException(Exception):
-    """Exception for when cannot restrict AxisManger properly"""
-
-def restrict_to_times(am, t0, t1, in_place=False):
-    """
-    Restricts axis manager to a time range (t0, t1)
-    """
-    m = (t0 < am.timestamps) & (am.timestamps < t1)
-    if not m.any():
-        raise RestrictionException
-    i0, i1 = np.where(m)[0][[0, -1]] + am.samps.offset
-    return am.restrict('samps', (i0, i1), in_place=in_place)
-
-def dict_to_am(d, skip_bad_types=False):
-    """
-    Attempts to convert a dictionary into an axis manager. This can be used on dicts containing basic types such as (str, int, float) along with numpy
-    arrays. The AxisManager will not have any structure such as "axes", but
-    this is useful if you want to nest semi-arbitrary data such as the "meta"
-    dict into an axis manager.
-
-    Args
-    -----
-    d : dict
-        Dict to convert ot axismanager
-    skip_bad_types : bool
-        If True, will skip any value that is not a str, int, float, or
-        np.ndarray. If False, this will raise an error for invalid types.
-    """
-    allowed_types = (str, int, float, np.ndarray)
-    am = AxisManager()
-    for k, v in d.items():
-        if isinstance(v, dict):
-            am.wrap(k, dict_to_am(v))
-        if isinstance(v, allowed_types):
-            am.wrap(k, v)
-        elif not skip_bad_types:
-            raise ValueError(
-                f"Key {k} is of type {type(v)} which cannot be wrapped by an "
-                 "axismanager")
-    return am
-
-def remap_dets(src, dst, load_axes=False, idxmap=None):
-    """
-    This function takes in two axis-managers, and returns a copy of the 2nd
-    which is identical except all fields aligned with 'dets' are remapped so they
-    match up with the 'dets' field of the first array. This is very useful if you
-    want to compare data across tunes, or across cryostats. An additional field
-    "unmapped" of shape ``(dets, )`` will be added containing mask for which
-    channels were unmapped by the idxmap.
-
-    Args
-    ----
-    src : AxisManager
-        "source" data. A copy of this data will be returned, with the 'dets'
-        axis remapped to match those of the dest AxisManager
-    dst : AxisManager
-        "destination" data. The 'dets' axis will be taken from this AxisManager.
-    load_axes : bool
-        If True, will add ``src`` axes into the copy, and copy the axis
-        assignments. Note that if you are trying to nest this in another
-        axismanager, this may cause trouble if 'src', and 'dst' have 
-        axes with the same name but different values. If this is false,
-        only the 'dets' assignment will be used, allowing for safe nesting.
-    idxmap : optional, np.ndarry
-        If an idxmap is passed, that will be used to remap the dets axis.
-        If none is passed, an idxmap will be created to match up bands and
-        channels of the src and dst. This might be useful if you want to
-        map across cooldowns based on a detmap.
-    """
-    if idxmap is None:
-        idxmap = sdl.map_band_chans(
-            dst.bands, dst.channels,
-            src.bands, src.channels,
-        )
-
-    axes = [dst.dets]
-    if load_axes:
-        axes.extend([v for k, v in src._axes.items() if k != 'dets'])
-
-    am_new = AxisManager(*axes)
-    for k, axes in src._assignments.items():
-        f = src._fields[k]
-        if isinstance(f, AxisManager):
-            am_new.wrap(k, remap_dets(f, dst, load_axes=load_axes, idxmap=idxmap))
-        elif isinstance(f, np.ndarray):
-            assignments = []
-            if load_axes:
-                assignments.extend([
-                    (i, n) for i, n in enumerate(axes) 
-                    if n is not None and n!='dets'
-                ])
-            if 'dets' in axes:
-                i = axes.index('dets')
-                f = np.rollaxis(np.rollaxis(f, i)[idxmap], -i)
-            am_new.wrap(k, f, assignments)
-        else:  # Literals
-            am_new.wrap(k, f)
-
-    am_new.wrap('unmapped', idxmap == -1, [(0, 'dets')])
-    return am_new
 
 def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
                 sc_path=None):
@@ -131,10 +25,10 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         IndexAxis('steps', count=nsteps),
         IndexAxis('biaslines', count=NBGS),
     )
-    ds.wrap('meta', dict_to_am(sdl.get_metadata(S, cfg)))
+    ds.wrap('meta', sdl.dict_to_am(sdl.get_metadata(S, cfg)))
     ds.meta.wrap('g3_dir', cfg.sys['g3_dir'])
     if run_kwargs is not None:
-        ds.wrap('run_kwargs', dict_to_am(run_kwargs))
+        ds.wrap('run_kwargs', sdl.dict_to_am(run_kwargs))
 
     ds.wrap('bands', bands, [(0, 'dets')])
     ds.wrap('channels', chans, [(0, 'dets')])
@@ -160,13 +54,18 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         if sc_path is None:
             raise ValueError("No ob CI path found in the device cfg")
 
-        ob = remap_dets(AxisManager.load(ob_path), ds, load_axes=False)
+        ob = sdl.remap_dets(AxisManager.load(ob_path), ds, load_axes=False)
         ds.wrap('ob', ob)
 
-        sc = remap_dets(AxisManager.load(sc_path), ds, load_axes=False)
+        sc = sdl.remap_dets(AxisManager.load(sc_path), ds, load_axes=False)
         ds.wrap('sc', sc)
 
     return ds
+
+def pA_per_bit(ds):
+    return 2 * ds.meta['rtm_bit_to_volt']          \
+        / ds.meta['bias_line_resistance']          \
+        * ds.meta['high_low_current_ratio'] * 1e12
 
 def load_tod(ds, bg, arc=None):
     """
@@ -272,7 +171,7 @@ def analyze_seg(ds, tod, bg, i, samps_per_period=100):
            and angle is the phase relative to the commanded bias.
     """
     t0, t1 = ds.start_times[bg, i], ds.stop_times[bg, i]
-    am = restrict_to_times(tod, t0, t1, in_place=False)
+    am = sdl.restrict_to_times(tod, t0, t1, in_place=False)
 
     sample_rate = 1./np.median(np.diff(am.timestamps))
 
@@ -293,11 +192,7 @@ def analyze_seg(ds, tod, bg, i, samps_per_period=100):
     )
     am.signal *= ds.polarity[chan_idxs, None]
 
-    pA_per_bit = 2 * ds.meta['rtm_bit_to_volt']        \
-        / ds.meta['bias_line_resistance']              \
-        * ds.meta['high_low_current_ratio'] * 1e12
-
-    am.biases = am.biases * pA_per_bit
+    am.biases = am.biases * pA_per_bit(ds)
 
     # Remove offset from signal
     am.signal -= np.mean(am.signal, axis=1)[:, None]
@@ -314,14 +209,14 @@ def analyze_seg(ds, tod, bg, i, samps_per_period=100):
     
     # Get psds cause we'll want that
     nsamp = len(am.signal[0])
-    fs, bias_pxx = welch(am.biases[bg], fs=sample_rate, nperseg=nsamp)
+    fxx, bias_pxx = welch(am.biases[bg], fs=sample_rate, nperseg=nsamp)
 
     # Gaussian filter around peak freq of bias asd.
     f0, f1 = .9 * am.cmd_freq, 1.1*am.cmd_freq
-    m = (f0 < fs) & (fs < f1)
+    m = (f0 < fxx) & (fxx < f1)
 
     idx = np.argmax(bias_pxx[m])
-    f = fs[m][idx]
+    f = fxx[m][idx]
 
     filt = gaussian_filter(f, f_sigma=f / 5)
     filt_sig = fourier_filter(am, filt)
@@ -374,10 +269,6 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
     ds.wrap_new('_Ibias_dc', (NBGS,), cls=np.full, fill_value=np.nan)
     ds.wrap_new('_res_freqs', ('dets',), cls=np.full, fill_value=np.nan)
 
-    pA_per_bit = 2 * ds.meta['rtm_bit_to_volt']        \
-        / ds.meta['bias_line_resistance']              \
-        * ds.meta['high_low_current_ratio'] * 1e12
-
     ntot = len(bgs) * len(ds.freqs)
     pb = tqdm(total=ntot, disable=(not show_pb))
     for bg in bgs:
@@ -395,7 +286,7 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
         for i in range(len(ds.freqs)):
             try:
                 seg = analyze_seg(ds, _tod, bg, i)
-            except RestrictionException:
+            except sdl.RestrictionException:
                 # Means there's no data at the specified time
                 pb.update()
                 continue

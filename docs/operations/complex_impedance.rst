@@ -1,7 +1,7 @@
 Complex Impedance
 ===================
 
-The complex impedance meaasurement is a simple measurement that gives us access
+The complex impedance measurement is a simple measurement that gives us access
 to many electrothermal properties of the TES.
 
 Following the theory presented in :ref:`Irwin and Hilton<ci_ref>`,
@@ -15,7 +15,7 @@ the complex impedance is given by:
   \frac{2 + \beta_I}{1 + i \omega \tau_I}
 
 where :math:`\beta_I = \left.\frac{d \log R}{d\log I}\right|_{T_\mathrm{bath}}`
-is the current sensitivity at constant temp, :math:`\mathscr{L}_I` the loopgain,
+is the current sensitivity at constant temp, :math:`\mathscr{L}_I` the loop-gain,
 and :math:`\tau_I` the thermal time-constant at constant current.
 We are able to fit these parameters to our complex impedance measurement,
 and obtain derived parameters such as the effective thermal time-constant:
@@ -32,7 +32,7 @@ Measurement
 ------------
 
 The complex impedance can be measured via the complex transfer functions of the
-TES as a function of frequency. To do this we play a sine-wave on the biasline
+TES as a function of frequency. To do this we play a sine-wave on the bias line
 over a large frequency range, and measure the amplitude and phase (with respect
 to the commanded bias) as a function of frequency.
 
@@ -62,7 +62,7 @@ of frequency.
 Operation
 -----------
 The complex impedance measurement consists of two parts. First, measuring
-the superconducting and overbiased transefer functions. This only needs
+the superconducting and overbiased transfer functions. This only needs
 to be done once per cooldown, and then the results can be used for any Ztes
 measurement. Then we measure the transfer functions while the detectors are in
 transition.
@@ -75,8 +75,9 @@ The function ``take_complex_impedance_ob_sc`` function will take CI data in the
 overbiased and superconducting states, and save their paths in the device
 config for later use.
 
-For example, the following code will take SC, OB, and in-transition datasets::
+For example, the following code will take SC, OB, and in-transition datasets:
 
+.. code-block:: python
   import sodetlib.operations.complex_impedance as ci
 
   freqs = np.logspace(0, np.log10(2e3), 80)
@@ -88,9 +89,22 @@ For example, the following code will take SC, OB, and in-transition datasets::
   ds = ci.take_complex_impedance(S, cfg, bgs, freqs=freqs, run_analysis=True)
 
 The output `ds` (for dataset) is an AxisManager containing a bunch of fields
-including the compex-impedance for each detector. See the docstring for the
-anlaysis functions ``analyze_tods``, ``get_ztes``, ``fit_det_params`` to see
+including the complex-impedance for each detector. See the docstring for the
+analysis functions ``analyze_tods``, ``get_ztes``, ``fit_det_params`` to see
 what fields it contains.
+
+On creation, the ``ds`` AxisManager is automatically loaded with
+superconducting and overbiased data from the files that are set in the device
+cfg. This means that the saved hdf5 file contains `all` the info needed for
+analysis, and there is no need to manually add sc and ob data on load. For
+instance, to load and plot data from a file, one can simply run::
+
+  from sotodlib.core import AxisManager
+  import sodetlib.operations.complex_impedance as ci
+
+  ds = AxisManager.load('/path/to/trans.h5')
+  # Plot transfer functions for channel with index 0.
+  ci.plot_transfers(ds, 0)
 
 .. note::
   The complex impedance dataset can only measure frequencies up to half the
