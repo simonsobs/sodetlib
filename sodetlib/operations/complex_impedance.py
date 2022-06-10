@@ -89,49 +89,18 @@ def load_tod(ds, bg, arc=None):
         seg = sdl.load_session(ds.meta.stream_id, sid, base_dir=ds.meta.g3_dir)
     return seg
 
-def downsample(am, axis_name, ds_factor, in_place=True):
-    """
-    Bootleg AxisManager downsample function. Is this ok? Who knows... I hope
-    it works. I think the only caveat is that offsets are not preserved.
-    """
-    self = am
-    if in_place:
-        dest = self
-    else:
-        dest = self.copy(axes_only=True)
-        dest._assignments.update(self._assignments)
-
-    sl = slice(None, None, ds_factor)
-    count = int(np.ceil(am._axes[axis_name].count / ds_factor))
-    new_ax = OffsetAxis(axis_name, count=count)
-    for k, v in self._fields.items():
-        if isinstance(v, AxisManager):
-            dest._fields[k] = v.copy()
-            if axis_name in v._axes:
-                downsample(dest._fields[k], axis_name, ds_factor)
-        elif np.isscalar(v) or v is None:
-            dest._fields[k] = v
-        else:
-            sslice = [sl if n == axis_name else slice(None)
-                      for n in dest._assignments[k]]
-            sslice = dest._broadcast_selector(sslice)
-            dest._fields[k] = v[sslice]
-    dest._axes[axis_name] = new_ax
-    return dest
-
 ################################################################################
 # CI Analysis
 ################################################################################
-def analyze_seg(ds, tod, bg, i, samps_per_period=100):
+def analyze_seg(ds, tod, bg, i):
     """
     Analyze segment of CI data. The main goal of this is to calculate
     the Ites phasor, containing the amplitude (pA) and phase (relative
     tot he commanded) of the TES response to an incoming sine wave.
     This performs the following steps:
-     1. Restrict full TOD to a single frequency. Downsamples lower-freq data
-        sets to the specified number of samps_per_period. This will put everything
-        units of pA, correct for channel polarity. This will also correct timestamps
-        based on the FrameCounter.
+     1. Restrict full TOD to a single excitation frequency. This will put
+        everything units of pA, correct for channel polarity. This will also
+        correct timestamps based on the FrameCounter.
      2. Takes PSD of the bias data to obtain the reference freq. Filters signal
         using gaussian filter around reference freq.
      3. Use lock-in amplification with bias as reference to extract
@@ -148,10 +117,6 @@ def analyze_seg(ds, tod, bg, i, samps_per_period=100):
         Bias group that is being analyzed
     i : int
         Freq index. 0 will analyze the first freq segment taken.
-    samps_per_period : int
-        Maximum number of samps per period. This will be used to downsample
-        tods of low-frequencies, since the extremely high sample rates used make
-        it difficult to run on long segments.
 
     Returns
     ---------
@@ -174,13 +139,6 @@ def analyze_seg(ds, tod, bg, i, samps_per_period=100):
     am = sdl.restrict_to_times(tod, t0, t1, in_place=False)
 
     sample_rate = 1./np.median(np.diff(am.timestamps))
-
-    # This is pretty much required or else analysis takes too long on
-    # low-freq segments due to the high sample rate
-    ds_factor = int(sample_rate / ds.freqs[i] / samps_per_period)
-    if ds_factor > 1:
-        downsample(am, 'samps', ds_factor)
-        sample_rate = 1./np.median(np.diff(am.timestamps))
 
     # Convert everything to pA
     am.signal = am.signal * ds.meta['pA_per_phi0'] / (2*np.pi)
