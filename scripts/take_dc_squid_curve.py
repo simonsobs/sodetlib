@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs.smurf_ops import take_squid_open_loop
+from sodetlib.legacy.smurf_funcs.smurf_ops import take_squid_open_loop
 
 
 if __name__=='__main__':

@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from collections import namedtuple
 from sodetlib.util import cprint, make_filename, invert_mask, get_r2
-import sodetlib.smurf_funcs.smurf_ops as so
+import sodetlib.legacy.smurf_funcs.smurf_ops as so
 import sodetlib.util as su
 from pysmurf.client.util.pub import set_action
 

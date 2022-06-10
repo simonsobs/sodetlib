@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import argparse
 import numpy as np
 from sodetlib.det_config import DetConfig
-import sodetlib.smurf_funcs.smurf_ops as op
+import sodetlib.legacy.smurf_funcs.smurf_ops as op
 from sodetlib.util import cprint
 from pysmurf.client.util.pub import set_action
 

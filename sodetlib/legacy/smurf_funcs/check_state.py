@@ -18,7 +18,7 @@ channel state and compare with the set-state, which will allow one to easily
 determine if they are ready to start streaming
 """
 from pysmurf.client.util.pub import set_action
-from sodetlib.smurf_funcs import smurf_ops
+from sodetlib.legacy.smurf_funcs import smurf_ops
 from sodetlib.util import get_wls_from_am, make_filename
 import numpy as np
 import os

@@ -1,7 +1,7 @@
 import argparse
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs import det_ops
-from sodetlib.analysis import det_analysis
+from sodetlib.legacy.smurf_funcs import det_ops
+from sodetlib.legacy.analysis import det_analysis
 
 
 def main(S, cfg, biasgroups, voltage, freq):
