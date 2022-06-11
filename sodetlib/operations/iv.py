@@ -56,8 +56,16 @@ class IVAnalysis:
         Array of shape (nbiases) containing the commanded bias-current
         at each step (Amps)
     resp : np.ndarray
-        Array of shape (nchans, nbiases) containing the squid response (Amps)
-        at each bias point
+        Array of shape (nchans, nbiases) containing the squid response 
+        at each bias point, with the sc_off and contextless c_norm corrections
+        applied to (hopefully accurately) convert it to actual [Amps]. 
+        That is, it's the original squid response phase data -contextless
+        c_norm everywhere and -sc_off in [:sc_idx]. 
+    c_norm : np.ndarray
+        Array of shape (nchans) containing the (contextless) determination of
+        the proper phase offset correction
+    sc_off : np.ndarray
+        Array of shape (nchans) containing the superconducting branch offset. 
     R : np.ndarray
         Array of shape (nchans, nbiases) containing the TES Resistance of each
         channel at each bias point
@@ -103,38 +111,40 @@ class IVAnalysis:
     def __init__(self, S=None, cfg=None, run_kwargs=None, sid=None,
                  start_times=None, stop_times=None):
 
-        self._S = S
-        self._cfg = cfg
-        self.run_kwargs = run_kwargs
-        self.sid = sid
+        self._S          = S
+        self._cfg        = cfg
+        self.run_kwargs  = run_kwargs
+        self.sid         = sid
         self.start_times = start_times
-        self.stop_times = stop_times
-        self.am = None
+        self.stop_times  = stop_times
+        self.am          = None
 
         if self._S is not None:
             # Initialization stuff on initial creation with a smurf instance
-            self.meta = sdl.get_metadata(S, cfg)
-            self.biases_cmd = np.sort(self.run_kwargs['biases'])
-            self.nbiases = len(self.biases_cmd)
+            self.meta        = sdl.get_metadata(S, cfg)
+            self.biases_cmd  = np.sort(self.run_kwargs['biases'])
+            self.nbiases     = len(self.biases_cmd)
             self.bias_groups = self.run_kwargs['bias_groups']
 
-            am = self._load_am()
-            self.nchans= len(am.signal)
+            am               = self._load_am()
+            self.nchans      = len(am.signal)
 
-            self.bands = am.ch_info.band
-            self.channels = am.ch_info.channel
-            self.v_bias = np.full((self.nbiases, ), np.nan)
-            self.i_bias = np.full((self.nbiases, ), np.nan)
-            self.resp = np.full((self.nchans, self.nbiases), np.nan)
-            self.R = np.full((self.nchans, self.nbiases), np.nan)
-            self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.R_n = np.full((self.nchans, ), np.nan)
-            self.R_L = np.full((self.nchans, ), np.nan)
-            self.p_sat = np.full((self.nchans, ), np.nan)
-            self.si = np.full((self.nchans, self.nbiases), np.nan)
-            self.idxs = np.full((self.nchans, 3), -1, dtype=int)
+            self.bands       = am.ch_info.band
+            self.channels    = am.ch_info.channel
+            self.v_bias      = np.full((self.nbiases, ), np.nan)
+            self.i_bias      = np.full((self.nbiases, ), np.nan)
+            self.resp        = np.full((self.nchans, self.nbiases), np.nan)
+            self.c_norm      = np.full((self.nchans, ), np.nan)
+            self.sc_off      = np.full((self.nchans, ), np.nan)
+            self.R           = np.full((self.nchans, self.nbiases), np.nan)
+            self.p_tes       = np.full((self.nchans, self.nbiases), np.nan)
+            self.v_tes       = np.full((self.nchans, self.nbiases), np.nan)
+            self.i_tes       = np.full((self.nchans, self.nbiases), np.nan)
+            self.R_n         = np.full((self.nchans, ), np.nan)
+            self.R_L         = np.full((self.nchans, ), np.nan)
+            self.p_sat       = np.full((self.nchans, ), np.nan)
+            self.si          = np.full((self.nchans, self.nbiases), np.nan)
+            self.idxs        = np.full((self.nchans, 3), -1, dtype=int)
 
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file']
@@ -144,8 +154,8 @@ class IVAnalysis:
         saved_fields = [
             'meta', 'bands', 'channels', 'sid', 'start_times', 'stop_times',
             'run_kwargs', 'biases_cmd', 'bias_groups', 'nbiases', 'nchans',
-            'bgmap', 'polarity', 'resp', 'v_bias', 'i_bias', 'R', 'R_n', 'R_L',
-            'idxs', 'p_tes', 'v_tes', 'i_tes', 'p_sat', 'si',
+            'bgmap', 'polarity', 'resp', 'c_norm', 'sc_off', 'v_bias', 'i_bias',
+            'R', 'R_n', 'R_L', 'idxs', 'p_tes', 'v_tes', 'i_tes', 'p_sat', 'si',
         ]
         data = {
             field: getattr(self, field, None) for field in saved_fields
@@ -167,13 +177,19 @@ class IVAnalysis:
             setattr(iva, key, val)
         return iva
 
-    def _load_am(self, arc=None):
+    def _load_am(self, arc=None, base_dir='/data/so/timestreams'):
         if self.am is None:
             if arc:
                 self.am = arc.load_data(self.start_times[0],
                                         self.stop_times[-1])
             else:
-                self.am = sdl.load_session(self.meta['stream_id'], self.sid)
+                self.am = sdl.load_session(self.meta['stream_id'], self.sid, 
+                                           base_dir=base_dir)
+        # check for if the file contains the attributes added after version 1.
+        # initialize any that are missing so analyze_iv doesn't crash.
+        for attr_name in ['c_norm','sc_off']:
+            if not hasattr(self, attr_name):
+                setattr(self, attr_name, np.full((self.nchans, ), np.nan))
         return self.am
 
 
@@ -349,6 +365,9 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
 
         norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:],
                               iva.resp[i, nb_fit_idx:], 1)
+        # save this phase_offset value as it's possible that the accurate 
+        # one is the same for all ivs of the same detector&session.
+        iva.c_norm[i] = norm_fit[1]
         iva.resp[i] -= norm_fit[1]  # Put resp in real current units
 
         sc_fit = np.polyfit(iva.i_bias[:sc_idx], iva.resp[i, :sc_idx], 1)
@@ -357,19 +376,22 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         # is probably due to an undetected phase wrap at the kink between
         # the superconducting branch and the transition, so it is
         # *probably* legitimate to remove it by hand. 
+        # However, save its offset so original data can be reconstructed 
+        # in cases where ex. sc_idx is clearly wrong.
+        iva.sc_off[i] = sc_fit[1]
         iva.resp[i, :sc_idx] -= sc_fit[1]
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
-        R = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
+        R   = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
         R_n = np.mean(R[nb_fit_idx:])
         R_L = np.mean(R[1:sc_idx])
 
         iva.v_tes[i] = iva.i_bias * R_sh * R / (R + R_sh)
         iva.i_tes[i] = iva.v_tes[i] / R
         iva.p_tes[i] = (iva.v_tes[i]**2) / R
-        iva.R[i] = R
-        iva.R_n[i] = R_n
-        iva.R_L[i] = R_L
+        iva.R[i]     = R
+        iva.R_n[i]   = R_n
+        iva.R_L[i]   = R_L
 
     compute_psats(iva, psat_level)
     compute_si(iva)
@@ -443,7 +465,6 @@ def plot_channel_iv(iva, rc):
 
     b, c, bg = iva.bands[rc], iva.channels[rc], iva.bgmap[rc]
     axes[0].set_title(f"Band: {b}, Chan: {c}, BG: {bg}", fontsize=18)
-
     axes[-1].set_xlabel("Voltage (V)")
     return fig, axes
 
