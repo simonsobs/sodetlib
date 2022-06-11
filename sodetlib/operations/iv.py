@@ -119,26 +119,32 @@ class IVAnalysis:
             self.bias_groups = self.run_kwargs['bias_groups']
 
             am = self._load_am()
-            self.nchans= len(am.signal)
-
+            self.nchans = len(am.signal)
             self.bands = am.ch_info.band
             self.channels = am.ch_info.channel
-            self.v_bias = np.full((self.nbiases, ), np.nan)
-            self.i_bias = np.full((self.nbiases, ), np.nan)
-            self.resp = np.full((self.nchans, self.nbiases), np.nan)
-            self.R = np.full((self.nchans, self.nbiases), np.nan)
-            self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
-            self.R_n = np.full((self.nchans, ), np.nan)
-            self.R_L = np.full((self.nchans, ), np.nan)
-            self.p_sat = np.full((self.nchans, ), np.nan)
-            self.si = np.full((self.nchans, self.nbiases), np.nan)
-            self.idxs = np.full((self.nchans, 3), -1, dtype=int)
-
+            self.init_fields(len(am.signal), len(self.biases_cmd))
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file']
             )
+
+    def init_fields(self, nchans, nbiases):
+        self.nchans = nchans
+        self.nbiases = nbiases
+        self.v_bias = np.full((self.nbiases, ), np.nan)
+        self.i_bias = np.full((self.nbiases, ), np.nan)
+        self.resp = np.full((self.nchans, self.nbiases), np.nan)
+        self.R = np.full((self.nchans, self.nbiases), np.nan)
+        self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
+        self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
+        self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
+        self.R_n = np.full((self.nchans, ), np.nan)
+        self.R_L = np.full((self.nchans, ), np.nan)
+        self.p_sat = np.full((self.nchans, ), np.nan)
+        self.si = np.full((self.nchans, self.nbiases), np.nan)
+        self.idxs = np.full((self.nchans, 3), -1, dtype=int)
+        self.bgmap = np.full((self.nchans, ), -1, dtype=int)
+        self.polarity = np.full((self.nchans, ), -1, dtype=int)
+
 
     def save(self, path=None, update_cfg=False):
         saved_fields = [
@@ -600,4 +606,98 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     return iva
 
 
+##########################################################################
+# IV Translation functions
+##########################################################################
+def pysmurf_dict_to_iva(d):
+    """
+    Attempts to convert an iv from the old "pysmurf dict" format into an
+    IVAnalysis object. Not all of the fields will be populated, but enough
+    perform certain analyses and to run through plotting functions.
 
+    Args
+    -----
+    d : dict
+        Dictionary containing analyzed iv data in the old format where bands
+        and channels were dictionary keys.  
+    """
+    bands = []
+    channels = []
+    for b in range(8):
+        if b not in d:
+            continue
+        cs = list(d[b].keys())
+        bands.extend([b for _ in cs])
+        channels.extend(cs)
+    bands = np.array(bands, dtype=int)
+    channels = np.array(channels, dtype=int)
+
+    nchans = len(bands)
+    nbiases = len(d[bands[0]][channels[0]]['v_bias'])
+    iva = IVAnalysis()
+    iva.bands = bands
+    iva.channels = channels
+    iva.init_fields(nchans, nbiases)
+
+    for i in range(len(bands)):
+        chan_data = d[bands[i]][channels[i]]
+        for k, v in chan_data.items():
+            if k == 'si':
+                iva.si[i, :-1] = v
+            elif k == 'trans idxs':
+                iva.idxs[i, :2] = v
+            elif k in ['v_bias']:
+                iva.v_bias = v
+            elif hasattr(iva, k):
+                getattr(iva, k)[i] = v
+        iva.i_tes[i] = chan_data['v_tes'] / chan_data['R']
+
+    return iva
+
+
+det_aligned_atts = [
+    ('bands', 'band'), ('channels', 'channel'), ('bgmap', 'bg'),
+    'polarity', 'resp', 'R', 'R_n', 'R_L', 'idxs', 'p_tes', 'v_tes',
+    'i_tes', 'p_sat', 'si'
+]
+
+
+def get_chan_dict(iva, idx):
+    """
+    New IV to chan dict
+    """
+    cd = {}
+    for k in det_aligned_atts:
+        if isinstance(k, (tuple, list)):
+            name, new_name = k
+        else:
+            name, new_name = k, k
+        cd[new_name] = getattr(iva, name)[idx]
+    cd.update({
+        'v_bias': iva.v_bias,
+        'i_bias': iva.i_bias
+    })
+    return cd
+
+
+def iva_to_pysmurf_dict(iva):
+    """
+    Converts IVAnalysis object into old "pysmurf dict" format.
+
+    Args
+    -----
+    iva : IVAnalysis, str
+        IVAnalysis instance or path to saved IVAnalysis file.
+    """
+    if isinstance(iva, str):
+        iva = IVAnalysis.load(iva)
+
+    d = {}
+    for i in range(len(iva.bands)):
+        band = iva.bands[i]
+        channel = iva.channels[i]
+        if band not in d:
+            d[band] = {}
+        d[band][channel] = get_chan_dict(iva, i)
+
+    return d
