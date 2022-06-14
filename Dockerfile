@@ -66,6 +66,7 @@ RUN mkdir build \
 #################################################################
 # SOTODLIB Install
 #################################################################
+WORKDIR /usr/local/src
 RUN git clone https://github.com/simonsobs/sotodlib.git
 RUN pip3 install quaternionarray sqlalchemy
 RUN pip3 install ./sotodlib
@@ -73,8 +74,7 @@ RUN pip3 install ./sotodlib
 #################################################################
 # OCS Install
 #################################################################
-WORKDIR /usr/local/src
-RUN git clone https://github.com/simonsobs/ocs.git
+RUN git clone --branch v0.9.1 https://github.com/simonsobs/ocs.git
 
 RUN pip3 install cryptography==3.3.2
 # RUN pip3 install -r ocs/requirements.txt
