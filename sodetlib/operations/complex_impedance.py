@@ -62,10 +62,10 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
 
     return ds
 
-def pA_per_bit(ds):
+def A_per_bit(ds):
     return 2 * ds.meta['rtm_bit_to_volt']          \
         / ds.meta['bias_line_resistance']          \
-        * ds.meta['high_low_current_ratio'] * 1e12
+        * ds.meta['high_low_current_ratio']
 
 def load_tod(ds, bg, arc=None):
     """
@@ -95,11 +95,11 @@ def load_tod(ds, bg, arc=None):
 def analyze_seg(ds, tod, bg, i):
     """
     Analyze segment of CI data. The main goal of this is to calculate
-    the Ites phasor, containing the amplitude (pA) and phase (relative
+    the Ites phasor, containing the amplitude (A) and phase (relative
     tot he commanded) of the TES response to an incoming sine wave.
     This performs the following steps:
      1. Restrict full TOD to a single excitation frequency. This will put
-        everything units of pA, correct for channel polarity. This will also
+        everything units of A, correct for channel polarity. This will also
         correct timestamps based on the FrameCounter.
      2. Takes PSD of the bias data to obtain the reference freq. Filters signal
         using gaussian filter around reference freq.
@@ -124,7 +124,7 @@ def analyze_seg(ds, tod, bg, i):
         Returns an souped-up tod axis-manager corresponding to this freq with
         the following fields:
          - timestmaps, biases, signal, ch_info. Standard tod axismanager stuff
-           but with units converted into pA, timestamps fixed, and offsets
+           but with units converted into A, timestamps fixed, and offsets
            subtracted out.
          - sample_rate, cmd_freq: Floats with the sample rate and commanded
            freq
@@ -140,8 +140,8 @@ def analyze_seg(ds, tod, bg, i):
 
     sample_rate = 1./np.median(np.diff(am.timestamps))
 
-    # Convert everything to pA
-    am.signal = am.signal * ds.meta['pA_per_phi0'] / (2*np.pi)
+    # Convert everything to A
+    am.signal = am.signal * ds.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
 
     # Index mapping from am readout channel to sweep chan index.
     chan_idxs = sdl.map_band_chans(
@@ -150,7 +150,7 @@ def analyze_seg(ds, tod, bg, i):
     )
     am.signal *= ds.polarity[chan_idxs, None]
 
-    am.biases = am.biases * pA_per_bit(ds)
+    am.biases = am.biases * A_per_bit(ds)
 
     # Remove offset from signal
     am.signal -= np.mean(am.signal, axis=1)[:, None]
@@ -204,11 +204,11 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
     Analyzes TODS for a CIData set. This will add the following fields to the
     dataset:
       - Ites(dets, steps): Ites phasor for each detector / frequency
-        combination. Amplitude is the amp of the current response (pA), and angle
+        combination. Amplitude is the amp of the current response (A), and angle
         is the phase relative to commanded bias.
-      - Ibias(biaslines): Amplitude (pA) of the sinewave used for each
+      - Ibias(biaslines): Amplitude (A) of the sinewave used for each
         biasline.
-      - Ibias_dc(biaslines): DC bias current (pA) for each biasline
+      - Ibias_dc(biaslines): DC bias current (A) for each biasline
       - res_freqs(dets): Resonance frequency of each channel detectors.
     """
     if bgs is None:
@@ -268,7 +268,7 @@ def get_ztes(ds):
     CI dataset:
       - Rn (dets): Normal resistances based off of low-f overbiased data points.
       - Rtes (dets): TES Resistance, based off of low-f in-transition segment
-      - Vth (dets): Thevenin equiv voltage
+      - Vth (dets): Thevenin equiv voltage (V)
       - Zeq (dets): Equiv impedance
       - Ztes (dets): TES complex impedance
     """
