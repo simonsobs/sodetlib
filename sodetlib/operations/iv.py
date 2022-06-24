@@ -320,7 +320,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
             chan_mask = iva.bgmap == bg
             m = (t0 < am.timestamps) & (am.timestamps < t1)
-            iva.resp[chan_mask, i] = np.mean(am.signal[chan_mask, m], axis=1)
+            iva.resp[chan_mask, i] = np.mean(am.signal[chan_mask][:, m], axis=1)
 
             if j == 0:
                 bias_bits = np.median(am.biases[bg, m])
@@ -352,7 +352,6 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         nb_idx = sc_idx + 1 + np.argmin(iva.resp[i, sc_idx+1:])
         iva.idxs[i, 1] = nb_idx
         nb_fit_idx = (iva.nbiases + nb_idx) // 2
-
         norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:],
                               iva.resp[i, nb_fit_idx:], 1)
         iva.resp[i] -= norm_fit[1]  # Put resp in real current units
@@ -547,11 +546,11 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
 
     start_times = np.zeros((S._n_bias_groups, len(biases)))
     stop_times = np.zeros((S._n_bias_groups, len(biases)))
-    def overbias_and_sweep(bgs):
+    def overbias_and_sweep(bgs, cool_voltage=None):
         """
         Helper function to run IV sweep for a single bg or group of bgs.
         """
-        bgs = np.atleast_1d(bgs, dtype=int)
+        bgs = np.atleast_1d(bgs).astype(int)
         S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
         if overbias_voltage > 0:
             if cool_voltage is None:
@@ -579,7 +578,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         sid = sdl.stream_g3_on(S)
         if run_serially:
             for bg in bias_groups:
-                overbias_and_sweep(bg)
+                overbias_and_sweep(bg, cool_voltage=cool_voltage)
                 time.sleep(serial_wait_time)
         else:
             overbias_and_sweep(bias_groups)
