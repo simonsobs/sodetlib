@@ -539,7 +539,7 @@ class BiasStepAnalysis:
                 bg_corr[:, bg] += np.sum(np.diff(sig), axis=1)
         abs_bg_corr = np.abs(bg_corr)
         normalized_bg_corr = (abs_bg_corr.T / np.sum(abs_bg_corr, axis=1)).T
-        bgmap = np.argmax(normalized_bg_corr, axis=1)
+        bgmap = np.nanargmax(normalized_bg_corr, axis=1)
         m = np.max(normalized_bg_corr, axis=1) < assignment_thresh
         bgmap[m] = -1
 
@@ -864,7 +864,7 @@ def plot_iv_res_comparison(bsa, lim=None, bgs=None, ax=None):
     for bg in bgs:
         m = bsa.bgmap == bg
         vb = bsa.Vbias[bg]
-        idx = np.argmin(np.abs(iva.v_bias - vb))
+        idx = np.nanargmin(np.abs(iva.v_bias - vb))
         iv_res = iva.R[chmap[m], idx]
         ax.scatter(bsa.R0[m]*1000, iv_res*1000, marker='.', alpha=0.2,
                    label=f'Bias Group {bg}')

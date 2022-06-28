@@ -335,7 +335,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         dd_resp_abs = np.abs(dd_resp)
 
         # Find index of superconducting branch
-        sc_idx = np.argmax(dd_resp_abs) + 1
+        sc_idx = np.nanargmax(dd_resp_abs) + 1
         if sc_idx == 1:
             continue
         iva.idxs[i, 0] = sc_idx
@@ -343,7 +343,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         # Find index of normal branch by finding the min index after
         # sc branch. (Skips a few indices after sc branch to avoid possible
         # phase skipping)
-        nb_idx = sc_idx + 1 + np.argmin(iva.resp[i, sc_idx+1:])
+        nb_idx = sc_idx + 1 + np.nanargmin(iva.resp[i, sc_idx+1:])
         iva.idxs[i, 1] = nb_idx
         nb_fit_idx = (iva.nbiases + nb_idx) // 2
 
