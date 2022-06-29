@@ -206,7 +206,7 @@ def identify_best_chan(S, band, f, df,  f_span_min=.04, f_span_max=.12):
         chan_df.append(df_std[ch])
 
     best_chan = chans_to_consider[
-        np.argmin(np.asarray(chan_df)*np.asarray(chan_noise))
+        np.nanargmin(np.asarray(chan_df)*np.asarray(chan_noise))
     ]
     su.cprint(f'best_chan: {best_chan}\tfspan: {f_span[best_chan]}')
     return best_chan
@@ -553,7 +553,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
     opt_dcs = np.zeros_like(bands)
     for i, band in enumerate(bands):
         wls = wl_medians[i]
-        uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
+        uc_idx, dc_idx = np.unravel_index(np.nanargmin(wls, axis=None), wls.shape)
         opt_ucs[i] = uc_attens[uc_idx]
         opt_dcs[i] = dc_attens[dc_idx]
         su.cprint(f"Band {band}:")
@@ -587,7 +587,7 @@ def optimize_attens(S, cfg, bands, meas_time=10, uc_attens=None,
 
     for i, band in enumerate(bands):
         wls = wl_medians[i]
-        uc_idx, dc_idx = np.unravel_index(np.argmin(wls, axis=None), wls.shape)
+        uc_idx, dc_idx = np.unravel_index(np.nanargmin(wls, axis=None), wls.shape)
         su.cprint(f"Band {band}:")
         su.cprint(f"  Min White Noise: {wls[uc_idx, dc_idx]}")
         su.cprint(f"  UC Atten: {uc_attens[uc_idx]}")

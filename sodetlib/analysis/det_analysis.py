@@ -114,7 +114,7 @@ def predict_bg_index(amps, r2s, thresh=0.9):
     possible_idxs = np.where(r2s > thresh)[0]
     if len(possible_idxs) == 0:
         return -1
-    bg_idx = possible_idxs[np.argmax(amps[possible_idxs])]
+    bg_idx = possible_idxs[np.nanargmax(amps[possible_idxs])]
     return bg_idx
 
 
@@ -1215,7 +1215,7 @@ def bias_points_from_rfrac(S, cfg, iv_analyze_fp, bias_group_map_fp,
                     and iv_analyze['data'][b][c]['R_n'] > Rn_lower):
                 if not np.isnan(iv_analyze['data'][b][c]['p_sat']):
                     R_frac = iv_analyze['data'][b][c]['R']/iv_analyze['data'][b][c]['R_n']
-                    bias_idx = np.argmin(np.abs(R_frac - rfrac))
+                    bias_idx = np.nanargmin(np.abs(R_frac - rfrac))
                     ch_v_bias_target = iv_analyze['data'][b][c]['v_bias'][bias_idx]
                     bg_ch_bias_targets[bg].append(ch_v_bias_target)
 

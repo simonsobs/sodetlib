@@ -68,7 +68,7 @@ def bias_to_rfrac_range(
             continue
 
         nchans_in_range = np.sum(in_range[m, :], axis=0)
-        target_idx = np.argmax(nchans_in_range)
+        target_idx = np.nanargmax(nchans_in_range)
         biases[bg] = iva.v_bias[target_idx]
 
     if math_only:
@@ -147,7 +147,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 
         target_biases = []
         for rc in np.where(m)[0]:
-            target_idx = np.argmin(np.abs(Rfrac[rc] - rfrac))
+            target_idx = np.nanargmin(np.abs(Rfrac[rc] - rfrac))
             target_biases.append(iva.v_bias[target_idx])
         biases[bg] = np.median(target_biases)
 

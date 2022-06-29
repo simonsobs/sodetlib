@@ -60,12 +60,12 @@ def fit_noise_asd(f, Axx, wl_f_range=(10,30), p0=None):
     bounds_high = [np.inf,np.inf,np.inf]
     bounds = (bounds_low,bounds_high)
 
-    fit_idxmax = np.argmin(np.abs(f-wl_f_range[1]))
+    fit_idxmax = np.nanargmin(np.abs(f-wl_f_range[1]))
     try:
         popt, pcov = curve_fit(noise_model, f[1:fit_idxmax], Axx[1:fit_idxmax],
                                 p0=p0, bounds=bounds)
     except Exception:
-        idxmin = np.argmin(np.abs(f-wl_f_range[0]))
+        idxmin = np.nanargmin(np.abs(f-wl_f_range[0]))
         wl = np.median(Axx[idxmin:fit_idxmax])
         popt = [wl, np.nan, np.nan]
         pcov = None
@@ -124,7 +124,7 @@ def get_noise_params(am, wl_f_range=(10,30),
             low-f scaling of 1/f^{1/2}.
     """
     f, axx = get_asd(am, **asd_args)
-    idx10mHz = np.argmin(np.abs(f-0.01))
+    idx10mHz = np.nanargmin(np.abs(f-0.01))
     nlref_10mHz = 65*np.sqrt((0.1/f[idx10mHz])+1)
     noise_pars = np.zeros((np.shape(axx)[0],3))
     if fit == False:
@@ -430,7 +430,7 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
         ax2.loglog(f,axx[rc],color = 'grey',alpha = 0.7)
         ax2.axhline(noise_pars[rc,0], xmin=0.5, xmax=1, lw=2, ls=':',
                     color='k')
-        wl_fknee = axx[rc,np.argmin(np.abs(f-noise_pars[rc,2]))]
+        wl_fknee = axx[rc,np.nanargmin(np.abs(f-noise_pars[rc,2]))]
         ax2.plot(noise_pars[rc,2], wl_fknee, '*', markersize=8, color='green')
         if plot1overfregion:
             #plt.axhline(np.sqrt(2)*noise_pars[rc,0],color = 'C0')

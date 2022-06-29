@@ -394,7 +394,7 @@ def dev_cfg_from_pysmurf(S, save_file=None, clobber=True):
                    f"pysmurf-cfg value: {drive}", style=TermColors.WARNING)
         else:
             drives, counts = np.unique(tone_powers, return_counts=True)
-            drive = drives[np.argmax(counts)]
+            drive = drives[np.nanargmax(counts)]
             if len(drives) > 1:
                 print(f"Multiple drive powers exist for band {band} ({drives})!")
                 print(f"Using most common power: {drive}")

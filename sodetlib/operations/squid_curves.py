@@ -101,7 +101,7 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
         corrs.append(corr)
 
     # should just be able to find the maximum of this correlation
-    phioffset = testphoffs[np.argmax(corrs)]
+    phioffset = testphoffs[np.nanargmax(corrs)]
 
     # plot harmonics only over the largest possible number of SQUID periods.  May only be 1.
     lower_phi_full_cycles = (np.min(phi) + phioffset) % (phi0) + np.min(phi)
