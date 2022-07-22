@@ -2,6 +2,7 @@ import numpy as np
 import time
 import sodetlib as sdl
 from sodetlib.operations import tracking
+from sodetlib.operations import optimize_setup
 
 import matplotlib.pyplot as plt
 
@@ -481,7 +482,18 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     summary['tracking_res'] = tracking_res
 
     #############################################################
-    # 7. Noise
+    # 7. Optimize uc_att and tone
+    #############################################################
+    summary['timestamps'].append(('optimize_tone_ucatt', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+    for band in bands:
+        success, summary = optimize_setup.tone_uc_att(S, cfg, band)
+        if not success:
+            sdl.pub_ocs_log(S, f"Failed to optimize attens on band {band}")
+            return False, summary
+
+    #############################################################
+    # 8. Noise
     #############################################################
     summary['timestamps'].append(('noise', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
