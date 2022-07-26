@@ -413,7 +413,7 @@ def plot_channel_fit(fit_dict, idx):
                        alpha=0.5,
                       boxstyle="round",),
             transform=ax3.transAxes)
-    return fig, ax1, ax2, ax3
+    return fig, np.array([ax1, ax2, ax3])
 
 def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     '''
@@ -445,7 +445,7 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     fr_quant = frs[(frs>=np.nanquantile(frs, 1-quantile)) \
                    & (frs<=np.nanquantile(frs, quantile))]
     
-    plt.figure(figsize = (16,8))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 8))
 
     if plot_style is None:
         plot_style = {'bins': 30,
@@ -454,37 +454,39 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
                       'edgecolor': 'orange',
                       'lw': 2}
     #Qi plot
-    plt.subplot(2,2,1)
-    plt.hist(Qi_quant/1e5, **plot_style)
+    ax = axes[0, 0]
+    ax.hist(Qi_quant/1e5, **plot_style)
     Qi_med = np.median(Qi_quant/1e5)
-    plt.axvline(np.median(Qi_quant/1e5),color = 'purple',
+    ax.axvline(np.median(Qi_quant/1e5),color = 'purple',
                 label = f'Median: {np.round(Qi_med,2)} $\\times10^5$')
-    plt.legend(loc = 'upper right')
-    plt.xlabel('$Q_i\\times10^5$')
-    plt.ylabel('Counts')
+    ax.legend(loc = 'upper right')
+    ax.set_xlabel('$Q_i\\times10^5$')
+    ax.set_ylabel('Counts')
 
     #Dip depth plot
-    plt.subplot(2,2,2)
-    plt.hist(20*np.log10(depth_quant),**plot_style)
+    ax = axes[0, 1]
+    ax.hist(20*np.log10(depth_quant),**plot_style)
     dep_med = np.median(20*np.log10(depth_quant))
-    plt.axvline(dep_med,color = 'purple',
+    ax.axvline(dep_med,color = 'purple',
                 label = f'Median: {np.round(dep_med,2)} dB')
-    plt.legend(loc = 'upper right')
-    plt.xlabel('Dip Depth [dB]')
-    plt.ylabel('Counts')
+    ax.legend(loc = 'upper right')
+    ax.set_xlabel('Dip Depth [dB]')
+    ax.set_ylabel('Counts')
 
     #Bandwidth plot
     plt.subplot(2,2,3)
-    plt.hist(bw_quant*1e3, **plot_style)
+    ax = axes[1, 0]
+    ax.hist(bw_quant*1e3, **plot_style)
     bw_med = np.median(bw_quant*1e3)
-    plt.axvline(bw_med,color = 'purple',
+    ax.axvline(bw_med,color = 'purple',
                 label = f'Median: {np.round(bw_med,2)} kHz')
-    plt.legend(loc = 'upper right')
-    plt.xlabel('Bandwidth [kHZ]')
-    plt.ylabel('Counts')
+    ax.legend(loc = 'upper right')
+    ax.set_xlabel('Bandwidth [kHZ]')
+    ax.set_ylabel('Counts')
 
     #Frequency Separation plot
     plt.subplot(2,2,4)
+    ax = axes[1, 1]
     seps = np.diff(np.sort(fr_quant))
     mean, std = np.mean(seps), np.std(seps)
     nstd = 2
@@ -493,12 +495,13 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
         min(np.max(seps), mean + nstd * std),
     )
 
-    plt.hist(seps, range=rng, **plot_style)
+    ax.hist(seps, range=rng, **plot_style)
     fsep_med = np.median(np.diff(np.sort(fr_quant)))
-    plt.axvline(fsep_med,color = 'purple',
+    ax.axvline(fsep_med,color = 'purple',
                 label = f'Median: {np.round(fsep_med,2)} MHz')
-    plt.legend(loc = 'upper right')
-    plt.xlabel('Resonator Separation [Mhz]')
-    plt.ylabel('Counts')
+    ax.legend(loc = 'upper right')
+    ax.set_xlabel('Resonator Separation [Mhz]')
+    ax.set_ylabel('Counts')
+
     plt.tight_layout()
-    return
+    return fig, axes
