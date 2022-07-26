@@ -7,7 +7,7 @@ from pysmurf.client.util.pub import set_action
 import sodetlib as sdl
 from sodetlib.analysis import squid_fit as sqf
 import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm, trange
 
 
 def autocorr(wave):
@@ -286,11 +286,13 @@ def plot_squid_fit(data, band, channel, save_plot=False, S=None,
         data['channels'] == channel))[0][0]
     biases = data['fluxramp_ffs']
 
+    fit_biases = np.linspace(np.min(biases), np.max(biases), 1000)
+
     fres = data['res_freq'][idx]
     fig = plt.figure()
     fig.set_facecolor('white')
     plt.plot(biases, data["res_freq_vs_fr"][idx, :], 'co')
-    plt.plot(biases, squid_curve_model(biases,
+    plt.plot(fit_biases, squid_curve_model(fit_biases,
                                        *data['popts'][idx, :]),
              'C1--')
     ax = plt.gca()
@@ -310,7 +312,7 @@ def plot_squid_fit(data, band, channel, save_plot=False, S=None,
     return
 
 
-def fit_squid_curves(squid_data, fit_args=None):
+def fit_squid_curves(squid_data, fit_args=None, modify_data=True, show_pb=False):
     '''
     Function for fitting squid curves taken with ``take_squid_curve``.
 
@@ -340,7 +342,7 @@ def fit_squid_curves(squid_data, fit_args=None):
     df = np.zeros(nchans)
     dfdI = np.zeros(nchans)
     hhpwr = np.zeros(nchans)
-    for nc in range(nchans):
+    for nc in trange(nchans, disable=not show_pb):
         fit_guess[nc, :] = estimate_fit_parameters(squid_data['fluxramp_ffs'],
                                                    squid_data['res_freq_vs_fr'][nc],
                                                    **fit_args)
@@ -360,6 +362,12 @@ def fit_squid_curves(squid_data, fit_args=None):
     fit_out['dfdI'] = dfdI
     fit_out['higher_harmonic_power'] = hhpwr
     fit_out['plt_txt'] = np.array(plt_txt)
+
+    if modify_data:
+        squid_data.update(fit_out)
+        squid_data['popts'] = fit_result
+        squid_data['ffs_per_phi0'] = fit_results[:, 0]
+
     return fit_out
 
 
@@ -618,17 +626,10 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
             S.set_mode_ac()
 
     if run_analysis:
+        kw = {'modify_data': True}
         if analysis_kwargs is not None:
-            fit_dict = fit_squid_curves(data, **analysis_kwargs)
-        else:
-            fit_dict = fit_squid_curves(data)
-        data['df'] = fit_dict['df']
-        data['dfdI'] = fit_dict['dfdI']
-        data['higher_harmonic_power'] = fit_dict['higher_harmonic_power']
-        data['ffs_per_phi0'] = fit_dict['model_params'][:, 0]
-        data['popts'] = fit_dict['model_params']
-#       plt_txt is an array of strings that are to be used with plot_squid_fit
-        data['plt_txt'] = fit_dict['plt_txt']
+            kw.update(analysis_kwargs)
+        fit_dict = fit_squid_curves(data, **kw)
 
     # save dataset for each iteration, just to make sure it gets
     # written to disk
