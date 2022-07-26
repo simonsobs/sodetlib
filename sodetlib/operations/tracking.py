@@ -237,7 +237,7 @@ class TrackingResults:
             'meta', 'bands', 'channels',
             'f_ptp_range', 'df_ptp_range', 'r2_min',
             'f', 'df', 'sync_idxs', 'r2', 'is_good',
-            'tracking_kwargs'
+            'tracking_kwargs', 'f_ptp', 'df_ptp',
         ]
         data = {}
         for field in saved_fields:
@@ -253,12 +253,12 @@ class TrackingResults:
     @classmethod
     def load(cls, path):
         self = cls()
-        for k, v in np.load(path, allow_pickle=True).item():
+        for k, v in np.load(path, allow_pickle=True).item().items():
             setattr(self, k, v)
         return self
 
 
-def plot_tracking_channel(tr, idx):
+def plot_tracking_channel(tr, idx, show_text=True):
     """
     Plots single tracking channel from results
     """
@@ -272,17 +272,21 @@ def plot_tracking_channel(tr, idx):
     ax.plot(df+f, color='grey', alpha=0.8, label='Freq Response')
     ax.plot(f, label='Tracked Freq')
     ax.set_xticks([])
-    ax.set_ylabel(f"Freq offset from {tr.subband_centers[idx]:0.2f} [kHz]")
+    if hasattr(tr, 'subband_centers'):
+        ax.set_ylabel(f"Freq offset from {tr.subband_centers[idx]:0.2f} [kHz]")
+    else:
+        ax.set_ylabel(f"Freq offset [kHz]")
     ax.legend(loc='upper left')
 
-    txt = '\n'.join([
-        f'fptp = {tr.f_ptp[idx]:0.2f}',
-        f'dfptp = {tr.df_ptp[idx]:0.2f}',
-        f'r2 = {tr.r2[idx]:0.2f}',
-        f'is_good = {tr.is_good[idx]}',
-    ])
-    bbox = dict(facecolor='white', alpha=0.8)
-    ax.text(0.02, 0.1, txt, transform=ax.transAxes, bbox=bbox)
+    if show_text:
+        txt = '\n'.join([
+            f'fptp = {tr.f_ptp[idx]:0.2f}',
+            f'dfptp = {tr.df_ptp[idx]:0.2f}',
+            f'r2 = {tr.r2[idx]:0.2f}',
+            f'is_good = {tr.is_good[idx]}',
+        ])
+        bbox = dict(facecolor='white', alpha=0.8)
+        ax.text(0.02, 0.1, txt, transform=ax.transAxes, bbox=bbox)
     for s in tr.sync_idxs[band]:
         ax.axvline(s, color='grey', ls='--')
     return fig, ax
