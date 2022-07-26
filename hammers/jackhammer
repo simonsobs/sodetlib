@@ -149,7 +149,7 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
             subprocess.run(f'docker stop {cid}'.split())
             subprocess.run(f'docker rm {cid}'.split())
 
-def dump_docker_logs(slots):
+def dump_docker_logs(slots, dump_rogue_tree=False):
     """
         Dumps all docker logs and the rogue state for the specified
         slots to text files.
@@ -179,15 +179,16 @@ def dump_docker_logs(slots):
             print(f"Saving {name} logs to {log_file}")
             subprocess.run(f'docker logs {cid}'.split(), stdout=f, stderr=f)
 
-    dump_script = '/sodetlib/scripts/dump_rogue_state.py'
-    for slot in slots:
-        if check_epics_connection(f'smurf_server_s{slot}', retry=False):
-            out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
-            cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
-            util_run('python3', args=[dump_script, str(slot), out_file],
-                     name=f'rogue_dump_s{slot}')
-        else:
-            print(f"Could not connect to epics for slot {slot}")
+    if dump_rogue_tree:
+        dump_script = '/sodetlib/scripts/dump_rogue_state.py'
+        for slot in slots:
+            if check_epics_connection(f'smurf_server_s{slot}', retry=False):
+                out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
+                cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
+                util_run('python3', args=[dump_script, str(slot), out_file],
+                         name=f'rogue_dump_s{slot}')
+            else:
+                print(f"Could not connect to epics for slot {slot}")
 
 def run_on_shelf_manager(cmd_str):
     """ Runs a command on the shelf manager. Takes in the command as a string"""
@@ -434,7 +435,20 @@ def dump_func(args):
                     f"Slot {s} is not valid for this system! Can only use "
                     f"slots in: {sys_config['slot_order']}")
 
-    dump_docker_logs(slots)
+    dump_docker_logs(slots, dump_rogue_tree=args.dump_rogue)
+
+
+def deactivate_func(args):
+    cmds = [
+        f'clia deactivate board {s}' for s in args.slots
+    ]
+    run_on_shelf_manager('; '.join(cmds))
+
+def activate_func(args):
+    cmds = [
+        f'clia activate board {s}' for s in args.slots
+    ]
+    run_on_shelf_manager('; '.join(cmds))
 
 
 # Entrypoint for jackhammer write-env
@@ -479,6 +493,8 @@ if __name__ == '__main__':
     hammer_parser.add_argument('--agg', action='store_true')
     hammer_parser.add_argument('--skip-setup', action='store_true',
                                help="Skip pysmurf setup functions")
+    hammer_parser.add_argument('--dump-rogue', action='store_true',
+                               help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
@@ -501,8 +517,20 @@ if __name__ == '__main__':
     dump_parser = subparsers.add_parser('dump', help='Dumps all docker logs')
     dump_parser.add_argument('slots', nargs='*', type=int,
                              help='Specifies the slots to dump rogue states')
+    dump_parser.add_argument('--dump-rogue', action='store_true',
+                             help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
     dump_parser.set_defaults(func=dump_func)
 
+    ########### Jackhammer dump parser ###########
+    dump_parser = subparsers.add_parser('deactivate', help='Deactivates slots')
+    dump_parser.add_argument('slots', nargs='*', type=int,
+                             help='Specifies the slots to deactivate')
+    dump_parser.set_defaults(func=deactivate_func)
+
+    dump_parser = subparsers.add_parser('activate', help='Activates slots')
+    dump_parser.add_argument('slots', nargs='*', type=int,
+                             help='Specifies the slots to activate')
+    dump_parser.set_defaults(func=activate_func)
     ########### Jackhammer write-env parser ###########
     write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
     write_env_parser.set_defaults(func=write_env_func)
