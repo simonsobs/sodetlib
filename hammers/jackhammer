@@ -521,16 +521,18 @@ if __name__ == '__main__':
                              help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
     dump_parser.set_defaults(func=dump_func)
 
-    ########### Jackhammer dump parser ###########
-    dump_parser = subparsers.add_parser('deactivate', help='Deactivates slots')
-    dump_parser.add_argument('slots', nargs='*', type=int,
+    ########### Jackhammer deactivate parser ###########
+    deactivate_parser = subparsers.add_parser('deactivate', help='Deactivates slots')
+    deactivate_parser.add_argument('slots', nargs='+', type=int,
                              help='Specifies the slots to deactivate')
-    dump_parser.set_defaults(func=deactivate_func)
+    deactivate_parser.set_defaults(func=deactivate_func)
 
-    dump_parser = subparsers.add_parser('activate', help='Activates slots')
-    dump_parser.add_argument('slots', nargs='*', type=int,
+    ########### Jackhammer activate parser ###########
+    activate_parser = subparsers.add_parser('activate', help='Activates slots')
+    activate_parser.add_argument('slots', nargs='+', type=int,
                              help='Specifies the slots to activate')
-    dump_parser.set_defaults(func=activate_func)
+    activate_parser.set_defaults(func=activate_func)
+
     ########### Jackhammer write-env parser ###########
     write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
     write_env_parser.set_defaults(func=write_env_func)
