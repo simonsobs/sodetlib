@@ -539,6 +539,7 @@ class BiasStepAnalysis:
                 bg_corr[:, bg] += np.sum(np.diff(sig), axis=1)
         abs_bg_corr = np.abs(bg_corr)
         normalized_bg_corr = (abs_bg_corr.T / np.sum(abs_bg_corr, axis=1)).T
+        normalized_bg_corr[np.isnan(normalized_bg_corr)] = 0.
         bgmap = np.nanargmax(normalized_bg_corr, axis=1)
         m = np.max(normalized_bg_corr, axis=1) < assignment_thresh
         bgmap[m] = -1
