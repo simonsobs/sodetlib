@@ -361,11 +361,16 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
             continue
         iva.idxs[i, 1] = nb_idx
         nb_fit_idx = (iva.nbiases + nb_idx) // 2
-        norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:],
-                              iva.resp[i, nb_fit_idx:], 1)
+        fin_idx = (np.isfinite(iva.i_bias[nb_fit_idx:]) &
+                   np.isfinite(iva.resp[i, nb_fit_idx:]))
+        norm_fit = np.polyfit(iva.i_bias[nb_fit_idx:][fin_idx],
+                              iva.resp[i, nb_fit_idx:][fin_idx], 1)
         iva.resp[i] -= norm_fit[1]  # Put resp in real current units
 
-        sc_fit = np.polyfit(iva.i_bias[:sc_idx], iva.resp[i, :sc_idx], 1)
+        fin_idx = (np.isfinite(iva.i_bias[:sc_idx]) &
+                   np.isfinite(iva.resp[i, :sc_idx]))
+        sc_fit = np.polyfit(iva.i_bias[:sc_idx][fin_idx],
+                            iva.resp[i, :sc_idx][fin_idx], 1)
 
         # subtract off unphysical y-offset in superconducting branch; this
         # is probably due to an undetected phase wrap at the kink between
