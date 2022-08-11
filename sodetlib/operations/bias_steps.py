@@ -539,6 +539,7 @@ class BiasStepAnalysis:
                 bg_corr[:, bg] += np.sum(np.diff(sig), axis=1)
         abs_bg_corr = np.abs(bg_corr)
         normalized_bg_corr = (abs_bg_corr.T / np.sum(abs_bg_corr, axis=1)).T
+        normalized_bg_corr[np.isnan(normalized_bg_corr)] = 0.
         bgmap = np.nanargmax(normalized_bg_corr, axis=1)
         m = np.max(normalized_bg_corr, axis=1) < assignment_thresh
         bgmap[m] = -1
@@ -1011,12 +1012,13 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         use_waveform=use_waveform, analysis_kwargs=_analysis_kwargs
     )
 
-    fig, ax = plot_bg_assignment(bsa)
-    sdl.save_fig(S, fig, 'bg_assignments.png')
-    if show_plots:
-        plt.show(fig)
-    else:
-        plt.close(fig)
+    if hasattr(bsa, 'bgmap'):
+        fig, ax = plot_bg_assignment(bsa)
+        sdl.save_fig(S, fig, 'bg_assignments.png')
+        if show_plots:
+            plt.show(fig)
+        else:
+            plt.close(fig)
 
     return bsa
 

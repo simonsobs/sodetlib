@@ -161,11 +161,11 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
 
     # Sometimes it takes a bit for data to propogate through to the
     # streamer
-    for _ in range(5):
+    for _ in range(10):
         sess_id = reg.g3_session_id.get()
         if sess_id != 0:
             break
-        time.sleep(0.3)
+        time.sleep(0.5)
     return sess_id
 
 
