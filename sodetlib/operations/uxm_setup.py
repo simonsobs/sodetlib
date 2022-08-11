@@ -371,7 +371,8 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
 
 @sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
-              skip_estimate_attens=False, skip_phase_delay=False, skip_setup_amps=False): 
+              modify_attens=True, skip_estimate_attens=False,
+              skip_phase_delay=False, skip_setup_amps=False): 
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -463,7 +464,7 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
         sdl.set_session_data(S, 'timestamps', summary['timestamps'])
         for band in bands:
             bcfg = cfg.dev.bands[band]
-            if (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
+            if modify_attens or (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
                 success = estimate_uc_dc_atten(S, cfg, band, update_cfg=update_cfg)
                 if not success:
                     sdl.pub_ocs_log(S, f"Failed to estimate attens on band {band}")
