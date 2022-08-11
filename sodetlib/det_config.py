@@ -478,7 +478,7 @@ class DetConfig:
         else:
             self.uxm = None
 
-    def dump_configs(self, output_dir, clobber=False, dump_rogue_tree=False):
+    def dump_configs(self, output_dir=None, clobber=False, dump_rogue_tree=False):
         """
         Dumps any config information to an output directory
 
@@ -493,6 +493,13 @@ class DetConfig:
             dev_out (path): path to output device file.
             uxm_out (path): path to uxm file
         """
+        if output_dir is None:
+            if not self.S:
+                raise ValueError("output_dir cannot be None in offline mode")
+            output_dir = os.path.join(
+                    self.S.base_dir, self.S.date, self.stream_id, 
+                    self.S.name, 'config', self.S.get_timestamp(),
+                  )
         print(f"Dumping sodetlib configs to {output_dir}")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
