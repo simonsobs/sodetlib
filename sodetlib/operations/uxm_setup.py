@@ -371,8 +371,8 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
 
 @sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
-              modify_attens=True, skip_estimate_attens=False,
-              skip_phase_delay=False, skip_setup_amps=False): 
+              modify_attens=True, skip_phase_delay=False,
+              skip_setup_amps=False): 
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -413,8 +413,6 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
         If true, will show find_freq plots. Defaults to False
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    skip_estimate_attens : bool
-        If true, will skip the estimate attens step
     skip_phase_delay : bool
         If True, will skip the estimate_phase_delay step
     skip_setup_amps : bool
@@ -459,16 +457,18 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
     #############################################################
     # 3. Estimate Attens
     #############################################################
-    if not skip_estimate_attens:
-        summary['timestamps'].append(('estimate_attens', time.time()))
-        sdl.set_session_data(S, 'timestamps', summary['timestamps'])
-        for band in bands:
-            bcfg = cfg.dev.bands[band]
-            if modify_attens or (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
-                success = estimate_uc_dc_atten(S, cfg, band, update_cfg=update_cfg)
-                if not success:
-                    sdl.pub_ocs_log(S, f"Failed to estimate attens on band {band}")
-                    return False, summary
+    summary['timestamps'].append(('estimate_attens', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+    for band in bands:
+        bcfg = cfg.dev.bands[band]
+        if modify_attens or (bcfg['uc_att'] is None) or (bcfg['dc_att'] is None):
+            success = estimate_uc_dc_atten(S, cfg, band, update_cfg=update_cfg)
+            if not success:
+                sdl.pub_ocs_log(S, f"Failed to estimate attens on band {band}")
+                return False, summary
+    else:
+        S.set_att_uc(band, bcfg['uc_att'])
+        S.set_att_dc(band, bcfg['dc_att'])
 
     #############################################################
     # 4. Estimate Phase Delay
