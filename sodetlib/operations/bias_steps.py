@@ -1016,9 +1016,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         fig, ax = plot_bg_assignment(bsa)
         sdl.save_fig(S, fig, 'bg_assignments.png')
         if show_plots:
-            plt.show(fig)
+            plt.show()
         else:
-            plt.close(fig)
+            plt.close()
 
     return bsa
 
