@@ -1,4 +1,4 @@
-# optimize_setup.py
+# optimize.py
 # Module for various functions optimizing the setup of the resonators.
 # Currently just holds one main function for adjusting uc_att and tone.
 
@@ -7,7 +7,7 @@ import os, sys
 import numpy as np
 import scipy.signal as signal
 from sodetlib import noise
-import sodetlib.util as su
+from sodetlib.operations import tracking
 
 
 def tone_uc_att(
@@ -49,13 +49,14 @@ def tone_uc_att(
 
     # Default noise thresholds based on Phase 2 targets
     if low_noise_thresh is None:
-        low_noise_thresh = 45 if uxm == "umm"  else 130
+        low_noise_thresh = 45 if uxm == "umm"  else 135
     if med_noise_thresh is None:
         med_noise_thresh = 65 if uxm == "umm" else 150
     if high_noise_thresh is None:
-        high_noise_thresh = 250 if uxm == "umm" else 300
+        high_noise_thresh = 300
 
     for opt_band in bands:
+        S.log(f"Estimating attens for band {band}")
         uctuner = UCTuner(S, cfg, band=opt_band)
         uctuner.uc_tune(uc_attens=uctuner.current_uc_att)
         S.log(f"UC attens: {uctuner.uc_attens}")
@@ -144,16 +145,14 @@ def tone_uc_att(
             return False, summary
             
         S.log(uctuner.status)
-        summary = (f"Best noise {uctuner.best_wl:.1f} pA/rtHz achieved at"
-                    + f" uc att {uctuner.best_att} tone power {uctuner.best_tone}."
-        )
-        S.log(summary)
+        S.log(f"Best noise {uctuner.best_wl:.1f} pA/rtHz achieved at"
+              + f" uc att {uctuner.best_att} tone power {uctuner.best_tone}.")
         cfg.dev.update_band(
             opt_band,
             {"uc_att": uctuner.best_att, "tone_power": uctuner.best_tone},
             update_file=True,
         )
-        return True, summary
+        return True
 
 class UCTuner:
     """
@@ -222,12 +221,10 @@ class UCTuner:
         wl_len_list = []
         for atten in uc_attens:
             self._S.set_att_uc(self.band, atten)
-            tk = su.get_tracking_kwargs(self._S, cfg, self.opt_band)
-            ret = self._S.tracking_setup(opt_band, **tk)
             am, outdict = noise.take_noise(self._S, self._cfg, acq_time=30, fit=False,
                                            plot_band_summary=False, show_plot=False)
 
-            noise_param = outdict['noise_pars'][:,0]
+            noise_param = outdict['noise_pars'][outdict['bands']==self.band][:,0]
 
             wl_list.append(round(np.nanmedian(noise_param), 1))
             wl_len_list.append(len(noise_param))
@@ -287,7 +284,7 @@ class UCTuner:
     def set_tone_and_uc(self, tone_power, uc_att):
         """
         Apply new tone power and uc_att settings.
-        Re-runs find_freqs, setup notches, and serial algs.
+        Re-runs find_freqs, setup notches, serial algs, and tracking.
         """
         self._S.amplitude_scale[self.band] = tone_power
         self._S.set_att_uc(self.band, uc_att)
@@ -296,6 +293,7 @@ class UCTuner:
                               new_master_assignment=True)
         self._S.run_serial_gradient_descent(self.band)
         self._S.run_serial_eta_scan(self.band)
+        tracking_res = tracking.relock_tracking_setup(self._S, self._cfg, self.band)
         self.current_uc_att = uc_att
         self.current_tone_power = tone_power
 

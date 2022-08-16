@@ -1,8 +1,6 @@
 import numpy as np
 import time
 import sodetlib as sdl
-from sodetlib.operations import tracking
-from sodetlib.operations import optimize_setup
 
 import matplotlib.pyplot as plt
 
@@ -183,10 +181,9 @@ def setup_amps(S, cfg, update_cfg=True):
 
 
 @sdl.set_action()
-def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
+def setup_phase_delay(S, cfg, bands, update_cfg=True):
     """
-    Sets uc and dc attens to reasonable values and runs estimate phase delay
-    for desired bands.
+    Runs estimate phase delay for desired bands.
 
     Args
     -----
@@ -194,10 +191,6 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
         Pysmurf instance
     cfg : DetConfig
         DetConfig instance
-    uc_att : int
-        UC atten to use for phase-delay estimation
-    dc_att : int
-        DC atten to use for phase-delay estimation
     update_cfg : bool
         If true, will update the device cfg and save the file.
     """
@@ -209,7 +202,12 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
     }
     for b in bands:
         summary['bands'].append(int(b))
-        band_delay_us, _ = S.estimate_phase_delay(b, make_plot=True, show_plot=False)
+        S.amplitude_scale[b] = cfg.dev.bands[b]['tone_power']
+        band_delay_us = cfg.dev.bands[b]['band_delay_us']
+        if band_delay_us is None:
+            band_delay_us, _ = S.estimate_phase_delay(b, make_plot=True, show_plot=False)
+        else:
+            S.set_band_delay_us(b, band_delay_us)
         band_delay_us = float(band_delay_us)
         summary['band_delay_us'].append(band_delay_us)
         if update_cfg:
@@ -396,10 +394,6 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
         If true, will show find_freq plots. Defaults to False
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    modify_attens : bool
-        If true, will run estimate_uc_dc_atten to find a set of
-        attenuations that will work for estimate_phase_delay and
-        find_freq.
     """
     if bands is None:
         bands = np.arange(8)
@@ -482,15 +476,16 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True):
     summary['tracking_res'] = tracking_res
 
     #############################################################
-    # 7. Optimize uc_att and tone
+    # 8. Noise
     #############################################################
-    summary['timestamps'].append(('optimize_tone_ucatt', time.time()))
+    summary['timestamps'].append(('noise', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
-    for band in bands:
-        success, summary = optimize_setup.tone_uc_att(S, cfg, band)
-        if not success:
-            sdl.pub_ocs_log(S, f"Failed to optimize attens on band {band}")
-            return False, summary
+    _, summary['noise'] = sdl.noise.take_noise(
+        S, cfg, 30, show_plot=show_plots, save_plot=True
+    )
+
+    summary['timestamps'].append(('end', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
     #############################################################
     # 8. Noise
