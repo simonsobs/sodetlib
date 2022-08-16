@@ -747,7 +747,7 @@ def cryo_amp_check(S, cfg):
         if -band_width/2 < f < band_width/2:
             resp_inband.append(r)
     # If the mean is > 1, say response received
-    if np.mean(resp_inband) > 1: #LESS THAN CHANGE
+    if np.nanmean(resp_inband) > 1: #LESS THAN CHANGE
         resp_check = True
         su.cprint("Full band response check passed", True)
     else:

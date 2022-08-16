@@ -628,7 +628,7 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
             sb = int(s + np.floor(st/2))
             eb = int(e - np.floor(st/10))
 
-            resp_bin[i] = np.mean(resp[sb:eb])
+            resp_bin[i] = np.nanmean(resp[sb:eb])
             v_bias_bin[i] = v_bias_bg[sb]
             i_bias_bin[i] = i_bias[sb]
 
@@ -655,11 +655,11 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         for i in np.arange(nb_idx_default, sc_idx, -1):
             # look for minimum of IV curve outside of superconducting region
             # but get the sign right by looking at the sc branch
-            if d_resp[i]*np.mean(d_resp[:sc_idx]) < 0.:
+            if d_resp[i]*np.nanmean(d_resp[:sc_idx]) < 0.:
                 nb_idx = i+1
                 break
 
-        nb_fit_idx = int(np.mean((n_step, nb_idx)))
+        nb_fit_idx = int(np.nanmean((n_step, nb_idx)))
         norm_fit = np.polyfit(i_bias_bin[nb_fit_idx:],
                               resp_bin[nb_fit_idx:], 1)
         if norm_fit[0] < 0:  # Check for flipped polarity
@@ -681,8 +681,8 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
         R = R_sh * (i_bias_bin/(resp_bin) - 1)
-        R_n = np.mean(R[nb_fit_idx:])
-        R_L = np.mean(R[1:sc_idx])
+        R_n = np.nanmean(R[nb_fit_idx:])
+        R_L = np.nanmean(R[1:sc_idx])
 
         if R_n < 0:
             print(f'Fitted normal resistance is negative. '

@@ -521,7 +521,7 @@ class BiasStepAnalysis:
         if self.edge_idxs is None:
             self._find_bias_edges()
 
-        fsamp = np.mean(1./np.diff(am.timestamps))
+        fsamp = np.nanmean(1./np.diff(am.timestamps))
         npts = int(fsamp * step_window)
 
         nchans = len(am.signal)
@@ -574,7 +574,7 @@ class BiasStepAnalysis:
         if am is None:
             am = self.am
 
-        fsamp = np.mean(1./np.diff(am.timestamps))
+        fsamp = np.nanmean(1./np.diff(am.timestamps))
         pts_after_step = int(fsamp * step_window)
         nchans = len(am.signal)
         nbgs = len(am.biases)
@@ -597,7 +597,7 @@ class BiasStepAnalysis:
                     ts[bg, :] = am.timestamps[s] - am.timestamps[ei]
                 sig = self.edge_signs[bg][i] * am.signal[rcs, s] * A_per_rad
                 # Subtracts mean of last 10 pts such that step ends at 0
-                sigs[rcs, i, :] = (sig.T - np.mean(sig[:, -10:], axis=1)).T
+                sigs[rcs, i, :] = (sig.T - np.nanmean(sig[:, -10:], axis=1)).T
 
         self.resp_times = ts
         self.step_resp = (sigs.T * self.polarity).T
@@ -683,8 +683,8 @@ class BiasStepAnalysis:
             dIbias[bg] = (b1 - b0) * amp_per_bit
 
         # Compute dItes
-        i0 = np.mean(self.mean_resp[:, :5], axis=1)
-        i1 = np.mean(self.mean_resp[:, -10:], axis=1)
+        i0 = np.nanmean(self.mean_resp[:, :5], axis=1)
+        i1 = np.nanmean(self.mean_resp[:, -10:], axis=1)
         dItes = i1 - i0
 
         self.Ibias = Ibias
@@ -809,7 +809,7 @@ def plot_steps(bsa, rc, nsteps=5, offset=0, ax=None, **kw):
     ts = ts - ts[0]
     sig = bsa.am.signal[rc, sl]
     sig = bsa.am.biases[bg, sl]
-    sig = sig - np.mean(sig) + offset
+    sig = sig - np.nanmean(sig) + offset
     ax.plot(ts, sig, **kw)
 
     return fig, ax

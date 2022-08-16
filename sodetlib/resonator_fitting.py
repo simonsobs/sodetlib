@@ -488,7 +488,7 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     plt.subplot(2,2,4)
     ax = axes[1, 1]
     seps = np.diff(np.sort(fr_quant))
-    mean, std = np.mean(seps), np.std(seps)
+    mean, std = np.nanmean(seps), np.std(seps)
     nstd = 2
     rng = (
         max(np.min(seps), mean - nstd * std),

@@ -156,7 +156,7 @@ for band in bands:
         #plt.plot(phi_over_one_cycle,fit_curve_over_one_cycle,'o',lw=4,label='one cycle')
         # multiply by 1e6 to convert from MHz->Hz but then by 1e-6 to convert from per phi0
         # to per uphi0
-        avg_dfdphi_Hzperuphi0=np.mean(np.abs(np.gradient(fit_curve_over_one_cycle))/(np.gradient(phi_over_one_cycle)))
+        avg_dfdphi_Hzperuphi0=np.nanmean(np.abs(np.gradient(fit_curve_over_one_cycle))/(np.gradient(phi_over_one_cycle)))
         
         popt1=[0]*(options.nharmonics+2)
         # phi0, phi0_offset, and dc_offset
@@ -180,7 +180,7 @@ for band in bands:
 
         # compute average sensitivity contributed by only the first harmonic.
         fit_curve1_over_one_cycle=sf.model(phi_over_one_cycle*phi0_ff,*popt1)
-        avg_dfdphi1_Hzperuphi0=np.mean(np.abs(np.gradient(fit_curve1_over_one_cycle))/(np.gradient(phi_over_one_cycle)))
+        avg_dfdphi1_Hzperuphi0=np.nanmean(np.abs(np.gradient(fit_curve1_over_one_cycle))/(np.gradient(phi_over_one_cycle)))
         # end attempt to estimate sensitivity from first harmonic alone
 
         if options.debug:

@@ -172,7 +172,7 @@ def take_squid_open_loop(S,cfg,bands,wait_time,Npts,NPhi0s,Nsteps,relock,
             fsamp=np.zeros(shape=(Npts,len(channels[band])))
             for i in range(Npts):
                 fsamp[i,:]=S.get_loop_filter_output_array(band)[channels[band]]
-            fsampmean=np.mean(fsamp,axis=0)
+            fsampmean=np.nanmean(fsamp,axis=0)
             fs[band].append(fsampmean)
 
     sys.stdout.write('\n')
@@ -343,7 +343,7 @@ def tracking_quality(S, cfg, band, tracking_kwargs=None,
 
     with np.errstate(invalid='ignore'):
         y_est = np.vstack([fstack for _ in range(nstacks)])
-        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
+        sstot = np.sum((y_real - np.nanmean(y_real, axis=0))**2, axis=0)
         ssres = np.sum((y_real - y_est)**2, axis=0)
 
         r = 1 - ssres/sstot
@@ -730,7 +730,7 @@ def plot_loopback_results(summary, amc, band_width=200e6, S=None):
                 fs, resp = v
                 # Estimate attenuation
                 m = np.abs(fs) < est_bw
-                power = 20 * np.log10(np.mean(np.abs(resp[m])))
+                power = 20 * np.log10(np.nanmean(np.abs(resp[m])))
                 if att==0:
                     p0 = power
                 else:

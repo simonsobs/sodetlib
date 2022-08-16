@@ -323,7 +323,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
             chan_mask = iva.bgmap == bg
             m = (t0 < am.timestamps) & (am.timestamps < t1)
-            iva.resp[chan_mask, i] = np.mean(am.signal[chan_mask][:, m], axis=1)
+            iva.resp[chan_mask, i] = np.nanmean(am.signal[chan_mask][:, m], axis=1)
 
             if j == 0:
                 bias_bits = np.median(am.biases[bg, m])
@@ -380,8 +380,8 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
         R = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
-        R_n = np.mean(R[nb_fit_idx:])
-        R_L = np.mean(R[1:sc_idx])
+        R_n = np.nanmean(R[nb_fit_idx:])
+        R_L = np.nanmean(R[1:sc_idx])
 
         iva.v_tes[i] = iva.i_bias * R_sh * R / (R + R_sh)
         iva.i_tes[i] = iva.v_tes[i] / R
