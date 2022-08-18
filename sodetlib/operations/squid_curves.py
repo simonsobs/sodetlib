@@ -95,8 +95,8 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
     for testphoff in testphoffs:
         y1 = first_harmonic_guess(phi, testphoff)
         y2 = noisy_squid_curve
-        y1 = y1 - np.mean(y1)
-        y2 = y2 - np.mean(y2)
+        y1 = y1 - np.nanmean(y1)
+        y2 = y2 - np.nanmean(y2)
         corr = np.corrcoef(y1, y2)[0, 1]
         corrs.append(corr)
 
@@ -111,10 +111,10 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
     )
     phi_full_cycles = phi[phi_full_cycle_idxs]
     # correlate some harmonics and overplot!
-    fit_guess = np.zeros_like(noisy_squid_curve) + np.mean(noisy_squid_curve)
+    fit_guess = np.zeros_like(noisy_squid_curve) + np.nanmean(noisy_squid_curve)
     # mean subtract the data and this harmonic
     d = noisy_squid_curve[phi_full_cycle_idxs]
-    dm = np.mean(d)
+    dm = np.nanmean(d)
     d_ms = d - dm
 
     est = [phi0, phioffset, dm]
@@ -122,7 +122,7 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
     for n in range(1, nharmonics_to_estimate + 1):
         def this_harmonic(ph): return harmonic(n, ph, phioffset, 1/2)
         h = this_harmonic(phi_full_cycles)
-        hm = np.mean(h)
+        hm = np.nanmean(h)
         h_ms = h - hm
         # sort of inverse dft them
         Xh = np.sum(d_ms * h_ms)
@@ -421,7 +421,7 @@ def get_derived_params_and_text(data, model_params, idx):
     fit_curve_over_one_cycle = squid_curve_model(
         phi_over_one_cycle, *model_params)
     phi_over_one_cycle /= model_params[0]
-    avg_dfdphi_Hzperuphi0 = np.mean(np.abs(np.gradient(fit_curve_over_one_cycle)) /
+    avg_dfdphi_Hzperuphi0 = np.nanmean(np.abs(np.gradient(fit_curve_over_one_cycle)) /
                                     (np.gradient(phi_over_one_cycle)))
     hhpwr = (np.square(model_params[3]) /
              (np.sum(np.square(model_params[4:]))))**-1
@@ -590,7 +590,7 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
                 for i in range(Npts):
                     fsamp[i, :] = S.get_loop_filter_output_array(band)[
                         channels[band]]
-                fsampmean = np.mean(fsamp, axis=0)
+                fsampmean = np.nanmean(fsamp, axis=0)
                 fs[band].append(fsampmean)
 
         S.log('Done taking flux ramp data.')

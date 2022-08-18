@@ -49,7 +49,7 @@ def compute_tracking_quality(S, f, df, sync):
     y_est = y_est[:len(y_real)]
 
     with np.errstate(invalid='ignore'):
-        sstot = np.sum((y_real - np.mean(y_real, axis=0))**2, axis=0)
+        sstot = np.sum((y_real - np.nanmean(y_real, axis=0))**2, axis=0)
         ssres = np.sum((y_real - y_est)**2, axis=0)
         r2 = 1 - ssres/sstot
 

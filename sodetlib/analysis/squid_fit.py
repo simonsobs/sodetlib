@@ -174,8 +174,8 @@ def estimate_fit_parameters(
         y1 = first_harmonic_guess(phi, testphoff)
         y2 = noisy_squid_curve
 
-        y1 = y1 - np.mean(y1)
-        y2 = y2 - np.mean(y2)
+        y1 = y1 - np.nanmean(y1)
+        y2 = y2 - np.nanmean(y2)
 
         corr = np.corrcoef(y1, y2)[0, 1]
         corrs.append(corr)
@@ -206,11 +206,11 @@ def estimate_fit_parameters(
     fit_guess = np.zeros_like(noisy_squid_curve)
 
     # add constant
-    fit_guess += np.mean(noisy_squid_curve)
+    fit_guess += np.nanmean(noisy_squid_curve)
 
     # mean subtract the data and this harmonic
     d = noisy_squid_curve[phi_full_cycle_idxs]
-    dm = np.mean(d)
+    dm = np.nanmean(d)
     d_ms = d - dm
 
     est = [phi0, phioffset, dm]
@@ -221,7 +221,7 @@ def estimate_fit_parameters(
         this_harmonic = lambda ph: harmonic(n, ph, phioffset, A)
 
         h = this_harmonic(phi_full_cycles)
-        hm = np.mean(h)
+        hm = np.nanmean(h)
         h_ms = h - hm
 
         # sort of inverse dft them
