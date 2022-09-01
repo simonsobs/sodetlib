@@ -13,8 +13,8 @@ We want to use the files:
  - SmurfKcu1500RssiOffload10GbE-0x02030000-20200512134423-ruckman-7aa0ea1_secondary.mcs
 
 steps to load fw:
-- Add those files to the directory `fw_files`
-- Run `docker-compose run load-pcie-fw`
+- From this directory, run `sh download_fw.sh`
+- Run `docker-compose run smurf-pcie`
 - select 0 when prompted
 
 This will load fw and then reboot computer

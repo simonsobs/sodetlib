@@ -12,7 +12,7 @@ services:
         <<: *bash-debug
         devices:
             - /dev/datadev_0
-            - /dev/datadev_1
+          # - /dev/datadev_1
         volumes:
             - ./fw_files:/shared
         entrypoint: load_firmware.sh
