@@ -1,0 +1,19 @@
+version: '3.7'
+
+x-bash-debug: &bash-debug
+    entrypoint: /bin/bash
+    command: []
+    stdin_open: true
+    tty: true
+
+services:
+    smurf-pcie:
+        image: tidair/smurf-pcie:R2.1.0
+        <<: *bash-debug
+        devices:
+            - /dev/datadev_0
+            - /dev/datadev_1
+        volumes:
+            - ./fw_files:/shared
+        entrypoint: load_firmware.sh
+        command: []
