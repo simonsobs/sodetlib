@@ -1,8 +1,3 @@
-SO SMuRF Utils
-==================
-This repo contains a bunch of utility scripts for managing and debugging
-smurf.
-
 Loading PCIe FW
 -----------------
 It's possible the PCIe is not loaded with the correct firmware.
