@@ -8,20 +8,15 @@ import time
 import os
 from collections import namedtuple
 from sodetlib import det_config
+from sodetlib.constants import *
 from sotodlib.tod_ops.fft_ops import calc_psd
+from sotodlib.core import AxisManager
 
 try:
     import epics
     from pysmurf.client.command.cryo_card import cmd_make
 except Exception:
     pass
-
-
-# This is a pysmurf constant
-# Max bias voltage is 20 V, and there are 20 bits
-# so this number is 20/2**20 = 1.907e-5
-rtm_bit_to_volt = 1.9073486328125e-05
-CHANS_PER_BAND = 512
 
 StreamSeg = namedtuple("StreamSeg", "times sig mask")
 
@@ -682,3 +677,110 @@ def save_fig(S, fig, name, tag=''):
     fig.savefig(fname)
     S.pub.register_file(fname, tag, plot=True)
     return fname
+
+
+################################################################################
+# AxisManager Utility Functions
+################################################################################
+
+class RestrictionException(Exception):
+    """Exception for when cannot restrict AxisManger properly"""
+
+def restrict_to_times(am, t0, t1, in_place=False):
+    """
+    Restricts axis manager to a time range (t0, t1)
+    """
+    m = (t0 < am.timestamps) & (am.timestamps < t1)
+    if not m.any():
+        raise RestrictionException
+    i0, i1 = np.where(m)[0][[0, -1]] + am.samps.offset
+    return am.restrict('samps', (i0, i1), in_place=in_place)
+
+def dict_to_am(d, skip_bad_types=False):
+    """
+    Attempts to convert a dictionary into an axis manager. This can be used on
+    dicts containing basic types such as (str, int, float) along with numpy
+    arrays. The AxisManager will not have any structure such as "axes", but
+    this is useful if you want to nest semi-arbitrary data such as the "meta"
+    dict into an axis manager.
+
+    Args
+    -----
+    d : dict
+        Dict to convert ot axismanager
+    skip_bad_types : bool
+        If True, will skip any value that is not a str, int, float, or
+        np.ndarray. If False, this will raise an error for invalid types.
+    """
+    allowed_types = (str, int, float, np.ndarray)
+    am = AxisManager()
+    for k, v in d.items():
+        if isinstance(v, dict):
+            am.wrap(k, dict_to_am(v))
+        if isinstance(v, allowed_types):
+            am.wrap(k, v)
+        elif not skip_bad_types:
+            raise ValueError(
+                f"Key {k} is of type {type(v)} which cannot be wrapped by an "
+                 "axismanager")
+    return am
+
+def remap_dets(src, dst, load_axes=False, idxmap=None):
+    """
+    This function takes in two axis-managers, and returns a copy of the 2nd
+    which is identical except all fields aligned with 'dets' are remapped so they
+    match up with the 'dets' field of the first array. This is very useful if you
+    want to compare data across tunes, or across cryostats. An additional field
+    "unmapped" of shape ``(dets, )`` will be added containing mask for which
+    channels were unmapped by the idxmap.
+
+    Args
+    ----
+    src : AxisManager
+        "source" data. A copy of this data will be returned, with the 'dets'
+        axis remapped to match those of the dest AxisManager
+    dst : AxisManager
+        "destination" data. The 'dets' axis will be taken from this AxisManager.
+    load_axes : bool
+        If True, will add ``src`` axes into the copy, and copy the axis
+        assignments. Note that if you are trying to nest this in another
+        axismanager, this may cause trouble if 'src', and 'dst' have 
+        axes with the same name but different values. If this is false,
+        only the 'dets' assignment will be used, allowing for safe nesting.
+    idxmap : optional, np.ndarry
+        If an idxmap is passed, that will be used to remap the dets axis.
+        If none is passed, an idxmap will be created to match up bands and
+        channels of the src and dst. This might be useful if you want to
+        map across cooldowns based on a detmap.
+    """
+    if idxmap is None:
+        idxmap = map_band_chans(
+            dst.bands, dst.channels,
+            src.bands, src.channels,
+        )
+
+    axes = [dst.dets]
+    if load_axes:
+        axes.extend([v for k, v in src._axes.items() if k != 'dets'])
+
+    am_new = AxisManager(*axes)
+    for k, axes in src._assignments.items():
+        f = src._fields[k]
+        if isinstance(f, AxisManager):
+            am_new.wrap(k, remap_dets(f, dst, load_axes=load_axes, idxmap=idxmap))
+        elif isinstance(f, np.ndarray):
+            assignments = []
+            if load_axes:
+                assignments.extend([
+                    (i, n) for i, n in enumerate(axes) 
+                    if n is not None and n!='dets'
+                ])
+            if 'dets' in axes:
+                i = axes.index('dets')
+                f = np.rollaxis(np.rollaxis(f, i)[idxmap], -i)
+            am_new.wrap(k, f, assignments)
+        else:  # Literals
+            am_new.wrap(k, f)
+
+    am_new.wrap('unmapped', idxmap == -1, [(0, 'dets')])
+    return am_new
