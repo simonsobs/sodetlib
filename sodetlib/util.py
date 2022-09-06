@@ -14,7 +14,6 @@ if not os.environ['NO_PYSMURF']:
     try:
         import epics
         import pysmurf
-        from pysmurf.client.base.smurf_control import SmurfControl
         from pysmurf.client.command.cryo_card import cmd_make
     except Exception:
         os.environ['NO_PYSMURF'] = True
