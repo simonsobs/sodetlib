@@ -259,16 +259,19 @@ def validate_and_save(fname, data, S=None, cfg=None, register=True,
 def get_tracking_kwargs(S, cfg, band, kwargs=None):
     band_cfg = cfg.dev.bands[band]
     tk = {
-        'reset_rate_khz': band_cfg['flux_ramp_rate_khz'],
+        'reset_rate_khz': cfg.dev.exp['flux_ramp_rate_khz'],
         'lms_freq_hz': band_cfg['lms_freq_hz'],
-        'lms_gain': band_cfg.get('lms_gain', 0),
+        'lms_gain': band_cfg['lms_gain'],
         'fraction_full_scale': band_cfg['frac_pp'],
-        'make_plot': True, 'show_plot': True, 'channel': [],
-        'nsamp': 2**18, 'return_data': True,
-        'feedback_start_frac': 0.02,
-        'feedback_end_frac': 0.94,
-        'feedback_gain': band_cfg.get('feedback_gain', 2048),
-        'return_data': True}
+        'make_plot': True,
+        'show_plot': True,
+        'channel': [],
+        'nsamp': 2**18,
+        'return_data': True,
+        'feedback_start_frac': cfg.dev.exp['feedback_start_frac'],
+        'feedback_end_frac': cfg.dev.exp['feedback_end_frac'],
+        'feedback_gain': band_cfg.get['feedback_gain'],
+    }
     if kwargs is not None:
         tk.update(kwargs)
     return tk
