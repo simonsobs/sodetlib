@@ -20,9 +20,9 @@ step analysis object.
 
 .. code-block:: python
 
-  import sodetlib.operations as ops
+    import sodetlib.operations as ops
 
-  bsa = ops.take_bgmap(S, cfg)
+    bsa = ops.take_bgmap(S, cfg)
 
 To generate the bgmap, this function will set detectors to superconducting
 and play a series of small bias-steps. Because the detectors are
@@ -32,12 +32,40 @@ By default, channels will be "unassigned" from the bgmap if the bg-correlation
 factor is less than 0.9 or if the estimated resistance is larger than 10 mOhms
 to avoid picking up crosstalk channels. 
 These cuts can be modified by setting the corresponding keyword arguments manually
-in the ``analysis_kwargs`` parameter.
+in the ``analysis_kwargs`` parameter, for example:
+
+.. code-block:: python
+
+    from sodetlib.operations import bias_steps
+
+    analysis_kwargs = {
+        'assignment_thresh': 0.5,
+        'R0_thresh': 5e-3
+    }
+    bsa = bias_steps.take_bgmap(S, cfg, analysis_kwargs=analysis_kwargs)
+
 
 The bgmap file stores key metadata along with information about which channels
 were run to produce the map, the bias-group assignments of each channel,
-and the polarity of each channel, or whether the squid response  steps in the
-same or opposite direction of the bias current.
+and the polarity of each channel, or whether the squid response steps in the
+same or opposite direction of the bias current. The bgmap file contains:
+
+ - meta:
+    Dictionary of metadata returned by the ``get_metadata`` funciton in
+    ``sodetlib.util``
+ - sid:
+    Session-id of bgmap data
+ - bands:
+    Array containing the smurf-band number for each channel
+ - channels: 
+    Array containing the smurf-channel number for each channel
+ - bgmap:
+    Array containing the assigned bias group of each channel. This will be ``-1`` if unassigned.
+ - polarity: 
+    Array containing the polarity of the channel with respect to
+    the bias line. This will be ``+1`` if the signal steps in the same direction as
+    :math:`\Delta V` and ``-1`` if the signal steps in the opposite direction.
+ 
 
 To load a bgmap for a set of channels, you can use the ``load_bgmap`` function.
 
