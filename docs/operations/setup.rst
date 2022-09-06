@@ -1,8 +1,12 @@
+
+.. _Setup:
+
 Setup
 ======
 
 First Time Setup
 -----------------
+
 
 Before being able to properly take data on a new module, there are a number of
 parameters which need to be properly configured, which can be done using the
@@ -283,7 +287,7 @@ To view the summary plot corresponding to a results object, you can run:
 
 which will produce a plot like this:
 
-.. image:: ../../_static/images/tracking_summary.png
+.. image:: /_static/images/tracking_summary.png
   :width: 700
   :alt: Alternative text
 
@@ -305,7 +309,7 @@ To investigate the behavior of an individual channel, you can run:
 
 which will produce the plot below.
 
-.. image:: ../../_static/images/tracking_channel.png
+.. image:: /_static/images/tracking_channel.png
   :width: 700
   :alt: Alternative text
 

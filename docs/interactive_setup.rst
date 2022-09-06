@@ -1,5 +1,9 @@
-Smurf Functions
-================
+Interactive Setup
+===================
+
+This guide will walk you through the basic functions used to setup resonators
+through pysmurf. For more information on the ``uxm_setup`` function that tries
+to automate this, see the :ref:`Setup` operation page.
 
 All instruction here assume you are connected to the SMuRF Crate through a
 pysmurf instance created as described in :ref:`LoadConfigs`.
@@ -198,20 +202,3 @@ reset on the resonators using (ex. if your readout noise is somewhat elevated)::
 
 After this you run the same `tracking_setup` call as the tuning from scrach
 section. 
-
-Optimization Functions API
---------------------------
-.. automodule:: sodetlib.smurf_funcs.optimize_params
-   :members: optimize_tracking, optimize_bias,
-             optimize_attens
-   :noindex:
-
-Smurf Operations API
---------------------
-.. automodule:: sodetlib.smurf_funcs.smurf_ops
-    :members: take_squid_open_loop, find_and_tune_freq, tracking_quality,
-            get_session_files, load_session, take_g3_data, stream_g3_on,
-            stream_g3_off, apply_dev_cfg, cryp_amp_check, get_wls_from_am,
-            plot_band_noise, loopback_test, plot_loopback_results
-    :noindex:
-

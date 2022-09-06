@@ -59,13 +59,14 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
                setup_notches=False, new_master_assignment=False,
                reset_rate_khz=None, nphi0=None):
     """
-    Relocks resonators by running the following steps
+    Relocks resonators by running the following steps:
 
         1. Reset state (all off, disable waveform, etc.)
         2. Set amps and check tolerance
         3. load tune, setup_notches, serial grad descent and eta scan
-        6. Tracking setup
-        7. Measure noise
+        4. Tracking setup
+        5. Measure noise
+
 
     Args
     -----

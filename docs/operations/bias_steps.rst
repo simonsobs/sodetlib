@@ -167,8 +167,11 @@ and using the assumption that R is constant over the step, we have:
 API
 -----
 
-take_bias_steps
-``````````````````
+.. _take_bias_steps:
+
+Take Bias Steps
+`````````````````
+
 
 .. automodule:: sodetlib.operations.bias_steps
     :members: take_bias_steps

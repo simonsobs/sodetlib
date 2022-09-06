@@ -6,7 +6,6 @@ import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
 from sodetlib.operations import iv
-from pysmurf.client.util.pub import set_action
 
 np.seterr(all='ignore')
 
@@ -948,7 +947,7 @@ def plot_Rfrac(bsa):
     return fig, ax
 
 
-@set_action()
+@sdl.set_action()
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
@@ -1023,7 +1022,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
     return bsa
 
 
-@set_action()
+@sdl.set_action()
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
