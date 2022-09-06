@@ -78,13 +78,15 @@ config for later use.
 For example, the following code will take SC, OB, and in-transition datasets:
 
 .. code-block:: python
+
   import sodetlib.operations.complex_impedance as ci
+  from sodetlib.operations import bias_dets
 
   freqs = np.logspace(0, np.log10(2e3), 80)
   bgs = np.arange(12)
   ci.take_complex_impedance_ob_sc(S, cfg, bgs, freqs=freqs, run_analysis=True)
 
-  S.bias_to_rfrac_range(S, cfg, (0.3, 0.6))
+  bias_dets.bias_to_rfrac_range(S, cfg, (0.3, 0.6))
   time.sleep(60)
   ds = ci.take_complex_impedance(S, cfg, bgs, freqs=freqs, run_analysis=True)
 
