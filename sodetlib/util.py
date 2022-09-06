@@ -10,11 +10,14 @@ from collections import namedtuple
 from sodetlib import det_config
 from sotodlib.tod_ops.fft_ops import calc_psd
 
-try:
-    import epics
-    from pysmurf.client.command.cryo_card import cmd_make
-except Exception:
-    pass
+if not os.environ['NO_PYSMURF']:
+    try:
+        import epics
+        import pysmurf
+        from pysmurf.client.base.smurf_control import SmurfControl
+        from pysmurf.client.command.cryo_card import cmd_make
+    except Exception:
+        os.environ['NO_PYSMURF'] = True
 
 
 # This is a pysmurf constant
@@ -191,7 +194,12 @@ def get_metadata(S, cfg):
         'action': S.pub._action,
         'action_timestamp': S.pub._action_ts,
         'bgmap_file': cfg.dev.exp.get('bgmap_file'),
-        'iv_file': cfg.dev.exp.get('iv_file')
+        'iv_file': cfg.dev.exp.get('iv_file'),
+        'pysmurf_client_version': pysmurf.__version__,
+        'rogue_version': S._caget(f'{S.epics_root}:AMCc:RogueVersion'),
+        'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
+        'fpga_git_hash': S.get_fpga_git_hash_short(),
+        'cryocard_fw_version': S.C.get_fw_version(),
     }
 
 
