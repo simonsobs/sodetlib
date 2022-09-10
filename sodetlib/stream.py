@@ -116,10 +116,9 @@ def take_g3_data(S, dur, **stream_kw):
     session_id : int
         Id used to read back stream data
     """
-    sid = stream_g3_on(S, **stream_kw)
+    stream_g3_on(S, **stream_kw)
     time.sleep(dur)
-    stream_g3_off(S, emulator=stream_kw.get('emulator', False))
-    return sid
+    return stream_g3_off(S, emulator=stream_kw.get('emulator', False))
 
 
 @set_action()
@@ -190,6 +189,14 @@ def stream_g3_off(S, emulator=False):
     """
     reg = Registers(S)
     sess_id = reg.g3_session_id.get()
+    if sess_id == 0:
+        S.log("Session-id returned 0! Will try to obtain from file path")
+        fpath = reg.g3_filepath.get()
+        try:
+            sess_id = int(os.path.basename(fpath).split('_')[0])
+        except Exception:
+            S.log("Could not extract session id from filepath! Setting to 0")
+            sess_id = 0
 
     if emulator:
         reg.source_enable.set(0)
