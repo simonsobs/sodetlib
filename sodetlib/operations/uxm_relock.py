@@ -54,7 +54,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, ignore_scan_in_progress=True, update_tune=True):
+    S, cfg, bands=None, update_tune=True):
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -68,14 +68,6 @@ def run_grad_descent_and_eta_scan(
         Det config instance
     bands : list, optional
         List of bands to run on. Defaults to all 8
-    ignore_scan_in_progress : bool
-        In the event that a grad descent crashes, which is unfortunately common,
-        as poorly tuned values of gain may result runaway frequency estimates
-        and overflow errors, SMuRF leaves the system in a bad state with a
-        `scanInProgress` variable blocking all input. This argument will tell
-        this function to purposefully clear that register if it is set, allowing
-        you to run the procedure. If this is False and the scanInProgress
-        variable is found to be True, this will throw an error.
     update_tune : bool
         If this is set to True, the new resonance frequency and eta parameters
         will be loaded into the smurf tune, and a new tunefile will be written
