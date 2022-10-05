@@ -3,7 +3,6 @@ import os
 import time
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
-from pysmurf.client.util.pub import set_action
 import sodetlib as sdl
 from sodetlib.analysis import squid_fit as sqf
 import matplotlib.pyplot as plt
@@ -439,7 +438,7 @@ def get_derived_params_and_text(data, model_params, idx):
     return plot_txt, derived_params
 
 
-@set_action()
+@sdl.set_action()
 def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
                      bands=None, channels=None, lms_gain=None, out_path=None,
                      run_analysis=True, analysis_kwargs=None, show_pb=False,

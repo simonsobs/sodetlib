@@ -32,11 +32,10 @@ def noise_model(freq, wl, n, f_knee):
 def fit_noise_asd(f, Axx, wl_f_range=(10,30), p0=None):
     """
     Return model fit for a ASD.
-    p0 (float array): initial guesses for model fitting: [white-noise level
-    in pA/rtHz, exponent of 1/f^n component, knee frequency in Hz]
 
     Args
-    ----
+    -----
+
     f : float array
         The frequency information.
     Axx : float array
@@ -46,10 +45,17 @@ def fit_noise_asd(f, Axx, wl_f_range=(10,30), p0=None):
         range of the ASD to fit to the noise model and if fit fails then the
         white noise is calculated as the median between f_low and f_high.
     p0 : float array or None, optional, default None
-        Initial guess for fitting ASDs.  If None, sets to p0 =
-        [100.0,0.5,0.01].
+        Initial guess for fitting ASDs.  If None, sets to ``p0=[100.0,0.5,0.01]``
+        which corresponds to: 
+
+          - white-noise level in pA/rtHz
+          - exponent of 1/f^n component
+          - knee
+          - frequency in Hz
+
     Returns
     -------
+
     popt : float array
         The fit parameters - [white_noise_level, n, f_knee].
     """
@@ -476,6 +482,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     Args
     ----
+
     S : `pysmurf.client.base.smurf_control.SmurfControl`
         pysmurf control object
     cfg : `sodetlib.det_config.DetConfig`
@@ -510,24 +517,25 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     outdict: dict
         dictionary that contains all calculated noise parameters and
         figure and axes objects for all plots generated. The keys are:
-        'noisedict':
-            dictionary returned by `get_noise_params` see that doc string
-        'fig_wnl':
-            matplotlib figure object for white noise band summary plot
-            Only returned if plot_band_summary is True.
-        'axes_wnl':
-            matplotlib axes object for white noise band summary plot
-            Only returned if plot_band_summary is True.
-        'fig_fk':
-            matplotlib figure object for fknee band summary plot
-            Only returned if plot_band_summary is True.
-        'axes_fk':
-            matplotlib axes object for fknee band summary plot
-            Only returned if plot_band_summary is True.
-        'channel_plots':
-            nested dictionary that has a key for each readout channel in the
-            plotted_rchans list and contains a matplotlib figure and axis for
-            each readout channel. Only returned if plot_channel_noise is True.
+
+            'noisedict':
+                dictionary returned by `get_noise_params` see that doc string
+            'fig_wnl':
+                matplotlib figure object for white noise band summary plot
+                Only returned if plot_band_summary is True.
+            'axes_wnl':
+                matplotlib axes object for white noise band summary plot
+                Only returned if plot_band_summary is True.
+            'fig_fk':
+                matplotlib figure object for fknee band summary plot
+                Only returned if plot_band_summary is True.
+            'axes_fk':
+                matplotlib axes object for fknee band summary plot
+                Only returned if plot_band_summary is True.
+            'channel_plots':
+                nested dictionary that has a key for each readout channel in the
+                plotted_rchans list and contains a matplotlib figure and axis for
+                each readout channel. Only returned if plot_channel_noise is True.
     """
     if save_dir is None:
         save_dir = S.plot_dir

@@ -19,7 +19,6 @@ sys.path.insert(0, os.path.abspath('..'))
 # Mock imports that we don't want to install for builds
 
 autodoc_mock_imports = [
-    'pysmurf.client.util.pub',
     'sotodlib',
     'sotodlib.io',
     'sotodlib.tod_ops.fft_ops',

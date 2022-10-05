@@ -55,5 +55,5 @@ API
    :members: take_squid_curve, get_derived_params_and_text, dfduPhi0_to_dfdI,
             fit_squid_curves, plot_squid_fit, plot_squid_fit_summary,
             squid_curve_model, estimate_fit_parameters, autocorr
-    :noindex:
+   :noindex:
 

@@ -138,6 +138,6 @@ stored in the ``bsa.R0`` variable.
 
 API
 ----
-.. automodule:: sodetlib.operations.iv
+.. automodule:: sodetlib.operations.bias_dets
     :noindex:
     :members: bias_to_rfrac_range, bias_to_rfrac
