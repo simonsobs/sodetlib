@@ -12,7 +12,7 @@ from sodetlib.constants import *
 from sotodlib.tod_ops.fft_ops import calc_psd
 from sotodlib.core import AxisManager
 
-if not os.environ['NO_PYSMURF']:
+if not os.environ.get('NO_PYSMURF', False):
     try:
         import epics
         import pysmurf
