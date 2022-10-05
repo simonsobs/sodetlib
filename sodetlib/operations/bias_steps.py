@@ -753,15 +753,18 @@ class BiasStepAnalysis:
             tau_eff: np.ndarray
                 Array of shape (nchans) contianing tau_eff for each chan.
         """
+        nbgs = len(self.am.biases)
         nchans = len(self.am.signal)
         step_fit_popts = np.full((nchans, 3), np.nan)
         step_fit_pcovs = np.full((nchans, 3, 3), np.nan)
 
-        for bg in range(12):
+        for bg in range(nbgs):
             rcs = np.where(self.bgmap == bg)[0]
             if not len(rcs):
                 continue
             ts = self.resp_times[bg]
+            if not len(ts[~np.isnan(ts)]):
+                continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
                 m = (ts > tmin) & (~np.isnan(resp))
