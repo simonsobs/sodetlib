@@ -763,6 +763,8 @@ class BiasStepAnalysis:
             if not len(rcs):
                 continue
             ts = self.resp_times[bg]
+            if not len(ts[~np.isnan(ts)]):
+                continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
                 m = (ts > tmin) & (~np.isnan(resp))
