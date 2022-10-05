@@ -189,6 +189,7 @@ def get_metadata(S, cfg):
         'action_timestamp': S.pub._action_ts,
         'bgmap_file': cfg.dev.exp.get('bgmap_file'),
         'iv_file': cfg.dev.exp.get('iv_file'),
+        'v_bias': S.get_tes_bias_bipolar_array(),
         'pysmurf_client_version': pysmurf.__version__,
         'rogue_version': S._caget(f'{S.epics_root}:AMCc:RogueVersion'),
         'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
