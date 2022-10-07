@@ -273,7 +273,7 @@ def get_tracking_kwargs(S, cfg, band, kwargs=None):
         'return_data': True,
         'feedback_start_frac': cfg.dev.exp['feedback_start_frac'],
         'feedback_end_frac': cfg.dev.exp['feedback_end_frac'],
-        'feedback_gain': band_cfg.get['feedback_gain'],
+        'feedback_gain': band_cfg['feedback_gain'],
     }
     if kwargs is not None:
         tk.update(kwargs)
