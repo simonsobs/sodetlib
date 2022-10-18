@@ -390,13 +390,23 @@ def hammer_func(args):
     enter_pysmurf(slots[0], agg=args.agg)
 
 def setup_smurfs(slots):
+    """
+    Runs S.setup on one or more slots in parallel
+
+    Args
+    -----
+    slots : list
+        List of slots to run on
+    """
     threads = []
     for s in slots:
         print(f"Configuring pysmurf on slot {s}...")
-        th = threading.Thread(
-            target=util_run, args=('python3'), 
-            kwargs=dict(args=f'/sodetlib/scripts/setup_pysmurf.py -N {s}'.split())
-        )
+        kw = {
+            'args': ('python3',),
+            'kwargs': {'args': f'/sodetlib/scripts/setup_pysmurf.py -N {s}'.split()}
+
+        }
+        th = threading.Thread(target=util_run, **kw )
         th.start()
         threads.append(th)
     
@@ -406,7 +416,11 @@ def setup_smurfs(slots):
 
 # Entrypoint for jackhammer setup
 def setup_func(args):
-    setup_smurfs(args.slots)
+    if not args.slots:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+    setup_smurfs(slots)
 
 
 # Entrypoint for jackhammer logs
@@ -514,10 +528,11 @@ if __name__ == '__main__':
     hammer_parser.add_argument('--dump-rogue', action='store_true',
                                help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
 
-    hammer_parser = subparsers.add_parser("setup")
-    hammer_parser.set_defaults(func=hammer_func)
-    hammer_parser.add_argument('slots', nargs='*', type=int,
-                               help="Specifies the slots to hammer")
+    setup_parser = subparsers.add_parser("setup")
+    setup_parser.set_defaults(func=setup_func)
+    setup_parser.add_argument('slots', nargs='*', type=int,
+                               help="Specifies the slots to setup")
+    
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
