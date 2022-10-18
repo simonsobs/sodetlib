@@ -5,10 +5,16 @@ from sodetlib.operations.tracking import relock_tracking_setup
 from sodetlib.operations import uxm_setup
 
 import matplotlib.pyplot as plt
+import os
+if not os.environ.get('NO_PYSMURF', False):
+    from pysmurf.client.base.smurf_control import SmurfControl
+
+
 
 @sdl.set_action()
 def reload_tune(S, cfg, bands, setup_notches=False,
-                new_master_assignment=False, tunefile=None, update_cfg=True):
+                new_master_assignment=False, tunefile=None, update_cfg=True,
+                run_grad_descent=True):
     """
     Reloads an existing tune, runs setup-notches and serial grad descent
     and eta scan.
@@ -49,12 +55,14 @@ def reload_tune(S, cfg, bands, setup_notches=False,
         # Update tunefile
         cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
+    run_grad_descent_and_eta_scan(S, cfg, bands=bands, update_tune=True)
+
     return True, None
 
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, update_tune=True):
+    S, cfg, bands=None, update_tune=True, force_run=False):
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -81,9 +89,12 @@ def run_grad_descent_and_eta_scan(
     for b in bands:
         in_progress_reg = S._cryo_root(b) + 'etaScanInProgress'
         if S._caget(in_progress_reg):
-            raise RuntimeError(
-                "Failed during grad descent -- scan already in progress"
-            )
+            if force_run:
+                S._caput(in_progress_reg, 0)
+            else:
+                raise RuntimeError(
+                    "Failed during grad descent -- scan already in progress"
+                )
 
         bcfg = cfg.dev.bands[b]
         S.set_gradient_descent_step_hz(b, bcfg['gradientDescentStepHz'])
@@ -161,14 +172,26 @@ def plot_channel_resonance(S, cfg, band, chan):
     tone_power = cfg.dev.bands[band]['tone_power']
     res_freq = S.channel_to_freq(band, chan)
     center_freq_array = S.get_center_frequency_array(band)
+    amp_scale_array = S.get_amplitude_scale_array(band)
+    eta_phase_array = S.get_eta_phase_array(band)
+    eta_mag_array = S.get_eta_mag_array(band)
+    fb_enable = S.get_feedback_enable(band)
+    fb_enable_arr = S.get_feedback_enable_array(band)
 
-    fs, resp = S.full_band_ampl_sweep(0, [sb], tone_power, 2, n_step=256)
-    S.set_center_freq_array(band, center_freq_array)
+    try:
+        fs, resp = S.full_band_ampl_sweep(band, [sb], tone_power, 2, n_step=256)
+    finally:
+        S.set_center_frequency_array(band, center_freq_array)
+        S.set_amplitude_scale_array(band, amp_scale_array)
+        S.set_eta_phase_array(band, eta_phase_array)
+        S.set_eta_mag_array(band, eta_mag_array)
+        S.set_feedback_enable(band, fb_enable)
+        S.set_feedback_enable_array(band, fb_enable_arr)
 
     fs = fs.ravel() + S.get_band_center_mhz(band)
     resp = resp.ravel()
-    fs = fs[resp > 0]
-    resp = resp[resp > 0]
+    fs = fs[np.abs(resp) > 0]
+    resp = resp[np.abs(resp) > 0]
 
     fig, axes = plt.subplots(2, 1, figsize=(10, 10))
 
@@ -176,7 +199,7 @@ def plot_channel_resonance(S, cfg, band, chan):
     ax = axes[0]
     ax.plot(fs, np.abs(resp))
     ax = ax.twinx()
-    ax.plot(fs, np.angle(resp), color='C1')
+    ax.plot(fs, np.unwrap(np.angle(resp)), color='C1')
     ax.axvline(res_freq, color='grey', ls='--')
 
     # Circ plot
@@ -185,6 +208,7 @@ def plot_channel_resonance(S, cfg, band, chan):
     Q = np.real(resp * eta)
     I = -np.imag(resp * eta)
 
+    ax = axes[1]
     ax.axvline(0, color='grey')
     ax.axhline(0, color='grey')
     ax.scatter(I, Q, c=np.abs(resp))
@@ -304,11 +328,6 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
         'r2': tr.r2, 'f_ptp': tr.f_ptp, 'df_ptp': tr.df_ptp,
         'is_good': tr.is_good,
     })
-
-    # Check that the number of good tracing channels is larger than the
-    # min_good_tracking_frac
-    if tr.ngood / tr.nchans < cfg.dev.exp['min_good_tracking_frac']:
-        return False, summary
 
     #############################################################
     # 5. Noise

@@ -77,7 +77,6 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
 
     return False
 
-
 @sdl.set_action()
 def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
     """
@@ -372,7 +371,7 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
 
 @sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
-              skip_estimate_attens=False, skip_phase_delay=False): 
+              skip_estimate_attens=False, skip_phase_delay=False, skip_setup_amps=False): 
     """
     The goal of this function is to do a pysmurf setup completely from scratch,
     meaning no parameters will be pulled from the device cfg.
@@ -445,13 +444,14 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
     #############################################################
     # 2. Setup amps
     #############################################################
-    summary['timestamps'].append(('setup_amps', time.time()))
-    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+    if not skip_setup_amps:
+        summary['timestamps'].append(('setup_amps', time.time()))
+        sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
-    success, summary['setup_amps'] = setup_amps(S, cfg, update_cfg=update_cfg)
-    if not success:
-        sdl.pub_ocs_log(S, "UXM Setup failed on setup amps step")
-        return False, summary
+        success, summary['setup_amps'] = setup_amps(S, cfg, update_cfg=update_cfg)
+        if not success:
+            sdl.pub_ocs_log(S, "UXM Setup failed on setup amps step")
+            return False, summary
 
     #############################################################
     # 3. Estimate Attens
