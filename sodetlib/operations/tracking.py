@@ -154,8 +154,8 @@ class TrackingResults:
         if band in self.bands:
             raise ValueError(f"Data for band {band} has already been added!")
 
-        fptp = np.ptp(f, axis=0)
-        m = fptp != 0
+        dfptp = np.ptp(df, axis=0)
+        m = dfptp != 0
 
         channels = np.where(m)[0]
         nchans = len(channels)
@@ -265,8 +265,8 @@ def plot_tracking_channel(tr, idx, show_text=True):
     f = tr.f[idx]
     df = tr.df[idx]
     fig, ax = plt.subplots(figsize=(12, 4))
-    band = tr.bands[idx]
-    channel = tr.channels[idx]
+    band = int(tr.bands[idx])
+    channel = int(tr.channels[idx])
 
     ax.set_title(f"Band {band} Channel {channel}")
     ax.plot(df+f, color='grey', alpha=0.8, label='Freq Response')
@@ -456,7 +456,7 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
 
 @sdl.set_action()
 def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
-                          show_plots=False):
+                          feedback_gain=None, lms_gain=None, show_plots=False):
     """
     Sets up tracking for smurf. This assumes you already have optimized
     lms_freq and frac-pp for each bands in the device config. This function
@@ -526,6 +526,11 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         'nsamp': 2**18, 'return_data': True,
         'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
     }
+
+    if lms_gain is not None:
+        tk['lms_gain'] = lms_gain
+    if feedback_gain is not None:
+        tk['feedback_gain'] = feedback_gain
 
     for i, band in enumerate(bands):
         tk.update({'lms_freq_hz': lms_freqs[i]})

@@ -83,7 +83,7 @@ band_defaults = {
     "lms_gain": 0, "feedback_gain": 2048, "frac_pp": None, "lms_freq_hz": None,
 
     # Gradient Descent Parameters
-    "gradientDescentMaxIters": 150,
+    "gradientDescentMaxIters": 100,
     "gradientDescentAverages": 2, 
     "gradientDescentGain": 0.001,
     "gradientDescentConvergeHz": 500,

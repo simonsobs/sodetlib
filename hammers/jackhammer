@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+from re import T
 import subprocess
 import shlex
 import yaml
 import sys
 import time
 import os
+import threading
 
 
 class TermColors:
@@ -380,15 +382,31 @@ def hammer_func(args):
 
     if reboot and not args.skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
-        for slot in slots:
-            print(f"Configuring pysmurf on slot {slot}...")
-            util_run('python3',
-                     args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
+        setup_smurfs(slots)
         print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
     enter_pysmurf(slots[0], agg=args.agg)
+
+def setup_smurfs(slots):
+    threads = []
+    for s in slots:
+        print(f"Configuring pysmurf on slot {s}...")
+        th = threading.Thread(
+            target=util_run, args=('python3'), 
+            kwargs=dict(args=f'/sodetlib/scripts/setup_pysmurf.py -N {s}'.split())
+        )
+        th.start()
+        threads.append(th)
+    
+    for th in threads:
+        th.join()
+
+
+# Entrypoint for jackhammer setup
+def setup_func(args):
+    setup_smurfs(args.slots)
 
 
 # Entrypoint for jackhammer logs
@@ -495,6 +513,11 @@ if __name__ == '__main__':
                                help="Skip pysmurf setup functions. If `--soft` is set, defaults to True.")
     hammer_parser.add_argument('--dump-rogue', action='store_true',
                                help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
+
+    hammer_parser = subparsers.add_parser("setup")
+    hammer_parser.set_defaults(func=hammer_func)
+    hammer_parser.add_argument('slots', nargs='*', type=int,
+                               help="Specifies the slots to hammer")
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
