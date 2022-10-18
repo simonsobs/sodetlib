@@ -66,7 +66,7 @@ exp_defaults = {
 
     # Tracking stuff
     "flux_ramp_rate_khz": 4, "init_frac_pp": 0.4, "nphi0": 5,
-    "f_ptp_range": [10, 200], "df_ptp_range": [0, 50], "r2_min": 0.9,
+    "f_ptp_range": [10, 200], "df_ptp_range": [0, 100], "r2_min": 0.9,
     "min_good_tracking_frac": 0.8,
     'feedback_start_frac': 0.02, 'feedback_end_frac': 0.98,
 
@@ -81,6 +81,15 @@ band_defaults = {
 
     # Band-specific tracking stuff
     "lms_gain": 0, "feedback_gain": 2048, "frac_pp": None, "lms_freq_hz": None,
+
+    # Gradient Descent Parameters
+    "gradientDescentMaxIters": 100,
+    "gradientDescentAverages": 2, 
+    "gradientDescentGain": 0.001,
+    "gradientDescentConvergeHz": 500,
+    "gradientDescentStepHz": 5000,
+    "gradientDescentMomentum": 1,
+    "gradientDescentBeta": 0.1
 }
 bg_defaults = {}
 
