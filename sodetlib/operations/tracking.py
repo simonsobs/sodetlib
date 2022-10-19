@@ -456,7 +456,8 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
 
 @sdl.set_action()
 def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
-                          feedback_gain=None, lms_gain=None, show_plots=False):
+                          feedback_gain=None, lms_gain=None, show_plots=False,
+                          frac_pp=None): 
     """
     Sets up tracking for smurf. This assumes you already have optimized
     lms_freq and frac-pp for each bands in the device config. This function
@@ -506,7 +507,8 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
 
     # Choose frac_pp to be the mean of all running bands.
     # This is the frac-pp at the flux-ramp-rate used for optimization
-    fpp0 = np.median(frac_pp0)
+    fpp0 = np.mean(frac_pp0)
+    S.log(f"Using frac-pp={fpp0}")
 
     # Adjust fpp, lms_freq, and flux-ramp-rate depending on desired
     # flux-ramp-rate and nphi0
@@ -518,6 +520,9 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         lms_freqs *= reset_rate_khz / reset_rate_khz0
     else:
         reset_rate_khz = reset_rate_khz0
+
+    if frac_pp is not None:
+        fpp = frac_pp
 
     res = TrackingResults(S, cfg)
     tk = {

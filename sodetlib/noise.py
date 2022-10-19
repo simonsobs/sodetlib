@@ -582,3 +582,21 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     fname = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
     sdl.validate_and_save(fname, outdict, S=S, cfg=cfg, make_path=False)
     return am, outdict
+
+def plot_noise_all(am, range=(0, 200)):
+    pars = get_noise_params(am)['noise_pars']
+    wls = pars[:, 0]
+    fig, ax = plt.subplots()
+    hs = ax.hist(wls, range=range, bins=40)
+    wlmed = np.nanmedian(wls)
+    ch_pict = (np.sum(hs[0]))
+    ch_tot = len(wls)
+    ax.axvline(wlmed, color='red', ls='--')
+    txt = '\n'.join([
+        f'Median: {wlmed:0.2f} pA/rt(Hz)',
+        f'{ch_pict}/{ch_tot} chans pictured'
+    ])
+    ax.text(0.5, 0.85, txt, transform=ax.transAxes,
+            bbox=dict(facecolor='wheat', alpha=0.7))
+    ax.set_xlabel("White Noise (pA/rt(Hz))")
+    return fig, ax
