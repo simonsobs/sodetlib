@@ -105,13 +105,14 @@ def optimize_attens(S, cfg, bands, meas_time=30, total_atts=None, ucs=None, show
         wls[active_bidxs, i] = res['band_medians'][bands[active_bidxs]]
         wls_full.append(res['noise_pars'][0])
 
+    fname = sdl.make_filename(S, 'atten_optimization.npy')
+
     wls_full = np.array(wls_full)
     data = dict(
         bands=bands, total_atts=total_atts, ucs=ucs, sids=sids, wls=wls,
-        wls_full=wls_full
+        wls_full=wls_full, path=fname
     )
 
-    fname = sdl.make_filename(S, 'atten_optimization.npy')
     np.save(fname, data, allow_pickle=True)
     S.log(f"Saving {fname}")
     S.pub.register_file(fname, 'atten_optimzation', format='npy')
