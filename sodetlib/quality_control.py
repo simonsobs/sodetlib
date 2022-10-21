@@ -117,6 +117,10 @@ def measure_bias_line_resistances(S: SmurfControl, cfg, vstep=0.001, bgs=None, s
     Rbl_high = vstep / (np.abs(sigs[3] - sigs[2]) * 1e-12)
     high_low_ratio = Rbl_low / Rbl_high
 
+    cfg.dev.exp['bias_line_resistance'] = np.nanmedian(Rbl_low)
+    cfg.dev.exp['high_low_current_ratio'] = np.nanmedian(high_low_ratio)
+    cfg.dev.update_file()
+
     path = sdl.make_filename(S, 'measure_bias_line_info')
     data = {
         'Rbl_low_all': Rbl_low,
