@@ -5,6 +5,7 @@ import numpy as np
 import time
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
+from pysmurf.client.base.smurf_control import SmurfControl
 
 
 def find_min_total_atten(S, band):
@@ -39,7 +40,7 @@ def find_min_total_atten(S, band):
 
 
 @sdl.set_action()
-def optimize_attens(S, cfg, bands, meas_time=30, total_atts=None, ucs=None, show_pb=False):
+def optimize_attens(S: SmurfControl, cfg, bands, meas_time=30, total_atts=None, ucs=None, show_pb=False, bgs=None):
     """
     This function will optimize values for uc and dc attenuators. First, it
     will find the minimum total attenuation required to avoid saturating ADCs.
@@ -75,6 +76,10 @@ def optimize_attens(S, cfg, bands, meas_time=30, total_atts=None, ucs=None, show
     total_atts = np.array(total_atts)
     S.log(f"Total atts: {total_atts}")
 
+    if bgs is None:
+        bgs = np.arange(12)
+    bgs = np.atleast_1d(bgs)
+
     if ucs is None:
         ucs = np.arange(30, -1, -2)
 
@@ -98,8 +103,16 @@ def optimize_attens(S, cfg, bands, meas_time=30, total_atts=None, ucs=None, show
         S.flux_ramp_off()
         S.set_flux_ramp_dac(0)
 
-        uxm_relock.run_grad_descent_and_eta_scan(S, cfg, bands, update_tune=False)
+        for bg in bgs:
+            S.set_tes_bias_bipolar(bg, 0)
+
+        S.log(f"Running serial grad descent for bands {bands}")
+        for band in bands:
+            S.run_serial_eta_scan(band)
+
         tracking.relock_tracking_setup(S, cfg, bands)
+        S.overbias_tes_all(bgs)
+
         _, res = noise.take_noise(S, cfg, meas_time, plot_band_summary=False, show_plot=False, save_plot=False)
         sids[i] = res['sid']
         wls[active_bidxs, i] = res['band_medians'][bands[active_bidxs]]

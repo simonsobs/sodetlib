@@ -218,7 +218,7 @@ def plot_channel_resonance(S, cfg, band, chan):
 
 
 @sdl.set_action()
-def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
+def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_plots=False,
                setup_notches=False, new_master_assignment=False,
                reset_rate_khz=None, nphi0=None, skip_setup_amps=False):
     """

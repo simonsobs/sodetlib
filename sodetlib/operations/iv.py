@@ -3,6 +3,7 @@ import time
 from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
+import os
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -396,14 +397,18 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     if save:
         iva.save(update_cfg=update_cfg)
 
-def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
+def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3), bgs=None):
     """
     Plots Stacked Rfrac curves of each channel.
     """
     fig, ax = plt.subplots()
     Rfrac = (iva.R.T / iva.R_n).T
+    bgs = np.atleast_1d(bgs)
     for i, rf in enumerate(Rfrac):
         bg = iva.bgmap[i]
+        if bgs is not None:
+            if bg not in bgs:
+                continue
 
         if not Rn_range[0] < iva.R_n[i] < Rn_range[1]:
             continue
@@ -417,16 +422,21 @@ def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
     ax.set_ylabel("$R_\mathrm{frac}$", fontsize=14)
     return fig, ax
 
-def plot_Rn_hist(iva, range=(0, 10)):
+def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05)):
     """
     Plots summary of channel normal resistances.
     """
     fig, ax = plt.subplots()
     hist = ax.hist(iva.R_n*1000, range=range, bins=40)
+    ax.axvline(np.nanmedian(iva.R_n)*1000, color='red', ls='--')
+
     chans_pictured = int(np.sum(hist[0]))
     txt = f"{chans_pictured} / {iva.nchans} channels pictured"
-    ax.text(0.05, 0.05, txt, bbox={'facecolor': 'wheat', 'alpha': 0.8},
-            transform=ax.transAxes)
+    txt += '\n' + get_plot_text(iva)
+    txt += f'\nMedian: {np.nanmedian(iva.R_n)*1000:0.2f} mOhms'   
+
+    ax.text(*text_loc, txt, bbox={'facecolor': 'wheat', 'alpha': 0.8},
+            transform=ax.transAxes, )
     ax.set_xlabel("$R_n$ (m$\Omega$)", fontsize=14)
     return fig, ax
 
@@ -636,4 +646,10 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     return iva
 
 
+def get_plot_text(iva):
+    return '\n'.join([
+        f"stream_id: {iva.meta['stream_id']}",
+        f"sid: {iva.sid}",
+        f"path: {os.path.basename(iva.filepath)}",
+    ])
 

@@ -166,6 +166,7 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
         if sess_id != 0:
             break
         time.sleep(0.5)
+    S.log(f"Session id: {sess_id}")
     return sess_id
 
 
