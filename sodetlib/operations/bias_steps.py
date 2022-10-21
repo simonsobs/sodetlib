@@ -880,8 +880,14 @@ def plot_iv_res_comparison(bsa, lim=None, bgs=None, ax=None):
 
     return fig, ax
 
+def get_plot_text(bsa):
+    return '\n'.join([
+        f"stream_id: {bsa.meta['stream_id']}",
+        f"sid: {bsa.sid}",
+        f"path: {os.path.basename(bsa.filepath)}",
+    ])
 
-def plot_bg_assignment(bsa):
+def plot_bg_assignment(bsa, text_loc=(0.05, 0.85), text_kw=None):
     """
     Plots bias group assignment summary
     """
@@ -901,6 +907,13 @@ def plot_bg_assignment(bsa):
     ax.set_xticklabels(xticklabels)
     ax.set_xlabel("Bias Group", fontsize=16)
     ax.set_ylabel("Num Channels", fontsize=16)
+    if text_kw is None:
+        text_kw = {}
+    
+    ax.text(
+        *text_loc, get_plot_text(bsa), transform=ax.transAxes,
+        fontsize=18, bbox=dict(facecolor='white', alpha=0.8)
+    )
     return fig, ax
 
 
@@ -913,7 +926,7 @@ def plot_Rtes(bsa):
     ax.set_xlabel(r"$R_\mathrm{TES}$ (m$\Omega$)", fontsize=12)
     return fig, ax
 
-def plot_Rfrac(bsa):
+def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     """
     Plots Rfrac split out by bias group
     """
@@ -946,7 +959,9 @@ def plot_Rfrac(bsa):
     ax.set_yticks(offset * bgs)
     ax.set_yticklabels([f'BG {bg}' for bg in bgs], fontsize=20)
     ax.tick_params(axis='x', labelsize=24)
-
+    txt = get_plot_text(bsa)
+    ax.text(*text_loc, txt, bbox=dict(facecolor='white', alpha=0.8), fontsize=20,
+            transform=ax.transAxes)
     return fig, ax
 
 
@@ -1155,3 +1170,12 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     return bsa
 
+
+def plot_taueff_hist(bsa, text_loc=(0.4, 0.8), fontsize=15, figsize=(10, 6), range=(0, 3)):
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.hist(bsa.tau_eff * 1000, range=range, bins=30)
+    ax.set_xlabel("Tau eff (ms)", fontsize=18)
+    txt = get_plot_text(bsa)
+    ax.text(*text_loc, txt, bbox=dict(facecolor='white', alpha=0.8),
+            fontsize=fontsize, transform=ax.transAxes)
+    return fig, ax
