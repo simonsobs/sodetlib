@@ -112,7 +112,7 @@ def full_fit(freqs, real, imag):
     result = totalmodel.fit(s21_complex, params, f=freqs)
     return result
 
-def get_qi(Q, Q_e_real):
+def get_qi(Q, Q_e_real, Q_e_imag):
     '''
     Function for deriving the internal quality factor from the fitted quality
     factors (Q and Qc).
@@ -128,7 +128,7 @@ def get_qi(Q, Q_e_real):
     Qi : float
         Resonator internal quality factor.
     '''
-    Qi = (Q**-1 - Q_e_real**-1)**-1
+    Qi = (Q**-1 - np.real((Q_e_real+1j*Q_e_imag)**-1))**-1
     return Qi
 
 def get_br(Q, f_0):
@@ -244,6 +244,8 @@ def fit_tune(tunefile):
             for idx in list(data[band]['resonances'].keys()):
                 scan=data[band]['resonances'][idx]
                 f=scan['freq_eta_scan']
+                if (band > 3) & (np.mean(f) > 6000):
+                    f-=2000
                 S21=scan['resp_eta_scan']
                 result=full_fit(f,S21.real,S21.imag)
 
@@ -269,9 +271,10 @@ def fit_tune(tunefile):
                 model_params['A_mag'].append(result.best_values['A_mag'])
                 model_params['A_slope'].append(result.best_values['A_slope'])
                 
-                Qi = get_qi(result.best_values['Q'], result.best_values['Q_e_real'])
+                Qi = get_qi(result.best_values['Q'], result.best_values['Q_e_real'],
+                            result.best_values['Q_e_imag'])
                 br = get_br(result.best_values['Q'], result.best_values['f_0'])
-                depth = np.ptp(np.abs(S21_mod))
+                depth = np.abs(S21_mod).max()/np.abs(S21_mod).min()
                 derived_params['Qi'].append(Qi)
                 derived_params['br'].append(br) 
                 derived_params['depth'].append(depth)
@@ -474,7 +477,6 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     ax.set_ylabel('Counts')
 
     #Bandwidth plot
-    plt.subplot(2,2,3)
     ax = axes[1, 0]
     ax.hist(bw_quant*1e3, **plot_style)
     bw_med = np.median(bw_quant*1e3)
@@ -485,7 +487,6 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     ax.set_ylabel('Counts')
 
     #Frequency Separation plot
-    plt.subplot(2,2,4)
     ax = axes[1, 1]
     seps = np.diff(np.sort(fr_quant))
     mean, std = np.nanmean(seps), np.std(seps)
