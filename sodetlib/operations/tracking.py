@@ -508,6 +508,8 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
     # Choose frac_pp to be the mean of all running bands.
     # This is the frac-pp at the flux-ramp-rate used for optimization
     fpp0 = np.mean(frac_pp0)
+    lms_freq0 *= fpp0 / frac_pp0
+    
     S.log(f"Using frac-pp={fpp0}")
 
     # Adjust fpp, lms_freq, and flux-ramp-rate depending on desired
@@ -522,6 +524,7 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         reset_rate_khz = reset_rate_khz0
 
     if frac_pp is not None:
+        lms_freqs *=  frac_pp / fpp
         fpp = frac_pp
 
     res = TrackingResults(S, cfg)
