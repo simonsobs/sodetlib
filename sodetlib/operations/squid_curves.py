@@ -100,7 +100,10 @@ def estimate_fit_parameters(phi, noisy_squid_curve, nharmonics_to_estimate=5,
         corrs.append(corr)
 
     # should just be able to find the maximum of this correlation
-    phioffset = testphoffs[np.nanargmax(corrs)]
+    if np.isnan(corrs).all():
+        phioffset = 0
+    else:
+        phioffset = testphoffs[np.nanargmax(corrs)]
 
     # plot harmonics only over the largest possible number of SQUID periods.  May only be 1.
     lower_phi_full_cycles = (np.min(phi) + phioffset) % (phi0) + np.min(phi)
@@ -365,7 +368,7 @@ def fit_squid_curves(squid_data, fit_args=None, modify_data=True, show_pb=False)
     if modify_data:
         squid_data.update(fit_out)
         squid_data['popts'] = fit_result
-        squid_data['ffs_per_phi0'] = fit_results[:, 0]
+        squid_data['ffs_per_phi0'] = fit_result[:, 0]
 
     return fit_out
 
@@ -628,7 +631,11 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
         kw = {'modify_data': True}
         if analysis_kwargs is not None:
             kw.update(analysis_kwargs)
-        fit_dict = fit_squid_curves(data, **kw)
+        try:
+            fit_dict = fit_squid_curves(data, **kw)
+        except Exception as e:
+            S.log("Analysis of SQUID Curve failed!")
+
 
     # save dataset for each iteration, just to make sure it gets
     # written to disk
@@ -636,3 +643,11 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
     S.pub.register_file(out_path, 'dc_squid_curve', format='npy')
 
     return data
+
+
+def plot_band_periods(res):
+    phi0s = res['model_params'][:, 0]
+
+
+
+

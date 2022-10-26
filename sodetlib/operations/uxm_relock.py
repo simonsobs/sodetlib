@@ -62,7 +62,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, update_tune=False, force_run=False):
+    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None, gain=None):
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -97,9 +97,15 @@ def run_grad_descent_and_eta_scan(
                 )
 
         bcfg = cfg.dev.bands[b]
+
+        if max_iters is None:
+            max_iters = bcfg['gradientDescentMaxIters']
+        if gain is None:
+            gain = bcfg['gradientDescentGain']
+
         S.set_gradient_descent_step_hz(b, bcfg['gradientDescentStepHz'])
-        S.set_gradient_descent_max_iters(b, bcfg['gradientDescentMaxIters'])
-        S.set_gradient_descent_gain(b, bcfg['gradientDescentGain'])
+        S.set_gradient_descent_max_iters(b, max_iters)
+        S.set_gradient_descent_gain(b, gain)
         S.set_gradient_descent_converge_hz(b, bcfg['gradientDescentConvergeHz'])
         S.set_gradient_descent_beta(b, bcfg['gradientDescentBeta'])
 
@@ -150,6 +156,28 @@ def run_grad_descent_and_eta_scan(
         cfg.dev.update_file()
 
 
+def get_full_band_sweep(S, cfg, band, chan):
+    sb = S.get_subband_from_channel(band, chan)
+    tone_power = cfg.dev.bands[band]['tone_power']
+    center_freq_array = S.get_center_frequency_array(band)
+    amp_scale_array = S.get_amplitude_scale_array(band)
+    eta_phase_array = S.get_eta_phase_array(band)
+    eta_mag_array = S.get_eta_mag_array(band)
+    fb_enable = S.get_feedback_enable(band)
+    fb_enable_arr = S.get_feedback_enable_array(band)
+
+    try:
+        fs, resp = S.full_band_ampl_sweep(band, [sb], tone_power, 2, n_step=256)
+    finally:
+        S.set_center_frequency_array(band, center_freq_array)
+        S.set_amplitude_scale_array(band, amp_scale_array)
+        S.set_eta_phase_array(band, eta_phase_array)
+        S.set_eta_mag_array(band, eta_mag_array)
+        S.set_feedback_enable(band, fb_enable)
+        S.set_feedback_enable_array(band, fb_enable_arr)
+    return fs, resp
+
+
 def plot_channel_resonance(S, cfg, band, chan):
     """
     Measures and plots resonator properties for a single smurf channel.
@@ -168,25 +196,8 @@ def plot_channel_resonance(S, cfg, band, chan):
     chan : (int)
         smurf channel number
     """
-    sb = S.get_subband_from_channel(band, chan)
-    tone_power = cfg.dev.bands[band]['tone_power']
     res_freq = S.channel_to_freq(band, chan)
-    center_freq_array = S.get_center_frequency_array(band)
-    amp_scale_array = S.get_amplitude_scale_array(band)
-    eta_phase_array = S.get_eta_phase_array(band)
-    eta_mag_array = S.get_eta_mag_array(band)
-    fb_enable = S.get_feedback_enable(band)
-    fb_enable_arr = S.get_feedback_enable_array(band)
-
-    try:
-        fs, resp = S.full_band_ampl_sweep(band, [sb], tone_power, 2, n_step=256)
-    finally:
-        S.set_center_frequency_array(band, center_freq_array)
-        S.set_amplitude_scale_array(band, amp_scale_array)
-        S.set_eta_phase_array(band, eta_phase_array)
-        S.set_eta_mag_array(band, eta_mag_array)
-        S.set_feedback_enable(band, fb_enable)
-        S.set_feedback_enable_array(band, fb_enable_arr)
+    fs, resp = get_full_band_sweep(S, cfg, band, chan)
 
     fs = fs.ravel() + S.get_band_center_mhz(band)
     resp = resp.ravel()
