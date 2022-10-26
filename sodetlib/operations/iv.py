@@ -403,6 +403,8 @@ def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3), bgs=None):
     """
     fig, ax = plt.subplots()
     Rfrac = (iva.R.T / iva.R_n).T
+    if bgs is None:
+        bgs = np.arange(12)
     bgs = np.atleast_1d(bgs)
     for i, rf in enumerate(Rfrac):
         bg = iva.bgmap[i]
