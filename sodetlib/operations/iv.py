@@ -484,7 +484,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
             show_plots=True, wait_time=0.1, run_analysis=True,
-            run_serially=False, serial_wait_time=10, **analysis_kwargs):
+            run_serially=False, serial_wait_time=10, g3_tag=None,
+            **analysis_kwargs):
     """
     Takes an IV.
 
@@ -539,6 +540,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         bias groups independently instead of all together.
     serial_wait_time : float
         Time to sleep between serial IV sweeps (sec)
+    g3_tag : string (optional)
+        If not None, overrides default tag "oper,iv" sent to g3 file.
     analysis_kwargs : dict
         Keyword arguments to pass to analysis
 
@@ -554,6 +557,9 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if bias_groups is None:
         bias_groups = np.arange(12)
     bias_groups = np.atleast_1d(bias_groups)
+
+    if g3_tag is None:
+        g3_tag = "oper,iv"
 
     if biases is None:
         biases = np.arange(bias_high, bias_low - bias_step, -bias_step)
@@ -601,7 +607,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if high_current_mode:
         biases /= S.high_low_current_ratio
     try:
-        sid = sdl.stream_g3_on(S)
+        sid = sdl.stream_g3_on(S, tag=g3_tag)
         if run_serially:
             for bg in bias_groups:
                 overbias_and_sweep(bg, cool_voltage=cool_voltage)
