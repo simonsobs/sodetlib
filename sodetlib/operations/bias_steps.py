@@ -969,7 +969,7 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True):
+               use_waveform=True, show_plots=True,g3_tag=None):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -1008,11 +1008,17 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         analysis_kwargs (dict, optional):
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
+        g3_tag: string, optional
+            if not None, overrides the default tag "oper,bgmap" sent to the g3
+            file
     """
     if bgs is None:
         bgs = np.arange(12)
     if analysis_kwargs is None:
         analysis_kwargs = {}
+
+    if g3_tag is None:
+        g3_tag = "oper,bgmap"
 
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, dc_voltage)
@@ -1026,7 +1032,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, analysis_kwargs=_analysis_kwargs
+        use_waveform=use_waveform, g3_tag=g3_tag,
+        analysis_kwargs=_analysis_kwargs
     )
 
     if hasattr(bsa, 'bgmap'):
@@ -1044,7 +1051,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None):
+                    use_waveform=True, channel_mask=None, g3_tag=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1092,10 +1099,16 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             function.
         channel_mask : np.ndarray, optional
             Mask containing absolute smurf-channels to write to disk
+        g3_tag: string, optional
+            if not None, overrides the default tag "oper,bias_steps" sent to the 
+            g3 file
     """
     if bgs is None:
         bgs = np.arange(12)
     bgs = np.atleast_1d(bgs)
+
+    if g3_tag is None:
+        g3_tag = "oper,bias_steps"
 
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
@@ -1130,7 +1143,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
 
         bsa.sid = sdl.stream_g3_on(
-            S, tag='bias_steps', channel_mask=channel_mask
+            S, tag=g3_tag, channel_mask=channel_mask
         )
 
         bsa.start = time.time()
