@@ -1,5 +1,5 @@
 # sodetlib dockerfile.
-FROM tidair/pysmurf-client:v6.0.0
+FROM tidair/pysmurf-client:v7.1.0
 
 #################################################################
 # SPT3G Install
@@ -67,7 +67,9 @@ RUN mkdir build \
 # SOTODLIB Install
 #################################################################
 WORKDIR /usr/local/src
-RUN git clone https://github.com/simonsobs/sotodlib.git
+
+# Freeze sotodlib before so3g was added as requirement
+RUN git clone https://github.com/simonsobs/sotodlib.git && cd sotodlib && git checkout e37d2c0b342f609cf640ee79541c98f7a2d7485a
 RUN pip3 install quaternionarray sqlalchemy
 RUN pip3 install ./sotodlib
 
