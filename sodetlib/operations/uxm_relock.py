@@ -269,7 +269,7 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
         Dictionary containing a summary of all run operations.
     """
     if bands is None:
-        bands = np.arange(8)
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
 
     exp = cfg.dev.exp
