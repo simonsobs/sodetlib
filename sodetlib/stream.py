@@ -145,6 +145,12 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     session_id : int
         Id used to read back streamed data
     """
+    # TEMPORARY tag edit logic to make observations look like
+    # they always come from sorunlib/pysmurf-controller
+    # if not running an operation, assume it's a stream
+    if tag.split(',')[0] != "oper": 
+        tag = "obs,stream," + tag
+    
     reg = Registers(S)
 
     reg.pysmurf_action.set(S.pub._action)
