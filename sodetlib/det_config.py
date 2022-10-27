@@ -643,6 +643,8 @@ class DetConfig:
                 make_logfile=make_logfile, data_path_id=smurfpub_id,
                 **pysmurf_kwargs)
         self.S = S
+        # Lets just stash this in pysmurf...
+        S._sodetlib_cfg = self
 
         # Dump config outputs
         if dump_configs:

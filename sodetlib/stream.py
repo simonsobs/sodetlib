@@ -123,7 +123,9 @@ def take_g3_data(S, dur, **stream_kw):
 
 @set_action()
 def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
-                 channel_mask=None, filter_wait_time=2, make_datfile=False):
+                 channel_mask=None, filter_wait_time=2, make_datfile=False,
+                 downsample_factor=None, downsample_mode=None,
+                 filter_disable=False):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -148,6 +150,16 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     reg.pysmurf_action.set(S.pub._action)
     reg.pysmurf_action_timestamp.set(S.pub._action_ts)
     reg.stream_tag.set(tag)
+
+    cfg = S._sodetlib_cfg
+    if downsample_mode is None:
+        downsample_mode = cfg.dev.exp.get('downsample_mode', 'internal')
+    if downsample_factor is None:
+        downsample_factor = cfg.dev.exp['downsample_factor']
+
+    S.set_downsample_mode(downsample_mode)
+    S.set_downsample_factor(downsample_factor)
+    S.set_filter_disable(int(filter_disable))
 
     S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
                      filter_wait_time=filter_wait_time, make_datafile=make_datfile)
