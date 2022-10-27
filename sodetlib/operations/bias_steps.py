@@ -151,7 +151,7 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
             'neg', or 'both'
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if dacs not in ['pos', 'neg', 'both']:
@@ -1013,7 +1013,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             file
     """
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
+    bgs = np.atleast_1d(bgs)
+
     if analysis_kwargs is None:
         analysis_kwargs = {}
 
@@ -1104,7 +1106,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             g3 file
     """
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
 
     if g3_tag is None:

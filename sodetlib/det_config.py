@@ -37,6 +37,8 @@ YamlReps.setup_reps()
 exp_defaults = {
     # General stuff
     'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
+    'active_bands': [0, 1, 2, 3, 4, 5, 6, 7],
+    'active_bgs': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
 
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],

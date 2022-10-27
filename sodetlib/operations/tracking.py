@@ -455,7 +455,7 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
 
 
 @sdl.set_action()
-def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
+def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
                           feedback_gain=None, lms_gain=None, show_plots=False,
                           frac_pp=None): 
     """
@@ -490,7 +490,10 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         Dictionary of results of all tracking-setup calls, with the bands number
         as key.
     """
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
+
     nbands = len(bands)
     exp = cfg.dev.exp
 

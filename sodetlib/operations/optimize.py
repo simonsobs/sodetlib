@@ -73,7 +73,7 @@ def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, total_att=None
         S.log(f"Total att for band {band}: {total_att}")
 
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
 
     if ucs is None:

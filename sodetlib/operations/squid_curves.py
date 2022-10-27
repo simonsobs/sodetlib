@@ -499,7 +499,9 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
     # and then sets the range of flux bias to be enough to achieve the Nphi0s
     # specified in the fucnction call.
     if bands is None:
-        bands = np.arange(8)
+        bands = cfg.dev.exp['active_bands']
+    bands = np.atleast_1d(bands)
+
     if channels is None:
         channels = {}
         for band in bands:
@@ -509,12 +511,6 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
 
     # This is the step size calculated from range and number of steps
     bias_step = np.abs(2*bias_peak)/float(Nsteps)
-    if bands is None:
-        bands = np.arange(8)
-    if channels is None:
-        channels = {}
-        for band in bands:
-            channels[band] = S.which_on(band)
 
     channels_out = []
     bands_out = []

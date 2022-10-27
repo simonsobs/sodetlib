@@ -4,6 +4,7 @@ from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 import os
+from tqdm.auto import trange
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -297,7 +298,7 @@ def compute_si(iva):
         iva.si[i, :-1] = si
 
 
-def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
+def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False):
     """
     Runs main analysis for an IVAnalysis object. This calculates the attributes
     defined in the IVAnalysis class.
@@ -318,7 +319,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     R_sh = iva.meta['R_sh']
 
     # Calculate phase response and bias_voltages / currents
-    for i in range(iva.nbiases):
+    for i in trange(iva.nbiases, disable=(not show_pb)):
         # Start from back because analysis is easier low->high voltages
         for j, bg in enumerate(iva.bias_groups):
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
@@ -339,7 +340,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     A_per_rad = iva.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
     iva.resp = (iva.resp.T * iva.polarity).T * A_per_rad
 
-    for i in range(iva.nchans):
+    for i in trange(iva.nchans, disable=(not show_pb)):
         d_resp = np.diff(iva.resp[i])
         dd_resp = np.diff(d_resp)
         dd_resp_abs = np.abs(dd_resp)
@@ -555,7 +556,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
                              'pysmurf session. Load active tunefile.')
 
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if g3_tag is None:
