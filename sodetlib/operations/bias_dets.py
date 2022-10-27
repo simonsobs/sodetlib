@@ -49,7 +49,7 @@ def bias_to_rfrac_range(
         bias-groups will have been modified.
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if iva is None:
@@ -129,7 +129,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         bias-groups will have been modified.
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if iva is None:

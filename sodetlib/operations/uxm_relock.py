@@ -83,7 +83,7 @@ def run_grad_descent_and_eta_scan(
     """
 
     if bands is None:
-        bands = np.arange(8)
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
 
     for b in bands:

@@ -71,7 +71,7 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
 @sdl.set_action()
 def measure_bias_line_resistances(S: SmurfControl, cfg, vstep=0.001, bgs=None, sleep_time=2.0):
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
 
     vbias = S.get_tes_bias_bipolar_array()
