@@ -40,9 +40,9 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     for s in slots:
         S = Ss[s]
         S.flux_ramp_setup(fr_khz, 0.4, band=0)
-        S.set_downsample_mode('internal')
-        S.set_downsample_factor(1)
-        sdl.stream_g3_on(S, channel_mask=np.arange(nchans))
+        sdl.stream_g3_on(
+            S, channel_mask=np.arange(nchans), downsample_factor=1
+        )
 
     time.sleep(dur)
     
