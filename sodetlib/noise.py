@@ -590,7 +590,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     sdl.validate_and_save(fname, outdict, S=S, cfg=cfg, make_path=False)
     return am, outdict
 
-def plot_noise_all(res, range=(0, 200), text_loc=(0.5, 0.8)):
+def plot_noise_all(res, range=(0, 200), text_loc=(0.4, 0.7)):
     pars = res['noise_pars']
     wls = pars[:, 0]
     fig, ax = plt.subplots()

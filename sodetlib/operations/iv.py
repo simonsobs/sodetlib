@@ -325,8 +325,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False)
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
             chan_mask = iva.bgmap == bg
             m = (t0 < am.timestamps) & (am.timestamps < t1)
-            iva.resp[chan_mask, i] = np.nanmean(am.signal[chan_mask][:, m], axis=1)
-
+            iva.resp[chan_mask, i] = np.nanmean(am.signal[:, m][chan_mask], axis=1)
             if j == 0:
                 bias_bits = np.median(am.biases[bg, m])
                 iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
