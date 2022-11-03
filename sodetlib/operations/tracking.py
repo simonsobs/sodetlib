@@ -538,13 +538,20 @@ def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
         'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
     }
 
-    if lms_gain is not None:
-        tk['lms_gain'] = lms_gain
-    if feedback_gain is not None:
-        tk['feedback_gain'] = feedback_gain
 
     for i, band in enumerate(bands):
-        tk.update({'lms_freq_hz': lms_freqs[i]})
+        bcfg = cfg.dev.bands[band]
+        tk.update({
+            'lms_freq_hz': lms_freqs[i],
+            'lms_gain': bcfg['lms_gain'],
+            'feedback_gain': bcfg['feedback_gain'],
+        })
+
+        if lms_gain is not None:
+            tk['lms_gain'] = lms_gain
+        if feedback_gain is not None:
+            tk['feedback_gain'] = feedback_gain
+
         f, df, sync = S.tracking_setup(band, **tk)
         res.add_band_data(band, f, df, sync, tracking_kwargs=tk)
 
