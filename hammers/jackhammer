@@ -40,7 +40,10 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 # Various utility functions
 ########################################################################
-
+def get_docker_services():
+    cmd = 'docker-compose config --services'
+    res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
+    return res.stdout.decode().split()
 
 def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
     cmd  = f'docker-compose run --entrypoint={cmd} '
@@ -409,9 +412,16 @@ def setup_smurfs(slots):
         th = threading.Thread(target=util_run, **kw )
         th.start()
         threads.append(th)
-    
+
     for th in threads:
         th.join()
+
+def start_sync_dockers():
+    services = get_docker_services()
+    start_services([s for s in services if 'sync' in s])
+
+def start_sync_func(args):
+    start_sync_dockers()
 
 
 # Entrypoint for jackhammer setup
@@ -574,6 +584,9 @@ if __name__ == '__main__':
     ########### Jackhammer write-env parser ###########
     write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
     write_env_parser.set_defaults(func=write_env_func)
+
+    start_sync_parser = subparsers.add_parser('start-sync')
+    start_sync_parser.set_defaults(func=start_sync_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
