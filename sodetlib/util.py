@@ -101,6 +101,22 @@ def pub_ocs_log(S, msg, log=True):
     S.pub.publish(msg, msgtype='session_log')
 
 
+class OCSAbortError(Exception):
+    """Error that's thrown when an operation is aborted through OCS""" 
+
+
+def stop_point(S):
+    """
+    This function will throw an error if the OCS session status is 'stopping'.
+    This allows the pysmurf controller to gracefully tell long-running sodetlib
+    functions to stop when possible without killing the agent.
+    """
+    session = getattr(S, '_ocs_session', None)
+    if session is not None:
+        if session.status == 'stopping':
+            raise OCSAbortError()
+
+
 
 def load_bgmap(bands, channels, bgmap_file):
     """
@@ -796,3 +812,24 @@ def remap_dets(src, dst, load_axes=False, idxmap=None):
 
     am_new.wrap('unmapped', idxmap == -1, [(0, 'dets')])
     return am_new
+
+
+def overbias_dets(S, cfg, bias_groups=None):
+    if bias_groups is None:
+        bias_groups = cfg.dev.exp['active_bgs']
+
+    S.log("Overbiasing Detectors")
+    set_current_mode(S, bias_groups, 1)
+    for bg in bias_groups:
+        S.set_tes_bias_bipolar(bg, cfg.dev.bias_groups[bg]['overbias_voltage'])
+        S.set_tes_bias_high_current(bg)
+
+    wait_time = cfg.dev.exp['overbias_wait']
+    S.log(f"Waiting at ob volt for {wait_time} sec")
+    time.sleep(wait_time)
+
+    for bg in bias_groups:
+        S.set_tes_bias_low_current(bg)
+        S.set_tes_bias_bipolar(bg, cfg.dev.bias_groups[bg]['cool_voltage'])
+
+    return

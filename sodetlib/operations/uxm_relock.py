@@ -41,6 +41,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
     S.load_tune(tunefile)
 
     for band in bands:
+        sdl.stop_point(S)
         bcfg = cfg.dev.bands[band]
         S.set_att_uc(band, bcfg['uc_att'])
         S.set_att_dc(band, bcfg['dc_att'])
@@ -87,6 +88,7 @@ def run_grad_descent_and_eta_scan(
     bands = np.atleast_1d(bands)
 
     for b in bands:
+        sdl.stop_point(S)
         in_progress_reg = S._cryo_root(b) + 'etaScanInProgress'
         if S._caget(in_progress_reg):
             if force_run:
@@ -299,6 +301,7 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
     #############################################################
     # 2. Setup amps
     #############################################################
+    sdl.stop_point(S)
     if not skip_setup_amps:
         summary['timestamps'].append(('setup_amps', time.time()))
         sdl.set_session_data(S, 'timestamps', summary['timestamps'])
@@ -308,9 +311,11 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
             return False, summary
     else:
         print("Skipping amp setup")
+
     #############################################################
     # 3. Load tune
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('load_tune', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['reload_tune'] = reload_tune(
@@ -321,10 +326,10 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
     if not success:
         return False, summary
 
-
     #############################################################
     # 4. Tracking Setup
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('tracking_setup', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
@@ -334,15 +339,10 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
     )
     summary['tracking_setup_results'] = tr
 
-    sdl.set_session_data(S, 'tracking_setup_results', {
-        'bands': tr.bands, 'channels': tr.channels,
-        'r2': tr.r2, 'f_ptp': tr.f_ptp, 'df_ptp': tr.df_ptp,
-        'is_good': tr.is_good,
-    })
-
     #############################################################
     # 5. Noise
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('noise', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,

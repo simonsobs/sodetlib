@@ -578,12 +578,15 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
 
     start_times = np.zeros((S._n_bias_groups, len(biases)))
     stop_times = np.zeros((S._n_bias_groups, len(biases)))
+    sdl.stop_point(S)
     def overbias_and_sweep(bgs, cool_voltage=None):
         """
         Helper function to run IV sweep for a single bg or group of bgs.
         """
         bgs = np.atleast_1d(bgs).astype(int)
         S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
+        # sdl.overbias_dets(S, cfg, bias_groups=bgs)
+        # time.sleep(cool_wait)
         if overbias_voltage > 0:
             if cool_voltage is None:
                 cool_voltage = np.max(biases)
@@ -598,6 +601,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         bias_group_bool[bgs] = 1
         S.log(f"Starting TES Bias Ramp on bg {bgs}")
         for i, bias in enumerate(biases):
+            sdl.stop_point(S)
             S.log(f"Setting bias to {bias:4.3f}")
             S.set_tes_bias_bipolar_array(bias * bias_group_bool)
             start_times[bgs, i] = time.time()
@@ -625,6 +629,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
     if run_analysis:
+        sdl.stop_point(S)
         _analysis_kwargs = {'save': True, 'update_cfg': True}
         _analysis_kwargs.update(analysis_kwargs)
         analyze_iv(iva, **_analysis_kwargs)

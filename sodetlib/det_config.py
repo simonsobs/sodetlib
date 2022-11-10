@@ -75,6 +75,9 @@ exp_defaults = {
     # Misc files
     "tunefile": None, "bgmap_file": None, "iv_file": None,
     "res_fit_file": None,
+
+    # Overbiasing
+    'overbias_wait': 5.0
 }
 band_defaults = {
     # General
@@ -93,7 +96,10 @@ band_defaults = {
     "gradientDescentMomentum": 1,
     "gradientDescentBeta": 0.1
 }
-bg_defaults = {}
+bg_defaults = {
+    'overbias_voltage': 19.9,
+    'cool_voltage': 10.0
+}
 
 
 class DeviceConfig:
