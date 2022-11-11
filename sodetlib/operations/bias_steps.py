@@ -323,6 +323,8 @@ class BiasStepAnalysis:
             # Det param data
             'transition_range', 'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
             'R0', 'I0', 'Pj', 'Si',
+            # From IV's
+            'R_n', 'Rfrac',
         ]
 
         for f in saved_fields:
@@ -405,6 +407,19 @@ class BiasStepAnalysis:
         self._get_step_response(step_window=step_window)
         self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
 
+        # Load R_n from IV
+        self.R_n = np.full(self.nchans, np.nan)
+        self.Rfrac = np.full(self.nchans, np.nan)
+        if self.meta['iv_file'] is not None:
+            if os.path.exists(self.meta['iv_file']):
+                iva = iv.IVAnalysis.load(self.meta['iv_file'])
+                chmap = sdl.map_band_chans(
+                    self.bands, self.channels, iva.bands, iva.channels
+                )
+                self.R_n = iva.R_n[chmap]
+                self.R_n[chmap == -1] = np.nan
+                self.Rfrac = self.R0 / self.R_n
+
         if create_bg_map and save_bg_map and self._S is not None:
             # Write bgmap after compute_dc_params because bg-assignment
             # will be un-set if resistance estimation is too high.
@@ -429,6 +444,7 @@ class BiasStepAnalysis:
 
 
         self._fit_tau_effs(tmin=fit_tmin)
+
         if save:
             self.save()
 

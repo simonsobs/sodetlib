@@ -814,7 +814,25 @@ def remap_dets(src, dst, load_axes=False, idxmap=None):
     return am_new
 
 
-def overbias_dets(S, cfg, bias_groups=None):
+def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
+                  high_current_mode=False):
+    """
+    Overbiases detectors based on parameters in the device cfg.
+
+    Args
+    ------
+    S : SmurfControl
+        Pysmurf control instance
+    cfg : DetConfig
+        DetConfig instance
+    bias_groups : list
+        List of bias groups to overbias
+    biases: list
+        Array of final bias values to set after overbiasing. This must
+        be an array of length 12 where biases[bg] is the bias of bias group bg.
+        If this is not set, the ``cool_voltage`` set in the device cfg file
+        will be used for each bias group.
+    """
     if bias_groups is None:
         bias_groups = cfg.dev.exp['active_bgs']
 
@@ -829,7 +847,17 @@ def overbias_dets(S, cfg, bias_groups=None):
     time.sleep(wait_time)
 
     for bg in bias_groups:
-        S.set_tes_bias_low_current(bg)
-        S.set_tes_bias_bipolar(bg, cfg.dev.bias_groups[bg]['cool_voltage'])
+        if not high_current_mode:
+            S.set_tes_bias_low_current(bg)
 
-    return
+        if biases is not None:
+            bias = biases[bg]
+        else:
+            bias = cfg.dev.bias_groups[bg]['cool_voltage']
+
+        S.set_tes_bias_bipolar(bg, bias)
+
+    if cool_wait is not None:
+        time.sleep(cool_wait)
+
+    return S.get_tes_bias_bipolar_array()

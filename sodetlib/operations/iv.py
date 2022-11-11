@@ -585,7 +585,10 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         """
         bgs = np.atleast_1d(bgs).astype(int)
         S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
-        # sdl.overbias_dets(S, cfg, bias_groups=bgs)
+        # ob_biases = np.full(12, np.max(biases))
+        # sdl.overbias_dets(
+        #     S, cfg, bias_groups=bgs, high_current_mode=high_current_mode
+        # )
         # time.sleep(cool_wait)
         if overbias_voltage > 0:
             if cool_voltage is None:
