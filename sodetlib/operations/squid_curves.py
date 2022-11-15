@@ -639,11 +639,3 @@ def take_squid_curve(S, cfg, wait_time=0.1, Npts=4, Nsteps=500,
     S.pub.register_file(out_path, 'dc_squid_curve', format='npy')
 
     return data
-
-
-def plot_band_periods(res):
-    phi0s = res['model_params'][:, 0]
-
-
-
-
