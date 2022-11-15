@@ -378,7 +378,7 @@ def hammer_func(args):
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
-    if not args.skip_setup:
+    if reboot and not args.skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
         for slot in slots:
             print(f"Configuring pysmurf on slot {slot}...")
@@ -492,7 +492,7 @@ if __name__ == '__main__':
                                help="If True, will not dump logs.")
     hammer_parser.add_argument('--agg', action='store_true')
     hammer_parser.add_argument('--skip-setup', action='store_true',
-                               help="Skip pysmurf setup functions")
+                               help="Skip pysmurf setup functions. If `--soft` is set, defaults to True.")
     hammer_parser.add_argument('--dump-rogue', action='store_true',
                                help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
 
