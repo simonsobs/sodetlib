@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-from re import T
 import subprocess
 import shlex
 import yaml
@@ -368,6 +367,7 @@ def hammer_func(args):
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
         services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
+        start_sync_dockers()
     else:
         services = []
 
