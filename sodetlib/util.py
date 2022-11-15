@@ -547,6 +547,7 @@ class Registers:
         'stream_tag': _sostream + "stream_tag",
         'open_g3stream': _sostream + "open_g3stream",
         'g3_session_id': _sofilewriter + "session_id",
+        'g3_filepath': _sofilewriter + "filepath",
         'debug_data': _sostream + "DebugData",
         'debug_meta': _sostream + "DebugMeta",
         'debug_builder': _sostream + "DebugBuilder",
