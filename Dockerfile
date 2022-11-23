@@ -76,7 +76,7 @@ RUN pip3 install ./sotodlib
 #################################################################
 # OCS Install
 #################################################################
-RUN git clone --branch v0.9.1 https://github.com/simonsobs/ocs.git
+RUN git clone --branch py36 https://github.com/simonsobs/ocs.git
 
 RUN pip3 install cryptography==3.3.2
 # RUN pip3 install -r ocs/requirements.txt
