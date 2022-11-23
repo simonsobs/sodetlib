@@ -31,7 +31,7 @@ RUN apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/CMB-S4/spt3g_software.git
+RUN git clone https://github.com/CMB-S4/spt3g_software.git && cd spt3g_software && git checkout  5f30121395129de9c9a6af2976de8ba8e876b5a8
 RUN cd spt3g_software \
     && mkdir -p build \
     && cd build \
