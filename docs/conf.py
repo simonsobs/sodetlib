@@ -22,6 +22,7 @@ autodoc_mock_imports = [
     'sotodlib',
     'sotodlib.io',
     'sotodlib.tod_ops.fft_ops',
+    'sotodlib.tod_ops.filters',
     'sotodlib.tod_ops',
     'sotodlib.core',
     'tqdm.auto'
@@ -78,7 +79,7 @@ master_doc = 'index'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
