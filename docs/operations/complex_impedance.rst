@@ -39,7 +39,7 @@ to the commanded bias) as a function of frequency.
 In order to remove parasitic contamination from the bias circuitry, we use
 measurements of the TES response while the detectors are in their
 superconducting and normal states to obtain the Thevenin equivalent voltage and
-impedance of the bias circuit (see :ref:`Lindeman et al.<References>`). The
+impedance of the bias circuit (see :ref:`Lindeman et al.<ci_ref>`). The
 equivalent voltage and impedance are given by:
 
 .. math::
@@ -130,15 +130,11 @@ API
    :members: analyze_seg, analyze_tods, get_ztes, fit_det_params,
              take_complex_impedance, take_complex_impedance_ob_sc
 
+.. _ci_ref:
 
 References
 ----------
 
-.. _ci_ref:
-Useful references:
- - `Irwin / Hilton chapter on Transition Edge Sensors <https://link.springer.com/chapter/10.1007/10933596_3>`_
- - `Lindeman on correcting for stray impedances <https://doi.org/10.1063/1.2723066>`_
- - `Nick Cothard's paper on CI vs bias steps for SO prototype dets <https://arxiv.org/abs/2012.08547>`_
-
-
-
+- `Irwin / Hilton chapter on Transition Edge Sensors <https://link.springer.com/chapter/10.1007/10933596_3>`_
+- `Lindeman on correcting for stray impedances <https://doi.org/10.1063/1.2723066>`_
+- `Nick Cothard's paper on CI vs bias steps for SO prototype dets <https://arxiv.org/abs/2012.08547>`_
