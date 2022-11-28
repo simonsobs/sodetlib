@@ -31,7 +31,7 @@ RUN apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/CMB-S4/spt3g_software.git
+RUN git clone https://github.com/CMB-S4/spt3g_software.git && cd spt3g_software && git checkout  5f30121395129de9c9a6af2976de8ba8e876b5a8
 RUN cd spt3g_software \
     && mkdir -p build \
     && cd build \
@@ -76,7 +76,7 @@ RUN pip3 install ./sotodlib
 #################################################################
 # OCS Install
 #################################################################
-RUN git clone --branch v0.9.1 https://github.com/simonsobs/ocs.git
+RUN git clone --branch py36 https://github.com/simonsobs/ocs.git
 
 RUN pip3 install cryptography==3.3.2
 # RUN pip3 install -r ocs/requirements.txt
