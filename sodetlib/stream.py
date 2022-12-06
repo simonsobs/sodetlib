@@ -160,7 +160,7 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
 
     cfg = S._sodetlib_cfg
     if downsample_mode is None:
-        downsample_mode = cfg.dev.exp.get('downsample_mode', 'internal')
+        downsample_mode = cfg.dev.exp['downsample_mode']
     if downsample_factor is None:
         downsample_factor = cfg.dev.exp['downsample_factor']
 

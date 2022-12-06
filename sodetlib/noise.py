@@ -591,6 +591,20 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     return am, outdict
 
 def plot_noise_all(res, range=(0, 200), text_loc=(0.4, 0.7)):
+    """
+    Plots the white noise distribution of all bands together.
+
+    Args
+    -----
+    res : dict
+        Result from the ``take_noise`` function
+    range : tuple
+        Range of the histogram
+    text_loc : tuple
+        Location to place the textbox containing median and file info. These
+        coordinates are in the axis tranform frame with (0, 0) being the bottom
+        left and (1, 1) being the top right.
+    """
     pars = res['noise_pars']
     wls = pars[:, 0]
     fig, ax = plt.subplots()

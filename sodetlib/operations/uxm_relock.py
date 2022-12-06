@@ -13,8 +13,7 @@ if not os.environ.get('NO_PYSMURF', False):
 
 @sdl.set_action()
 def reload_tune(S, cfg, bands, setup_notches=False,
-                new_master_assignment=False, tunefile=None, update_cfg=True,
-                run_grad_descent=True):
+                new_master_assignment=False, tunefile=None, update_cfg=True):
     """
     Reloads an existing tune, runs setup-notches and serial grad descent
     and eta scan.
@@ -33,6 +32,9 @@ def reload_tune(S, cfg, bands, setup_notches=False,
         Whether to create a new master assignment
     tunefile : str
         Tunefile to load. Defaults to the tunefile in the device cfg.
+    update_cfg : bool
+        If true, will update the device cfg with the tunefile created by
+        setup notches.
     """
 
     if tunefile is None:
@@ -56,14 +58,15 @@ def reload_tune(S, cfg, bands, setup_notches=False,
         # Update tunefile
         cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
-    run_grad_descent_and_eta_scan(S, cfg, bands=bands, update_tune=True)
+    run_grad_descent_and_eta_scan(S, cfg, bands=bands, update_tune=False)
 
     return True, None
 
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None, gain=None):
+    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None,
+    gain=None): 
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -81,6 +84,9 @@ def run_grad_descent_and_eta_scan(
         If this is set to True, the new resonance frequency and eta parameters
         will be loaded into the smurf tune, and a new tunefile will be written
         based on the new measurements.
+    force_run : bool
+        If True, will reset the ``etaScanInProgress`` variable to force it
+        to re-run. This might be necessary if serial gradient descent failed out.
     """
 
     if bands is None:
@@ -159,6 +165,28 @@ def run_grad_descent_and_eta_scan(
 
 
 def get_full_band_sweep(S, cfg, band, chan):
+    """
+    This runs full_band_ampl_sweep to get the resonator response around a single
+    channel. This is useful for debugging bad channels.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det Config instance
+    band : int
+        smurf-band of channel
+    channel : int
+        smurf-channel of channel
+
+    Returns
+    ----------
+    fs : np.ndarray
+        Array of frequencies that were swept over
+    resp : np.ndarray
+        Complex transmission across the frequency range
+    """
     sb = S.get_subband_from_channel(band, chan)
     tone_power = cfg.dev.bands[band]['tone_power']
     center_freq_array = S.get_center_frequency_array(band)
@@ -231,9 +259,10 @@ def plot_channel_resonance(S, cfg, band, chan):
 
 
 @sdl.set_action()
-def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_plots=False,
-               setup_notches=False, new_master_assignment=False,
-               reset_rate_khz=None, nphi0=None, skip_setup_amps=False):
+def uxm_relock(
+    S: SmurfControl, cfg, bands=None, show_plots=False,
+    setup_notches=False, new_master_assignment=False, reset_rate_khz=None,
+    nphi0=None, skip_setup_amps=False):
     """
     Relocks resonators by running the following steps:
 
@@ -242,7 +271,6 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
         3. load tune, setup_notches, serial grad descent and eta scan
         4. Tracking setup
         5. Measure noise
-
 
     Args
     -----
@@ -262,8 +290,10 @@ def uxm_relock(S: SmurfControl, cfg, bands=None, disable_bad_chans=True, show_pl
     nphi0 : int, optional
         Number of phi0's to ramp through. Defaults to the value that was used
         during setup.
-    disable_bad_chans : bool
-        If true, will disable tones for bad-tracking channels
+    show_plots : bool
+        If True will show plots
+    skip_setup_amps : bool
+        If True will skip amplifier setup.
 
     Returns
     --------

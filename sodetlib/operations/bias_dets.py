@@ -86,6 +86,27 @@ def bias_to_rfrac_range(
     return biases
 
 def bias_to_volt_arr(S, cfg, biases, bias_groups=None, overbias=True):
+    """
+    Biases detectors using an array of voltages.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        det config instance
+    biases : np.ndarray
+        This must be an array of length 12, with the ith element being the
+        voltage bias of bias group i. Note that the bias of any bias group
+        that is not active, or not specified in the ``bias_groups`` parameter
+        will be ignored.
+    bias_groups : list
+        List of bias groups to bias. If None, this will default to the active
+        bgs specified in the device cfg.
+    overbias : bool
+        If true, will overbias specified bias lines. If false, will set bias
+        voltages without overbiasing detectors.
+    """
     if bias_groups is None:
         bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)

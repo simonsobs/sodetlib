@@ -41,7 +41,8 @@ def find_min_total_atten(S, band, atten_offset=2):
     return False
 
 @sdl.set_action()
-def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, total_att=None, ucs=None, show_pb=False, bgs=None):
+def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, 
+    total_att=None, ucs=None, show_pb=False, bgs=None, full_tune=False):
     """
     This function will optimize values for uc and dc attenuators. First, it
     will find the minimum total attenuation required to avoid saturating ADCs.
@@ -66,6 +67,17 @@ def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, total_att=None
         List of UC attenuations to loop over
     show_pb : bool
         If True, will display a progress bar.
+    bgs : list
+        List of bias lines to overbias. This must at least contain detectors on
+        the band that is being optimized. If None is specified, will just
+        overbias all detectors at each step.
+    full_tune : bool
+        If True, will run ``setup_tune``, which performs find freq and setup
+        otches, at each step. This is the way to get the most accurate
+        optimization, as eta and the resonance frequency change as you adjust
+        the uc attenuation. If your uc step is small enough (1 or maybe 2), then
+        the gradient descent and eta scan functions may be sufficient and you
+        might not need to do a full tune at each step.
     """
 
     if total_att is None:
@@ -100,7 +112,11 @@ def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, total_att=None
         S.set_flux_ramp_dac(0)
         for bg in bgs:
             S.set_tes_bias_bipolar(bg, 0)
-        uxm_setup.setup_tune(S, cfg, bands=band, update_cfg=False)
+
+        if full_tune:
+            uxm_setup.setup_tune(S, cfg, bands=band, update_cfg=False)
+        else:
+            uxm_relock.run_grad_descent_and_eta_scan(S, cfg, bands=[band])
 
         tunefiles[i] = S.tune_file
         tracking.relock_tracking_setup(S, cfg, band)
@@ -130,9 +146,20 @@ def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, total_att=None
     return data
 
 
-def plot_atten_optimization(data, ax=None, ylim=None):
+def plot_atten_optimization(data, ax=None, ylim=None, text_loc=(0.02, 0.03)):
     """
     Plots the results of the optimize_attens function.
+
+    Args
+    -----
+    data : dict
+        Results from the ``optimize_band_atten`` function
+    ax : Matplotlib axis
+        Axis to plot on. If None this will create a new figure.
+    ylim : tuple
+        ylim to set
+    text_loc : tuple
+        Location of the textbox
     """
     if ax is None:
         fig, ax = plt.subplots()
@@ -150,7 +177,8 @@ def plot_atten_optimization(data, ax=None, ylim=None):
         f"Min = {data['wls'][imin]:.1f} pA/rt(Hz)",
         f"Opt (UC, DC) = ({opt_uc}, {opt_dc})"
     ])
-    ax.text(0.02, 0.03, txt, transform=ax.transAxes, bbox=dict(facecolor='wheat', alpha=0.2))
+    ax.text(*text_loc, txt, transform=ax.transAxes, 
+            bbox=dict(facecolor='wheat', alpha=0.2))
     if ylim is not None:
         ax.set_ylim(*ylim)
 

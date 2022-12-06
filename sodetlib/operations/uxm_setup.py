@@ -412,10 +412,12 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
         If true, will show find_freq plots. Defaults to False
     update_cfg : bool
         If true, will update the device cfg and save the file.
-    modify_attens : bool
-        If true, will run estimate_uc_dc_atten to find a set of
-        attenuations that will work for estimate_phase_delay and
-        find_freq.
+    skip_estimate_attens : bool
+        If true, will skip the estimate attens step
+    skip_phase_delay : bool
+        If True, will skip the estimate_phase_delay step
+    skip_setup_amps : bool
+        If True, will skip amplifier setup
     """
     if bands is None:
         bands = cfg.dev.exp['active_bands']

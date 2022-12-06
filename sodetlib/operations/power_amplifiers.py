@@ -51,9 +51,10 @@ def rawadc_metric(S, band):
 def check_LNAs(S, metric=fullbandresponse_metric, bands=range(8), 
                 display=True, threshold=5e-1):
     """
-    Checks whether LNAs controlled by slot S are functinoing, using specified metric.  
-    First all LNAs are turned on for a reference measurement, then measures 
-    what happens when each stages LNAs are turned off (and then back on).
+    Checks whether LNAs controlled by slot S are functioning, using specified
+    metric.  First all LNAs are turned on for a reference measurement, then
+    measures what happens when each stages LNAs are turned off (and then back
+    on).
 
     Args
     ----

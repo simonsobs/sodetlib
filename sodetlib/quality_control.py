@@ -69,7 +69,26 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     return ams, res
 
 @sdl.set_action()
-def measure_bias_line_resistances(S: SmurfControl, cfg, vstep=0.001, bgs=None, sleep_time=2.0):
+def measure_bias_line_resistances(
+    S: SmurfControl, cfg, vstep=0.001, bgs=None, sleep_time=2.0):
+    """
+    Function to measure the bias line resistance and high-low-current-ratio for
+    each bias group. This needs to be run with the smurf hooked up to the
+    cryostat and the detectors superconducting.
+
+    Args
+    -------
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det Config instance
+    vstep : float
+        Voltage step size (in low-current-mode volts)
+    bgs : list
+        Bias lines to measure. Will default to active bias lines
+    sleep_time : float
+        Time to wait at each step.
+    """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
@@ -86,6 +105,7 @@ def measure_bias_line_resistances(S: SmurfControl, cfg, vstep=0.001, bgs=None, s
 
     def take_step(bias_arr, sleep_time, wait_time=0.2):
         S.set_tes_bias_bipolar_array(bias_arr)
+        time.sleep(wait_time)
         t0 = time.time()
         time.sleep(sleep_time)
         t1 = time.time()
@@ -134,9 +154,10 @@ def measure_bias_line_resistances(S: SmurfControl, cfg, vstep=0.001, bgs=None, s
         'bgs': bgs,
         'meta': sdl.get_metadata(S, cfg),
         'segs': segs,
+        'sigs': sigs,
         'path': path,
     }
     np.save(path, data, allow_pickle=True)
-    S.pub.register_file(path, 'bias_line_stuff', format='npy')
+    S.pub.register_file(path, 'bias_line_resistances', format='npy')
 
     return am, data

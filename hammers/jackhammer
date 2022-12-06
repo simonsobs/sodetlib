@@ -40,11 +40,34 @@ with open(sys_config_file, 'r') as stream:
 # Various utility functions
 ########################################################################
 def get_docker_services():
+    """
+    Returns a list of docker services that are available from the docker-compose
+    file in the ocs config directory.
+    """
     cmd = 'docker-compose config --services'
     res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
 def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
+    """
+    Runs a command using subproces.run within the sodetlib util docker.
+
+    Args
+    ------
+    cmd : string
+        Command to run
+    args : List[string]
+        List of arguments to pass to the command
+    name : string, optional
+        Name of the docker container. If none is specified this will not be
+        set and docker-compose will choose the default.
+    rm : bool
+        If True, will remove the container when the command has finished.
+    run_kwargs : Additional keyword arguments
+        Any additional kwargs specified will be passed directly to the
+        subprocess.run function. See the subprocess docs for allowed kwargs:
+        https://docs.python.org/3/library/subprocess.html#subprocess.run
+    """
     cmd  = f'docker-compose run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
@@ -417,10 +440,15 @@ def setup_smurfs(slots):
         th.join()
 
 def start_sync_dockers():
+    """
+    Begins suprsync docker services (by choosing all docker services that have
+    "sync" in their name).
+    """
     services = get_docker_services()
     start_services([s for s in services if 'sync' in s])
 
 def start_sync_func(args):
+    """Entrypoint for ``jackhammer start-sync``"""
     start_sync_dockers()
 
 

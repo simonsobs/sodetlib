@@ -832,9 +832,18 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
         be an array of length 12 where biases[bg] is the bias of bias group bg.
         If this is not set, the ``cool_voltage`` set in the device cfg file
         will be used for each bias group.
+    cool_wait : float
+        If set, time to wait after overbiasing dets. Defaults to no wait time.
+    high_current_mode : bool, List[bool]
+        Whether the bias groups should be left in high-current-mode. If a list is
+        passed, it should be an array of len 12 where high_current_mode[bg] is
+        the desired mode for bias line ``bg``.
     """
     if bias_groups is None:
         bias_groups = cfg.dev.exp['active_bgs']
+
+    if isinstance(high_current_mode, (bool, int)):
+        high_current_mode = [high_current_mode for _ in range(12)]
 
     S.log("Overbiasing Detectors")
     set_current_mode(S, bias_groups, 1)
@@ -847,7 +856,7 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
     time.sleep(wait_time)
 
     for bg in bias_groups:
-        if not high_current_mode:
+        if not high_current_mode[bg]:
             S.set_tes_bias_low_current(bg)
 
         if biases is not None:

@@ -287,6 +287,12 @@ class BiasStepAnalysis:
             Fit covariances for each channel
         tau_eff (array (float) shape (nchans)):
             Tau_eff for each channel (sec). Same as step_fit_popts[:, 1].
+        R_n_IV (array (float) shape (nchans)):
+            Array of normal resistances for each channel pulled from IV
+            in the device cfg.
+        Rfrac (array (float) shape (nchans)):
+            Rfrac of each channel, determined from R0 and the channel's normal
+            resistance.
     """
 
     def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
@@ -324,7 +330,7 @@ class BiasStepAnalysis:
             'transition_range', 'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
             'R0', 'I0', 'Pj', 'Si',
             # From IV's
-            'R_n', 'Rfrac',
+            'R_n_IV', 'Rfrac',
         ]
 
         for f in saved_fields:
@@ -408,7 +414,8 @@ class BiasStepAnalysis:
         self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
 
         # Load R_n from IV
-        self.R_n = np.full(self.nchans, np.nan)
+        self.R_n_IV = np.full(self.nchans, np.nan)
+        # Rfrac determined from R0 and R_n
         self.Rfrac = np.full(self.nchans, np.nan)
         if self.meta['iv_file'] is not None:
             if os.path.exists(self.meta['iv_file']):
@@ -416,8 +423,8 @@ class BiasStepAnalysis:
                 chmap = sdl.map_band_chans(
                     self.bands, self.channels, iva.bands, iva.channels
                 )
-                self.R_n = iva.R_n[chmap]
-                self.R_n[chmap == -1] = np.nan
+                self.R_n_IV = iva.R_n[chmap]
+                self.R_n_IV[chmap == -1] = np.nan
                 self.Rfrac = self.R0 / self.R_n
 
         if create_bg_map and save_bg_map and self._S is not None:
@@ -897,6 +904,9 @@ def plot_iv_res_comparison(bsa, lim=None, bgs=None, ax=None):
     return fig, ax
 
 def get_plot_text(bsa):
+    """
+    Gets text to add to plot textboxes
+    """
     return '\n'.join([
         f"stream_id: {bsa.meta['stream_id']}",
         f"sid: {bsa.sid}",
@@ -1200,7 +1210,24 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     return bsa
 
 
-def plot_taueff_hist(bsa, text_loc=(0.4, 0.8), fontsize=15, figsize=(10, 6), range=(0, 3)):
+def plot_taueff_hist(bsa, text_loc=(0.4, 0.8), fontsize=15, figsize=(10, 6),
+                     range=(0, 3)):
+    """
+    Plots a histogram of the tau_eff measurements for all bias lines.
+
+    Args
+    -----
+    bsa : BiasStepAnalysis
+        analyzed BiasStepAnalysis object
+    text_loc : tuple[float]
+        Location of textbox in the axis coordinate system.
+    fontsize : int
+        font size of text in textbox
+    figsize : tuple
+        Figure size
+    range : tuple
+        histogram range
+    """
     fig, ax = plt.subplots(figsize=figsize)
     ax.hist(bsa.tau_eff * 1000, range=range, bins=30)
     ax.set_xlabel("Tau eff (ms)", fontsize=18)

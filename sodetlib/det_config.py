@@ -39,6 +39,7 @@ exp_defaults = {
     'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
     'active_bands': [0, 1, 2, 3, 4, 5, 6, 7],
     'active_bgs': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    'downsample_mode': 'internal',
 
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
@@ -77,7 +78,7 @@ exp_defaults = {
     "res_fit_file": None,
 
     # Overbiasing
-    'overbias_wait': 5.0
+    'overbias_wait': 2.0
 }
 band_defaults = {
     # General

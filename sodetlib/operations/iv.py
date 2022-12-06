@@ -314,6 +314,8 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False)
     update_cfg : bool
         If true, will update the device config with the new IV analysis
         filepath
+    show_pb : bool
+        If true, will display a progress bar for the IV analysis
     """
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
@@ -424,9 +426,20 @@ def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3), bgs=None):
     ax.set_ylabel("$R_\mathrm{frac}$", fontsize=14)
     return fig, ax
 
-def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05)):
+def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05), bbox_props=None):
     """
     Plots summary of channel normal resistances.
+
+    Args
+    -----
+    iva : IVAnalysis
+        IVAnalysis object
+    range : tuple
+        Range of histogram
+    text_loc : tuple
+        Location of text box in coordinate frame of axis transform
+    bbox_props : dict
+        Additional bbox properties to add to the textbox
     """
     fig, ax = plt.subplots()
     hist = ax.hist(iva.R_n*1000, range=range, bins=40)
@@ -437,8 +450,11 @@ def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05)):
     txt += '\n' + get_plot_text(iva)
     txt += f'\nMedian: {np.nanmedian(iva.R_n)*1000:0.2f} mOhms'   
 
-    ax.text(*text_loc, txt, bbox={'facecolor': 'wheat', 'alpha': 0.8},
-            transform=ax.transAxes, )
+    bbox = dict(facecolor='wheat', alpha=0.8)
+    if bbox_props is not None:
+        bbox.update(bbox_props)
+
+    ax.text(*text_loc, txt, bbox=bbox, transform=ax.transAxes)
     ax.set_xlabel("$R_n$ (m$\Omega$)", fontsize=14)
     return fig, ax
 
@@ -584,12 +600,9 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         Helper function to run IV sweep for a single bg or group of bgs.
         """
         bgs = np.atleast_1d(bgs).astype(int)
-        S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
-        # ob_biases = np.full(12, np.max(biases))
-        # sdl.overbias_dets(
-        #     S, cfg, bias_groups=bgs, high_current_mode=high_current_mode
-        # )
-        # time.sleep(cool_wait)
+        _bias_arr = S.get_tes_bias_bipolar_array()
+        _bias_arr[bias_groups] = 0
+        S.set_tes_bias_bipolar_array(_bias_arr)
         if overbias_voltage > 0:
             if cool_voltage is None:
                 cool_voltage = np.max(biases)
@@ -600,13 +613,12 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
                 overbias_voltage=overbias_voltage
             )
 
-        bias_group_bool = np.zeros(S._n_bias_groups)
-        bias_group_bool[bgs] = 1
         S.log(f"Starting TES Bias Ramp on bg {bgs}")
         for i, bias in enumerate(biases):
             sdl.stop_point(S)
             S.log(f"Setting bias to {bias:4.3f}")
-            S.set_tes_bias_bipolar_array(bias * bias_group_bool)
+            _bias_arr[bgs] = bias
+            S.set_tes_bias_bipolar_array(_bias_arr)
             start_times[bgs, i] = time.time()
             time.sleep(wait_time)
             stop_times[bgs, i] = time.time()
@@ -663,6 +675,9 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
 
 
 def get_plot_text(iva):
+    """
+    Gets text to add to text-box for IV plots.
+    """
     return '\n'.join([
         f"stream_id: {iva.meta['stream_id']}",
         f"sid: {iva.sid}",
