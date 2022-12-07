@@ -96,7 +96,12 @@ def load_session(stream_id, session_id, idx=None,
         raise FileNotFoundError(
             f"Could not find files for {(stream_id, session_id)}"
         )
-    return load_smurf.load_file(files, show_pb=show_pb, **kwargs)
+    am =  load_smurf.load_file(files, show_pb=show_pb, **kwargs)
+
+    if 'ch_info' not in am._fields:
+        am.wrap('ch_info', am.det_info.smurf)
+
+    return am
 
 
 @set_action()
