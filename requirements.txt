@@ -9,3 +9,5 @@ scipy
 matplotlib
 lmfit
 pyfftw
+pandas
+seaborn
