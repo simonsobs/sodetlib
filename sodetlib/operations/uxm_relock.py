@@ -5,6 +5,11 @@ from sodetlib.operations.tracking import relock_tracking_setup
 from sodetlib.operations import uxm_setup
 
 import matplotlib.pyplot as plt
+import os
+if not os.environ.get('NO_PYSMURF', False):
+    from pysmurf.client.base.smurf_control import SmurfControl
+
+
 
 @sdl.set_action()
 def reload_tune(S, cfg, bands, setup_notches=False,
@@ -27,6 +32,9 @@ def reload_tune(S, cfg, bands, setup_notches=False,
         Whether to create a new master assignment
     tunefile : str
         Tunefile to load. Defaults to the tunefile in the device cfg.
+    update_cfg : bool
+        If true, will update the device cfg with the tunefile created by
+        setup notches.
     """
 
     if tunefile is None:
@@ -35,6 +43,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
     S.load_tune(tunefile)
 
     for band in bands:
+        sdl.stop_point(S)
         bcfg = cfg.dev.bands[band]
         S.set_att_uc(band, bcfg['uc_att'])
         S.set_att_dc(band, bcfg['dc_att'])
@@ -49,12 +58,15 @@ def reload_tune(S, cfg, bands, setup_notches=False,
         # Update tunefile
         cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
 
+    run_grad_descent_and_eta_scan(S, cfg, bands=bands, update_tune=False)
+
     return True, None
 
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, update_tune=True):
+    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None,
+    gain=None): 
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -72,23 +84,36 @@ def run_grad_descent_and_eta_scan(
         If this is set to True, the new resonance frequency and eta parameters
         will be loaded into the smurf tune, and a new tunefile will be written
         based on the new measurements.
+    force_run : bool
+        If True, will reset the ``etaScanInProgress`` variable to force it
+        to re-run. This might be necessary if serial gradient descent failed out.
     """
 
     if bands is None:
-        bands = np.arange(8)
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
 
     for b in bands:
+        sdl.stop_point(S)
         in_progress_reg = S._cryo_root(b) + 'etaScanInProgress'
         if S._caget(in_progress_reg):
-            raise RuntimeError(
-                "Failed during grad descent -- scan already in progress"
-            )
+            if force_run:
+                S._caput(in_progress_reg, 0)
+            else:
+                raise RuntimeError(
+                    "Failed during grad descent -- scan already in progress"
+                )
 
         bcfg = cfg.dev.bands[b]
+
+        if max_iters is None:
+            max_iters = bcfg['gradientDescentMaxIters']
+        if gain is None:
+            gain = bcfg['gradientDescentGain']
+
         S.set_gradient_descent_step_hz(b, bcfg['gradientDescentStepHz'])
-        S.set_gradient_descent_max_iters(b, bcfg['gradientDescentMaxIters'])
-        S.set_gradient_descent_gain(b, bcfg['gradientDescentGain'])
+        S.set_gradient_descent_max_iters(b, max_iters)
+        S.set_gradient_descent_gain(b, gain)
         S.set_gradient_descent_converge_hz(b, bcfg['gradientDescentConvergeHz'])
         S.set_gradient_descent_beta(b, bcfg['gradientDescentBeta'])
 
@@ -139,6 +164,50 @@ def run_grad_descent_and_eta_scan(
         cfg.dev.update_file()
 
 
+def get_full_band_sweep(S, cfg, band, chan):
+    """
+    This runs full_band_ampl_sweep to get the resonator response around a single
+    channel. This is useful for debugging bad channels.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det Config instance
+    band : int
+        smurf-band of channel
+    channel : int
+        smurf-channel of channel
+
+    Returns
+    ----------
+    fs : np.ndarray
+        Array of frequencies that were swept over
+    resp : np.ndarray
+        Complex transmission across the frequency range
+    """
+    sb = S.get_subband_from_channel(band, chan)
+    tone_power = cfg.dev.bands[band]['tone_power']
+    center_freq_array = S.get_center_frequency_array(band)
+    amp_scale_array = S.get_amplitude_scale_array(band)
+    eta_phase_array = S.get_eta_phase_array(band)
+    eta_mag_array = S.get_eta_mag_array(band)
+    fb_enable = S.get_feedback_enable(band)
+    fb_enable_arr = S.get_feedback_enable_array(band)
+
+    try:
+        fs, resp = S.full_band_ampl_sweep(band, [sb], tone_power, 2, n_step=256)
+    finally:
+        S.set_center_frequency_array(band, center_freq_array)
+        S.set_amplitude_scale_array(band, amp_scale_array)
+        S.set_eta_phase_array(band, eta_phase_array)
+        S.set_eta_mag_array(band, eta_mag_array)
+        S.set_feedback_enable(band, fb_enable)
+        S.set_feedback_enable_array(band, fb_enable_arr)
+    return fs, resp
+
+
 def plot_channel_resonance(S, cfg, band, chan):
     """
     Measures and plots resonator properties for a single smurf channel.
@@ -157,18 +226,13 @@ def plot_channel_resonance(S, cfg, band, chan):
     chan : (int)
         smurf channel number
     """
-    sb = S.get_subband_from_channel(band, chan)
-    tone_power = cfg.dev.bands[band]['tone_power']
     res_freq = S.channel_to_freq(band, chan)
-    center_freq_array = S.get_center_frequency_array(band)
-
-    fs, resp = S.full_band_ampl_sweep(0, [sb], tone_power, 2, n_step=256)
-    S.set_center_freq_array(band, center_freq_array)
+    fs, resp = get_full_band_sweep(S, cfg, band, chan)
 
     fs = fs.ravel() + S.get_band_center_mhz(band)
     resp = resp.ravel()
-    fs = fs[resp > 0]
-    resp = resp[resp > 0]
+    fs = fs[np.abs(resp) > 0]
+    resp = resp[np.abs(resp) > 0]
 
     fig, axes = plt.subplots(2, 1, figsize=(10, 10))
 
@@ -176,7 +240,7 @@ def plot_channel_resonance(S, cfg, band, chan):
     ax = axes[0]
     ax.plot(fs, np.abs(resp))
     ax = ax.twinx()
-    ax.plot(fs, np.angle(resp), color='C1')
+    ax.plot(fs, np.unwrap(np.angle(resp)), color='C1')
     ax.axvline(res_freq, color='grey', ls='--')
 
     # Circ plot
@@ -185,6 +249,7 @@ def plot_channel_resonance(S, cfg, band, chan):
     Q = np.real(resp * eta)
     I = -np.imag(resp * eta)
 
+    ax = axes[1]
     ax.axvline(0, color='grey')
     ax.axhline(0, color='grey')
     ax.scatter(I, Q, c=np.abs(resp))
@@ -194,9 +259,10 @@ def plot_channel_resonance(S, cfg, band, chan):
 
 
 @sdl.set_action()
-def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
-               setup_notches=False, new_master_assignment=False,
-               reset_rate_khz=None, nphi0=None, skip_setup_amps=False):
+def uxm_relock(
+    S: SmurfControl, cfg, bands=None, show_plots=False,
+    setup_notches=False, new_master_assignment=False, reset_rate_khz=None,
+    nphi0=None, skip_setup_amps=False):
     """
     Relocks resonators by running the following steps:
 
@@ -205,7 +271,6 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
         3. load tune, setup_notches, serial grad descent and eta scan
         4. Tracking setup
         5. Measure noise
-
 
     Args
     -----
@@ -225,8 +290,10 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     nphi0 : int, optional
         Number of phi0's to ramp through. Defaults to the value that was used
         during setup.
-    disable_bad_chans : bool
-        If true, will disable tones for bad-tracking channels
+    show_plots : bool
+        If True will show plots
+    skip_setup_amps : bool
+        If True will skip amplifier setup.
 
     Returns
     --------
@@ -234,7 +301,7 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
         Dictionary containing a summary of all run operations.
     """
     if bands is None:
-        bands = np.arange(8)
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
 
     exp = cfg.dev.exp
@@ -264,6 +331,7 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     #############################################################
     # 2. Setup amps
     #############################################################
+    sdl.stop_point(S)
     if not skip_setup_amps:
         summary['timestamps'].append(('setup_amps', time.time()))
         sdl.set_session_data(S, 'timestamps', summary['timestamps'])
@@ -273,9 +341,11 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
             return False, summary
     else:
         print("Skipping amp setup")
+
     #############################################################
     # 3. Load tune
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('load_tune', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     success, summary['reload_tune'] = reload_tune(
@@ -286,10 +356,10 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     if not success:
         return False, summary
 
-
     #############################################################
     # 4. Tracking Setup
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('tracking_setup', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
@@ -299,20 +369,10 @@ def uxm_relock(S, cfg, bands=None, disable_bad_chans=True, show_plots=False,
     )
     summary['tracking_setup_results'] = tr
 
-    sdl.set_session_data(S, 'tracking_setup_results', {
-        'bands': tr.bands, 'channels': tr.channels,
-        'r2': tr.r2, 'f_ptp': tr.f_ptp, 'df_ptp': tr.df_ptp,
-        'is_good': tr.is_good,
-    })
-
-    # Check that the number of good tracing channels is larger than the
-    # min_good_tracking_frac
-    if tr.ngood / tr.nchans < cfg.dev.exp['min_good_tracking_frac']:
-        return False, summary
-
     #############################################################
     # 5. Noise
     #############################################################
+    sdl.stop_point(S)
     summary['timestamps'].append(('noise', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,

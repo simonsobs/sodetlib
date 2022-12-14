@@ -6,10 +6,11 @@ from sodetlib.operations.iv import IVAnalysis
 
 np.seterr(all="ignore")
 
+
 sdl.set_action()
 def bias_to_rfrac_range(
         S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
-        overbias_voltage=19.9, overbias_wait=5.0, Rn_range=(5e-3, 12e-3),
+        overbias=True, Rn_range=(5e-3, 12e-3),
         math_only=False):
     """
     Biases detectors to transition given an rfrac range. This function will choose
@@ -49,7 +50,7 @@ def bias_to_rfrac_range(
         bias-groups will have been modified.
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if iva is None:
@@ -78,21 +79,56 @@ def bias_to_rfrac_range(
     for bg in bias_groups:
         S.log(f"BG {bg}: {biases[bg]:.2f}")
 
-    S.log("Overbiasing detectors")
-    sdl.set_current_mode(S, bias_groups, 1)
-    for bg in bias_groups:
-        S.set_tes_bias_bipolar(bg, overbias_voltage)
-    time.sleep(overbias_wait)
+    if overbias:
+        sdl.overbias_dets(S, cfg, bias_groups=bias_groups)
     S.set_tes_bias_bipolar_array(biases)
-    sdl.set_current_mode(S, bias_groups, 0, const_current=False)
 
     return biases
+
+def bias_to_volt_arr(S, cfg, biases, bias_groups=None, overbias=True):
+    """
+    Biases detectors using an array of voltages.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        det config instance
+    biases : np.ndarray
+        This must be an array of length 12, with the ith element being the
+        voltage bias of bias group i. Note that the bias of any bias group
+        that is not active, or not specified in the ``bias_groups`` parameter
+        will be ignored.
+    bias_groups : list
+        List of bias groups to bias. If None, this will default to the active
+        bgs specified in the device cfg.
+    overbias : bool
+        If true, will overbias specified bias lines. If false, will set bias
+        voltages without overbiasing detectors.
+    """
+    if bias_groups is None:
+        bias_groups = cfg.dev.exp['active_bgs']
+    bias_groups = np.atleast_1d(bias_groups)
+
+    _biases = S.get_tes_bias_bipolar_array()
+    for bg in bias_groups:
+        _biases[bg] = biases[bg]
+
+    S.log(f"Target biases: ")
+    for bg in bias_groups:
+        S.log(f"BG {bg}: {biases[bg]:.2f}")
+
+    if overbias:
+        sdl.overbias_dets(S, cfg, bias_groups=bias_groups)
+
+    S.set_tes_bias_bipolar_array(biases)
+    return
 
 
 sdl.set_action()
 def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
-                  overbias_voltage=19.9, overbias_wait=5.0,
-                  Rn_range=(5e-3, 12e-3), math_only=False):
+                  overbias=True, Rn_range=(5e-3, 12e-3), math_only=False):
     """
     Biases detectors to a specified Rfrac value
 
@@ -129,7 +165,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         bias-groups will have been modified.
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if iva is None:
@@ -158,13 +194,10 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     for bg in bias_groups:
         S.log(f"BG {bg}: {biases[bg]:.2f}")
 
-    S.log("Overbiasing detectors")
-    sdl.set_current_mode(S, bias_groups, 1)
-    for bg in bias_groups:
-        S.set_tes_bias_bipolar(bg, overbias_voltage)
-    time.sleep(overbias_wait)
+    if overbias:
+        sdl.overbias_dets(S, cfg, bias_groups=bias_groups)
+
     S.set_tes_bias_bipolar_array(biases)
-    sdl.set_current_mode(S, bias_groups, 0, const_current=False)
 
     return biases
 

@@ -336,3 +336,54 @@ API
 .. automodule:: sodetlib.operations.tracking
     :members: 
 
+Debugging Issues
+--------------------
+
+There are many issues that result in failure somewhere in the setup or relock procedure,
+including:
+ - Amplifiers not functioning properly
+ - Flux-ramp not being received by the UFM
+ - SMuRF's resonance center frequency is off of the true resonance frequency
+ - SMuRF's eta estimation is off
+ - Phase-delay estimation is off
+Any of these may result in bad tracking performance and high noise levels.
+
+In order to debug, it is extremely useful to visualize the resonator response
+and how SMuRF is tracking it. The ``plot_channel_resonance`` function in the
+``uxm_relock`` package will allow you to view a single resonator, by scanning
+the probe-tone across the subband (much like ``setup-notches`` but for a single
+channel).
+
+The plot below shows a relatively well-behaved resonator. The SMuRF central frequency
+(the dashed vertical line) sits approximately at the resonance minimum, and the eta circle
+in the bottom plot is properly rotated so that it sits on the positive x-axis.
+
+.. image:: /_static/images/good_resonator.png
+  :width: 100%
+  :alt: Good resonator
+
+The two plots below show resonators which are not functioning properly.  The
+plot to the left shows a resonator where SMuRF's central resonance frequency
+sits far from the resonance minimum. This might be due to TES bias conditions
+being different than they were when the tune was taken, causing there to be a
+different amount of flux through the SQUID.
+
+The plot on the right shows a large linear slope in the phase of the transmitted
+signal, indicative of the phase-delay not being set correctly.  This might be
+fixed by re-running estimate phase delay.
+
+.. image:: /_static/images/bad_resonator_off_resonance.png
+  :width: 49%
+  :alt: Resonator with untracked resonance
+
+.. image:: /_static/images/bad_resonator_phase_delay.png
+  :width: 49%
+  :alt: Resonator with bad phase delay
+
+If the amplitude of the transmitted signal is an order of magnitude lower than
+those shown here, it indicates that amplifiers might not be on or functioning
+properly.
+
+If the resonator looks good but is still not seeing any signal during tracking
+(with tracking-feedback off) it is likely that the flux-ramp signal is not
+making it to the detector.

@@ -37,6 +37,9 @@ YamlReps.setup_reps()
 exp_defaults = {
     # General stuff
     'downsample_factor': 20, 'coupling_mode': 'dc', 'synthesis_scale': 1,
+    'active_bands': [0, 1, 2, 3, 4, 5, 6, 7],
+    'active_bgs': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    'downsample_mode': 'internal',
 
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
@@ -73,6 +76,9 @@ exp_defaults = {
     # Misc files
     "tunefile": None, "bgmap_file": None, "iv_file": None,
     "res_fit_file": None,
+
+    # Overbiasing
+    'overbias_wait': 2.0
 }
 band_defaults = {
     # General
@@ -83,7 +89,7 @@ band_defaults = {
     "lms_gain": 0, "feedback_gain": 2048, "frac_pp": None, "lms_freq_hz": None,
 
     # Gradient Descent Parameters
-    "gradientDescentMaxIters": 150,
+    "gradientDescentMaxIters": 100,
     "gradientDescentAverages": 2, 
     "gradientDescentGain": 0.001,
     "gradientDescentConvergeHz": 500,
@@ -91,7 +97,10 @@ band_defaults = {
     "gradientDescentMomentum": 1,
     "gradientDescentBeta": 0.1
 }
-bg_defaults = {}
+bg_defaults = {
+    'overbias_voltage': 19.9,
+    'cool_voltage': 10.0
+}
 
 
 class DeviceConfig:
@@ -643,6 +652,8 @@ class DetConfig:
                 make_logfile=make_logfile, data_path_id=smurfpub_id,
                 **pysmurf_kwargs)
         self.S = S
+        # Lets just stash this in pysmurf...
+        S._sodetlib_cfg = self
 
         # Dump config outputs
         if dump_configs:

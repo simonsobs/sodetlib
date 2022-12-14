@@ -473,6 +473,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
                show_plot=True, save_plot=False, plotted_rchans=None,
                wl_f_range=(10,30), fit=False,
                nperdecade=10, plot1overfregion=False, save_dir=None,
+               g3_tag=None,
                **asd_args):
     """
     Streams data for specified amount of time and then calculated the ASD and
@@ -508,7 +509,9 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
         if true plots a line and shaded region that represents the SO
         passing low-f requirement (i.e. fknee set by wl = 65pA/rtHz and
         slope must be <= 1/f^{1/2} in the ASD)
-
+    g3_tag: string, optional
+        if not None, overrides default tag "oper,noise" sent to g3 file
+    
     Returns
     -------
     am: AxisManager
@@ -540,7 +543,9 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     if save_dir is None:
         save_dir = S.plot_dir
 
-    sid = sdl.take_g3_data(S, acq_time)
+    if g3_tag is None:
+        g3_tag = "oper,noise"
+    sid = sdl.take_g3_data(S, acq_time, tag=g3_tag)
     am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
     ctime = int(am.timestamps[0])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,
@@ -552,6 +557,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
 
     outdict = noisedict.copy()
     outdict['sid'] = sid
+    outdict['meta'] = sdl.get_metadata(S, cfg)
     if plot_band_summary:
         fig_wnl, axes_wnl, fig_fk, axes_fk, fig_asd, axes_asd = plot_band_noise(
             am, nbins=nbins, noisedict=noisedict, show_plot=show_plot,
@@ -580,5 +586,41 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
             outdict['channel_plots'][rc]['fig'] = fig
             outdict['channel_plots'][rc]['axes'] = axes
     fname = os.path.join(S.output_dir, f'{ctime}_take_noise.npy')
+    outdict['path'] = fname 
     sdl.validate_and_save(fname, outdict, S=S, cfg=cfg, make_path=False)
     return am, outdict
+
+def plot_noise_all(res, range=(0, 200), text_loc=(0.4, 0.7)):
+    """
+    Plots the white noise distribution of all bands together.
+
+    Args
+    -----
+    res : dict
+        Result from the ``take_noise`` function
+    range : tuple
+        Range of the histogram
+    text_loc : tuple
+        Location to place the textbox containing median and file info. These
+        coordinates are in the axis tranform frame with (0, 0) being the bottom
+        left and (1, 1) being the top right.
+    """
+    pars = res['noise_pars']
+    wls = pars[:, 0]
+    fig, ax = plt.subplots()
+    hs = ax.hist(wls, range=range, bins=40)
+    wlmed = np.nanmedian(wls)
+    ch_pict = int(np.sum(hs[0]))
+    ch_tot = len(wls)
+    ax.axvline(wlmed, color='red', ls='--')
+    txt = '\n'.join([
+        f'Median: {wlmed:0.2f} pA/rt(Hz)',
+        f'{ch_pict}/{ch_tot} chans pictured',
+        f"sid: {res['sid']}",
+        f"stream_id: {res['meta']['stream_id']}",
+        f"path: {os.path.basename(res['path'])}"
+    ])
+    ax.text(*text_loc, txt, transform=ax.transAxes,
+            bbox=dict(facecolor='wheat', alpha=0.7))
+    ax.set_xlabel("White Noise (pA/rt(Hz))")
+    return fig, ax

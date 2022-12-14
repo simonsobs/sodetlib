@@ -154,8 +154,8 @@ class TrackingResults:
         if band in self.bands:
             raise ValueError(f"Data for band {band} has already been added!")
 
-        fptp = np.ptp(f, axis=0)
-        m = fptp != 0
+        dfptp = np.ptp(df, axis=0)
+        m = dfptp != 0
 
         channels = np.where(m)[0]
         nchans = len(channels)
@@ -265,8 +265,8 @@ def plot_tracking_channel(tr, idx, show_text=True):
     f = tr.f[idx]
     df = tr.df[idx]
     fig, ax = plt.subplots(figsize=(12, 4))
-    band = tr.bands[idx]
-    channel = tr.channels[idx]
+    band = int(tr.bands[idx])
+    channel = int(tr.channels[idx])
 
     ax.set_title(f"Band {band} Channel {channel}")
     ax.plot(df+f, color='grey', alpha=0.8, label='Freq Response')
@@ -455,8 +455,9 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
 
 
 @sdl.set_action()
-def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
-                          show_plots=False):
+def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
+                          feedback_gain=None, lms_gain=None, show_plots=False,
+                          frac_pp=None): 
     """
     Sets up tracking for smurf. This assumes you already have optimized
     lms_freq and frac-pp for each bands in the device config. This function
@@ -489,7 +490,10 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         Dictionary of results of all tracking-setup calls, with the bands number
         as key.
     """
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
     bands = np.atleast_1d(bands)
+
     nbands = len(bands)
     exp = cfg.dev.exp
 
@@ -506,7 +510,10 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
 
     # Choose frac_pp to be the mean of all running bands.
     # This is the frac-pp at the flux-ramp-rate used for optimization
-    fpp0 = np.median(frac_pp0)
+    fpp0 = np.mean(frac_pp0)
+    lms_freq0 *= fpp0 / frac_pp0
+    
+    S.log(f"Using frac-pp={fpp0}")
 
     # Adjust fpp, lms_freq, and flux-ramp-rate depending on desired
     # flux-ramp-rate and nphi0
@@ -519,6 +526,10 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
     else:
         reset_rate_khz = reset_rate_khz0
 
+    if frac_pp is not None:
+        lms_freqs *=  frac_pp / fpp
+        fpp = frac_pp
+
     res = TrackingResults(S, cfg)
     tk = {
         'reset_rate_khz': reset_rate_khz, 'fraction_full_scale': fpp,
@@ -527,8 +538,20 @@ def relock_tracking_setup(S, cfg, bands, reset_rate_khz=None, nphi0=None,
         'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
     }
 
+
     for i, band in enumerate(bands):
-        tk.update({'lms_freq_hz': lms_freqs[i]})
+        bcfg = cfg.dev.bands[band]
+        tk.update({
+            'lms_freq_hz': lms_freqs[i],
+            'lms_gain': bcfg['lms_gain'],
+            'feedback_gain': bcfg['feedback_gain'],
+        })
+
+        if lms_gain is not None:
+            tk['lms_gain'] = lms_gain
+        if feedback_gain is not None:
+            tk['feedback_gain'] = feedback_gain
+
         f, df, sync = S.tracking_setup(band, **tk)
         res.add_band_data(band, f, df, sync, tracking_kwargs=tk)
 

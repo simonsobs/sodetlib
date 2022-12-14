@@ -7,6 +7,7 @@ import yaml
 import sys
 import time
 import os
+import threading
 
 
 class TermColors:
@@ -38,9 +39,35 @@ with open(sys_config_file, 'r') as stream:
 ########################################################################
 # Various utility functions
 ########################################################################
-
+def get_docker_services():
+    """
+    Returns a list of docker services that are available from the docker-compose
+    file in the ocs config directory.
+    """
+    cmd = 'docker-compose config --services'
+    res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
+    return res.stdout.decode().split()
 
 def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
+    """
+    Runs a command using subproces.run within the sodetlib util docker.
+
+    Args
+    ------
+    cmd : string
+        Command to run
+    args : List[string]
+        List of arguments to pass to the command
+    name : string, optional
+        Name of the docker container. If none is specified this will not be
+        set and docker-compose will choose the default.
+    rm : bool
+        If True, will remove the container when the command has finished.
+    run_kwargs : Additional keyword arguments
+        Any additional kwargs specified will be passed directly to the
+        subprocess.run function. See the subprocess docs for allowed kwargs:
+        https://docs.python.org/3/library/subprocess.html#subprocess.run
+    """
     cmd  = f'docker-compose run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
@@ -363,6 +390,7 @@ def hammer_func(args):
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
         services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
+        start_sync_dockers()
     else:
         services = []
 
@@ -380,15 +408,57 @@ def hammer_func(args):
 
     if reboot and not args.skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
-        for slot in slots:
-            print(f"Configuring pysmurf on slot {slot}...")
-            util_run('python3',
-                     args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split())
+        setup_smurfs(slots)
         print("Finished configuring pysmurf!")
 
     # Enters into an ipython notebook for the first specified slot   
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
     enter_pysmurf(slots[0], agg=args.agg)
+
+def setup_smurfs(slots):
+    """
+    Runs S.setup on one or more slots in parallel
+
+    Args
+    -----
+    slots : list
+        List of slots to run on
+    """
+    threads = []
+    for s in slots:
+        print(f"Configuring pysmurf on slot {s}...")
+        kw = {
+            'args': ('python3',),
+            'kwargs': {'args': f'/sodetlib/scripts/setup_pysmurf.py -N {s}'.split()}
+
+        }
+        th = threading.Thread(target=util_run, **kw )
+        th.start()
+        threads.append(th)
+
+    for th in threads:
+        th.join()
+
+def start_sync_dockers():
+    """
+    Begins suprsync docker services (by choosing all docker services that have
+    "sync" in their name).
+    """
+    services = get_docker_services()
+    start_services([s for s in services if 'sync' in s])
+
+def start_sync_func(args):
+    """Entrypoint for ``jackhammer start-sync``"""
+    start_sync_dockers()
+
+
+# Entrypoint for jackhammer setup
+def setup_func(args):
+    if not args.slots:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+    setup_smurfs(slots)
 
 
 # Entrypoint for jackhammer logs
@@ -496,6 +566,12 @@ if __name__ == '__main__':
     hammer_parser.add_argument('--dump-rogue', action='store_true',
                                help="If true, will attempt to connect to pysmurf smurf and dump the rogue tree")
 
+    setup_parser = subparsers.add_parser("setup")
+    setup_parser.set_defaults(func=setup_func)
+    setup_parser.add_argument('slots', nargs='*', type=int,
+                               help="Specifies the slots to setup")
+    
+
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
     log_parser.add_argument('log_args', nargs="*", type=str,
@@ -536,6 +612,9 @@ if __name__ == '__main__':
     ########### Jackhammer write-env parser ###########
     write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
     write_env_parser.set_defaults(func=write_env_func)
+
+    start_sync_parser = subparsers.add_parser('start-sync')
+    start_sync_parser.set_defaults(func=start_sync_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):

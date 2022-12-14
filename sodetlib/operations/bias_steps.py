@@ -151,7 +151,7 @@ def play_bias_steps_dc(S, cfg, bias_groups, step_duration, step_voltage,
             'neg', or 'both'
     """
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
     if dacs not in ['pos', 'neg', 'both']:
@@ -287,6 +287,12 @@ class BiasStepAnalysis:
             Fit covariances for each channel
         tau_eff (array (float) shape (nchans)):
             Tau_eff for each channel (sec). Same as step_fit_popts[:, 1].
+        R_n_IV (array (float) shape (nchans)):
+            Array of normal resistances for each channel pulled from IV
+            in the device cfg.
+        Rfrac (array (float) shape (nchans)):
+            Rfrac of each channel, determined from R0 and the channel's normal
+            resistance.
     """
 
     def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
@@ -323,6 +329,8 @@ class BiasStepAnalysis:
             # Det param data
             'transition_range', 'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
             'R0', 'I0', 'Pj', 'Si',
+            # From IV's
+            'R_n_IV', 'Rfrac',
         ]
 
         for f in saved_fields:
@@ -405,6 +413,20 @@ class BiasStepAnalysis:
         self._get_step_response(step_window=step_window)
         self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
 
+        # Load R_n from IV
+        self.R_n_IV = np.full(self.nchans, np.nan)
+        # Rfrac determined from R0 and R_n
+        self.Rfrac = np.full(self.nchans, np.nan)
+        if self.meta['iv_file'] is not None:
+            if os.path.exists(self.meta['iv_file']):
+                iva = iv.IVAnalysis.load(self.meta['iv_file'])
+                chmap = sdl.map_band_chans(
+                    self.bands, self.channels, iva.bands, iva.channels
+                )
+                self.R_n_IV = iva.R_n[chmap]
+                self.R_n_IV[chmap == -1] = np.nan
+                self.Rfrac = self.R0 / self.R_n
+
         if create_bg_map and save_bg_map and self._S is not None:
             # Write bgmap after compute_dc_params because bg-assignment
             # will be un-set if resistance estimation is too high.
@@ -429,6 +451,7 @@ class BiasStepAnalysis:
 
 
         self._fit_tau_effs(tmin=fit_tmin)
+
         if save:
             self.save()
 
@@ -880,8 +903,17 @@ def plot_iv_res_comparison(bsa, lim=None, bgs=None, ax=None):
 
     return fig, ax
 
+def get_plot_text(bsa):
+    """
+    Gets text to add to plot textboxes
+    """
+    return '\n'.join([
+        f"stream_id: {bsa.meta['stream_id']}",
+        f"sid: {bsa.sid}",
+        f"path: {os.path.basename(bsa.filepath)}",
+    ])
 
-def plot_bg_assignment(bsa):
+def plot_bg_assignment(bsa, text_loc=(0.05, 0.85), text_kw=None):
     """
     Plots bias group assignment summary
     """
@@ -901,6 +933,13 @@ def plot_bg_assignment(bsa):
     ax.set_xticklabels(xticklabels)
     ax.set_xlabel("Bias Group", fontsize=16)
     ax.set_ylabel("Num Channels", fontsize=16)
+    if text_kw is None:
+        text_kw = {}
+    
+    ax.text(
+        *text_loc, get_plot_text(bsa), transform=ax.transAxes,
+        fontsize=18, bbox=dict(facecolor='white', alpha=0.8)
+    )
     return fig, ax
 
 
@@ -913,7 +952,7 @@ def plot_Rtes(bsa):
     ax.set_xlabel(r"$R_\mathrm{TES}$ (m$\Omega$)", fontsize=12)
     return fig, ax
 
-def plot_Rfrac(bsa):
+def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     """
     Plots Rfrac split out by bias group
     """
@@ -946,7 +985,9 @@ def plot_Rfrac(bsa):
     ax.set_yticks(offset * bgs)
     ax.set_yticklabels([f'BG {bg}' for bg in bgs], fontsize=20)
     ax.tick_params(axis='x', labelsize=24)
-
+    txt = get_plot_text(bsa)
+    ax.text(*text_loc, txt, bbox=dict(facecolor='white', alpha=0.8), fontsize=20,
+            transform=ax.transAxes)
     return fig, ax
 
 
@@ -954,7 +995,7 @@ def plot_Rfrac(bsa):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True):
+               use_waveform=True, show_plots=True,g3_tag=None):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -993,11 +1034,19 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         analysis_kwargs (dict, optional):
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
+        g3_tag: string, optional
+            if not None, overrides the default tag "oper,bgmap" sent to the g3
+            file
     """
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
+    bgs = np.atleast_1d(bgs)
+
     if analysis_kwargs is None:
         analysis_kwargs = {}
+
+    if g3_tag is None:
+        g3_tag = "oper,bgmap"
 
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, dc_voltage)
@@ -1011,7 +1060,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, analysis_kwargs=_analysis_kwargs
+        use_waveform=use_waveform, g3_tag=g3_tag,
+        analysis_kwargs=_analysis_kwargs
     )
 
     if hasattr(bsa, 'bgmap'):
@@ -1029,7 +1079,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None):
+                    use_waveform=True, channel_mask=None, g3_tag=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1077,10 +1127,16 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             function.
         channel_mask : np.ndarray, optional
             Mask containing absolute smurf-channels to write to disk
+        g3_tag: string, optional
+            if not None, overrides the default tag "oper,bias_steps" sent to the 
+            g3 file
     """
     if bgs is None:
-        bgs = np.arange(12)
+        bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
+
+    if g3_tag is None:
+        g3_tag = "oper,bias_steps"
 
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
@@ -1100,9 +1156,6 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     initial_dc_biases = S.get_tes_bias_bipolar_array()
 
     try:
-        S.set_downsample_factor(1)
-        S.set_filter_disable(1)
-
         dc_biases = initial_dc_biases
         init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
@@ -1115,7 +1168,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
 
         bsa.sid = sdl.stream_g3_on(
-            S, tag='bias_steps', channel_mask=channel_mask
+            S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
+            filter_disable=True
         )
 
         bsa.start = time.time()
@@ -1155,3 +1209,29 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     return bsa
 
+
+def plot_taueff_hist(bsa, text_loc=(0.4, 0.8), fontsize=15, figsize=(10, 6),
+                     range=(0, 3)):
+    """
+    Plots a histogram of the tau_eff measurements for all bias lines.
+
+    Args
+    -----
+    bsa : BiasStepAnalysis
+        analyzed BiasStepAnalysis object
+    text_loc : tuple[float]
+        Location of textbox in the axis coordinate system.
+    fontsize : int
+        font size of text in textbox
+    figsize : tuple
+        Figure size
+    range : tuple
+        histogram range
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.hist(bsa.tau_eff * 1000, range=range, bins=30)
+    ax.set_xlabel("Tau eff (ms)", fontsize=18)
+    txt = get_plot_text(bsa)
+    ax.text(*text_loc, txt, bbox=dict(facecolor='white', alpha=0.8),
+            fontsize=fontsize, transform=ax.transAxes)
+    return fig, ax

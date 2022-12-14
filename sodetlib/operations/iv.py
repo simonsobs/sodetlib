@@ -3,6 +3,8 @@ import time
 from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
+import os
+from tqdm.auto import trange
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -296,7 +298,7 @@ def compute_si(iva):
         iva.si[i, :-1] = si
 
 
-def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
+def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False):
     """
     Runs main analysis for an IVAnalysis object. This calculates the attributes
     defined in the IVAnalysis class.
@@ -312,19 +314,20 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     update_cfg : bool
         If true, will update the device config with the new IV analysis
         filepath
+    show_pb : bool
+        If true, will display a progress bar for the IV analysis
     """
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
 
     # Calculate phase response and bias_voltages / currents
-    for i in range(iva.nbiases):
+    for i in trange(iva.nbiases, disable=(not show_pb)):
         # Start from back because analysis is easier low->high voltages
         for j, bg in enumerate(iva.bias_groups):
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
             chan_mask = iva.bgmap == bg
             m = (t0 < am.timestamps) & (am.timestamps < t1)
-            iva.resp[chan_mask, i] = np.nanmean(am.signal[chan_mask][:, m], axis=1)
-
+            iva.resp[chan_mask, i] = np.nanmean(am.signal[:, m][chan_mask], axis=1)
             if j == 0:
                 bias_bits = np.median(am.biases[bg, m])
                 iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
@@ -338,7 +341,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     A_per_rad = iva.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
     iva.resp = (iva.resp.T * iva.polarity).T * A_per_rad
 
-    for i in range(iva.nchans):
+    for i in trange(iva.nchans, disable=(not show_pb)):
         d_resp = np.diff(iva.resp[i])
         dd_resp = np.diff(d_resp)
         dd_resp_abs = np.abs(dd_resp)
@@ -396,14 +399,20 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     if save:
         iva.save(update_cfg=update_cfg)
 
-def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
+def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3), bgs=None):
     """
     Plots Stacked Rfrac curves of each channel.
     """
     fig, ax = plt.subplots()
     Rfrac = (iva.R.T / iva.R_n).T
+    if bgs is None:
+        bgs = np.arange(12)
+    bgs = np.atleast_1d(bgs)
     for i, rf in enumerate(Rfrac):
         bg = iva.bgmap[i]
+        if bgs is not None:
+            if bg not in bgs:
+                continue
 
         if not Rn_range[0] < iva.R_n[i] < Rn_range[1]:
             continue
@@ -417,16 +426,35 @@ def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
     ax.set_ylabel("$R_\mathrm{frac}$", fontsize=14)
     return fig, ax
 
-def plot_Rn_hist(iva, range=(0, 10)):
+def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05), bbox_props=None):
     """
     Plots summary of channel normal resistances.
+
+    Args
+    -----
+    iva : IVAnalysis
+        IVAnalysis object
+    range : tuple
+        Range of histogram
+    text_loc : tuple
+        Location of text box in coordinate frame of axis transform
+    bbox_props : dict
+        Additional bbox properties to add to the textbox
     """
     fig, ax = plt.subplots()
     hist = ax.hist(iva.R_n*1000, range=range, bins=40)
+    ax.axvline(np.nanmedian(iva.R_n)*1000, color='red', ls='--')
+
     chans_pictured = int(np.sum(hist[0]))
     txt = f"{chans_pictured} / {iva.nchans} channels pictured"
-    ax.text(0.05, 0.05, txt, bbox={'facecolor': 'wheat', 'alpha': 0.8},
-            transform=ax.transAxes)
+    txt += '\n' + get_plot_text(iva)
+    txt += f'\nMedian: {np.nanmedian(iva.R_n)*1000:0.2f} mOhms'   
+
+    bbox = dict(facecolor='wheat', alpha=0.8)
+    if bbox_props is not None:
+        bbox.update(bbox_props)
+
+    ax.text(*text_loc, txt, bbox=bbox, transform=ax.transAxes)
     ax.set_xlabel("$R_n$ (m$\Omega$)", fontsize=14)
     return fig, ax
 
@@ -472,7 +500,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
             high_current_mode=True, cool_wait=30, cool_voltage=None,
             biases=None, bias_high=18, bias_low=0, bias_step=0.025,
             show_plots=True, wait_time=0.1, run_analysis=True,
-            run_serially=False, serial_wait_time=10, **analysis_kwargs):
+            run_serially=False, serial_wait_time=10, g3_tag=None,
+            **analysis_kwargs):
     """
     Takes an IV.
 
@@ -527,6 +556,8 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         bias groups independently instead of all together.
     serial_wait_time : float
         Time to sleep between serial IV sweeps (sec)
+    g3_tag : string (optional)
+        If not None, overrides default tag "oper,iv" sent to g3 file.
     analysis_kwargs : dict
         Keyword arguments to pass to analysis
 
@@ -540,8 +571,11 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
                              'pysmurf session. Load active tunefile.')
 
     if bias_groups is None:
-        bias_groups = np.arange(12)
+        bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
+
+    if g3_tag is None:
+        g3_tag = "oper,iv"
 
     if biases is None:
         biases = np.arange(bias_high, bias_low - bias_step, -bias_step)
@@ -560,12 +594,15 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
 
     start_times = np.zeros((S._n_bias_groups, len(biases)))
     stop_times = np.zeros((S._n_bias_groups, len(biases)))
+    sdl.stop_point(S)
     def overbias_and_sweep(bgs, cool_voltage=None):
         """
         Helper function to run IV sweep for a single bg or group of bgs.
         """
         bgs = np.atleast_1d(bgs).astype(int)
-        S.set_tes_bias_bipolar_array(np.zeros(S._n_bias_groups))
+        _bias_arr = S.get_tes_bias_bipolar_array()
+        _bias_arr[bias_groups] = 0
+        S.set_tes_bias_bipolar_array(_bias_arr)
         if overbias_voltage > 0:
             if cool_voltage is None:
                 cool_voltage = np.max(biases)
@@ -576,12 +613,12 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
                 overbias_voltage=overbias_voltage
             )
 
-        bias_group_bool = np.zeros(S._n_bias_groups)
-        bias_group_bool[bgs] = 1
         S.log(f"Starting TES Bias Ramp on bg {bgs}")
         for i, bias in enumerate(biases):
+            sdl.stop_point(S)
             S.log(f"Setting bias to {bias:4.3f}")
-            S.set_tes_bias_bipolar_array(bias * bias_group_bool)
+            _bias_arr[bgs] = bias
+            S.set_tes_bias_bipolar_array(_bias_arr)
             start_times[bgs, i] = time.time()
             time.sleep(wait_time)
             stop_times[bgs, i] = time.time()
@@ -589,7 +626,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if high_current_mode:
         biases /= S.high_low_current_ratio
     try:
-        sid = sdl.stream_g3_on(S)
+        sid = sdl.stream_g3_on(S, tag=g3_tag)
         if run_serially:
             for bg in bias_groups:
                 overbias_and_sweep(bg, cool_voltage=cool_voltage)
@@ -607,6 +644,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
     if run_analysis:
+        sdl.stop_point(S)
         _analysis_kwargs = {'save': True, 'update_cfg': True}
         _analysis_kwargs.update(analysis_kwargs)
         analyze_iv(iva, **_analysis_kwargs)
@@ -636,4 +674,13 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     return iva
 
 
+def get_plot_text(iva):
+    """
+    Gets text to add to text-box for IV plots.
+    """
+    return '\n'.join([
+        f"stream_id: {iva.meta['stream_id']}",
+        f"sid: {iva.sid}",
+        f"path: {os.path.basename(iva.filepath)}",
+    ])
 
