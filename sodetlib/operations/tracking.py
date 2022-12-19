@@ -535,7 +535,8 @@ def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
         'reset_rate_khz': reset_rate_khz, 'fraction_full_scale': fpp,
         'make_plot': False, 'show_plot': False, 'channel': [],
         'nsamp': 2**18, 'return_data': True,
-        'feedback_start_frac': 0.02, 'feedback_end_frac': 0.94,
+        'feedback_start_frac': exp['feedback_start_frac'],
+        'feedback_end_frac': exp['feedback_end_frac'],
     }
 
 
