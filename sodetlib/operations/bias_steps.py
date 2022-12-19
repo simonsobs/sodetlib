@@ -425,7 +425,7 @@ class BiasStepAnalysis:
                 )
                 self.R_n_IV = iva.R_n[chmap]
                 self.R_n_IV[chmap == -1] = np.nan
-                self.Rfrac = self.R0 / self.R_n
+                self.Rfrac = self.R0 / self.R_n_IV
 
         if create_bg_map and save_bg_map and self._S is not None:
             # Write bgmap after compute_dc_params because bg-assignment
