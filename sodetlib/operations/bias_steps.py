@@ -425,7 +425,7 @@ class BiasStepAnalysis:
                 )
                 self.R_n_IV = iva.R_n[chmap]
                 self.R_n_IV[chmap == -1] = np.nan
-                self.Rfrac = self.R0 / self.R_n
+                self.Rfrac = self.R0 / self.R_n_IV
 
         if create_bg_map and save_bg_map and self._S is not None:
             # Write bgmap after compute_dc_params because bg-assignment
@@ -960,7 +960,7 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     chmap = sdl.map_band_chans(bsa.bands, bsa.channels,
                                iva.bands, iva.channels)
 
-    Rfracs = bsa.R0 / iva.R_n[chmap]
+    Rfracs = bsa.R0 / iva.R_n_IV[chmap]
     lim = (-0.1, 1.2)
     nbins=30
     bins = np.linspace(*lim, nbins)
