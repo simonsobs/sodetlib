@@ -960,7 +960,7 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     chmap = sdl.map_band_chans(bsa.bands, bsa.channels,
                                iva.bands, iva.channels)
 
-    Rfracs = bsa.R0 / iva.R_n_IV[chmap]
+    Rfracs = bsa.R0 / iva.R_n[chmap]
     lim = (-0.1, 1.2)
     nbins=30
     bins = np.linspace(*lim, nbins)
