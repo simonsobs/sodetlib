@@ -3,7 +3,7 @@ import sodetlib as sdl
 import time
 import matplotlib.pyplot as plt
 from sodetlib.operations.iv import IVAnalysis
-
+from sodetlib.operations import uxm_setup, uxm_relock, tracking, bias_steps, iv, bias_dets
 np.seterr(all="ignore")
 
 
@@ -204,6 +204,15 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 def biasstep_rebias(
         S, cfg, target_percentage_rn = 0.5, bias_groups=None,
         math_only=False):
+
+    """
+    Scripts work well when detectors are already in transistion. For extreme cases
+    such as detectors are all in SC, it takes a few run to put them perfectly in
+    transition. Next step is making this script can handle extreme cases faster
+
+
+    """
+
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
