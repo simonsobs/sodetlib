@@ -24,7 +24,7 @@ if __name__ == "__main__":
     reg = sdl.Registers(S)
 
     _ipython_config = traitlets.config.get_config()
-    _ipython_config.InteractiveShellEmbed.colors = "LightBG"
+    _ipython_config.InteractiveShellEmbed.colors = "Linux"
     embed(config=_ipython_config)
 
 

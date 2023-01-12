@@ -1159,7 +1159,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         dc_biases = initial_dc_biases
         init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
-            dc_biases = dc_biases / S.high_low_current_ratio
+            dc_biases[init_current_mode == 0] = (dc_biases[init_current_mode == 0] /
+                                             S.high_low_current_ratio)
             step_voltage /= S.high_low_current_ratio
             sdl.set_current_mode(S, bgs, 1)
             S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")

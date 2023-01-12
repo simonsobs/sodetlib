@@ -669,7 +669,10 @@ def analyze_iv_info(iv_info_fp, phase, v_bias, mask,
 
         resp_bin -= norm_fit[1]  # now in real current units
 
-        sc_fit = np.polyfit(i_bias_bin[:sc_idx], resp_bin[:sc_idx], 1)
+        try:
+            sc_fit = np.polyfit(i_bias_bin[:sc_idx], resp_bin[:sc_idx], 1)
+        except ValueError:
+            continue
 
         # subtract off unphysical y-offset in superconducting branch; this is
         # probably due to an undetected phase wrap at the kink between the
