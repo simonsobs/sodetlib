@@ -654,8 +654,7 @@ def cryo_amp_check(S, cfg):
     # Turns on both amplifiers and checks biasing.
 
     su.cprint("Checking biases", su.TermColors.HEADER)
-    S.C.write_ps_en(0b11)
-    time.sleep(0.1)
+    S.C.write_ps_en(11)
     amp_biases = S.get_amplifier_biases()
     biased_hemt = np.abs(amp_biases['hemt_Id']) > 0.2
     biased_50K = np.abs(amp_biases['50K_Id']) > 0.2
@@ -736,29 +735,25 @@ def cryo_amp_check(S, cfg):
     # that average value of noise through band 0 is above 1.  
 
     # Check limit makes sense when through system
+    su.cprint("Checking full-band response for band 0", su.TermColors.HEADER)
+    band_cfg = cfg.dev.bands[0]
+    S.set_att_uc(0, band_cfg['uc_att'])
 
-    for band in [0, 4]:
-        su.cprint(f"Checking full-band response for band {band}", su.TermColors.HEADER)
-        band_cfg = cfg.dev.bands[band]
-        S.set_att_uc(band, band_cfg['uc_att'])
-        S.set_att_dc(band, band_cfg['dc_att'])
-        S.amplitude_scale[band] = band_cfg['drive']
-
-        freq, response = S.full_band_resp(band)
-        # Get the response in-band
-        resp_inband = []
-        band_width = 500e6  # Each band is 500 MHz wide
-        for f, r in zip(freq, np.abs(response)):
-            if -band_width/2 < f < band_width/2:
-                resp_inband.append(r)
-        # If the mean is > 1, say response received
-        if np.nanmean(resp_inband) > 1: #LESS THAN CHANGE
-            resp_check = True
-            su.cprint("Full band response check passed", True)
-        else:
-            resp_check = False
-            su.cprint("Full band response check failed - maybe something isn't "
-                   "plugged in?", False)
+    freq, response = S.full_band_resp(band=0)
+    # Get the response in-band
+    resp_inband = []
+    band_width = 500e6  # Each band is 500 MHz wide
+    for f, r in zip(freq, np.abs(response)):
+        if -band_width/2 < f < band_width/2:
+            resp_inband.append(r)
+    # If the mean is > 1, say response received
+    if np.nanmean(resp_inband) > 1: #LESS THAN CHANGE
+        resp_check = True
+        su.cprint("Full band response check passed", True)
+    else:
+        resp_check = False
+        su.cprint("Full band response check failed - maybe something isn't "
+               "plugged in?", False)
 
     # Check if ADC is clipping. Probably should be a different script, after
     # characterizing system to know what peak data amplitude to simulate

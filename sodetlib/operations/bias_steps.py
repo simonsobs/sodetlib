@@ -425,7 +425,7 @@ class BiasStepAnalysis:
                 )
                 self.R_n_IV = iva.R_n[chmap]
                 self.R_n_IV[chmap == -1] = np.nan
-                self.Rfrac = self.R0 / self.R_n_IV
+                self.Rfrac = self.R0 / self.R_n
 
         if create_bg_map and save_bg_map and self._S is not None:
             # Write bgmap after compute_dc_params because bg-assignment
@@ -960,7 +960,7 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     chmap = sdl.map_band_chans(bsa.bands, bsa.channels,
                                iva.bands, iva.channels)
 
-    Rfracs = bsa.R0 / iva.R_n_IV[chmap]
+    Rfracs = bsa.R0 / iva.R_n[chmap]
     lim = (-0.1, 1.2)
     nbins=30
     bins = np.linspace(*lim, nbins)
@@ -1159,8 +1159,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         dc_biases = initial_dc_biases
         init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
-            dc_biases[init_current_mode == 0] = (dc_biases[init_current_mode == 0] /
-                                             S.high_low_current_ratio)
+            dc_biases = dc_biases / S.high_low_current_ratio
             step_voltage /= S.high_low_current_ratio
             sdl.set_current_mode(S, bgs, 1)
             S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")

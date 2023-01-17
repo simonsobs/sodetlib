@@ -306,7 +306,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
             ax = axes_fk[b % 4, b // 4]
             m = (bands == b) & (fknees > 0)
             x = ax.hist(fknees[m], bins=bins)
-            text  = f"Median: {np.median(fknees[m]):0.2f} Hz\n"
+            text  = f"Median: {np.median(fknees[m]):0.2f}\n"
             text += f"Chans pictured: {np.sum(x[0]):0.0f}"
             ax.text(0.72, .7, text, transform=ax.transAxes)
             ax.axvline(np.median(fknees[m]), color='red')
@@ -343,7 +343,7 @@ def plot_band_noise(am, nbins=40, noisedict=None, wl_f_range=(10,30),
                        label=f'Med. WL: {med_wl:.1f} pA/rtHz')
             ax.set(ylabel=f'Band {b}\nASD (pA/rtHz)')
             ax.grid(linestyle='--', which='both')
-            ax.legend(loc='lower left')
+            ax.legend(loc='upper right')
             min_x = min(ax.get_xlim()[0], min_x)
             max_x = max(ax.get_xlim()[1], max_x)
 
