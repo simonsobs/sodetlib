@@ -470,9 +470,9 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
             if not success:
                 sdl.pub_ocs_log(S, f"Failed to estimate attens on band {band}")
                 return False, summary
-    else:
-        S.set_att_uc(band, bcfg['uc_att'])
-        S.set_att_dc(band, bcfg['dc_att'])
+        else:
+            S.set_att_uc(band, bcfg['uc_att'])
+            S.set_att_dc(band, bcfg['dc_att'])
 
     #############################################################
     # 4. Estimate Phase Delay
