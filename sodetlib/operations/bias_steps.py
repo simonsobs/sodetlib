@@ -360,7 +360,7 @@ class BiasStepAnalysis:
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
             arc=None, step_window=0.03, fit_tmin=1.5e-3, transition=None,
-            R0_thresh=30e-3, save=False, bg_map_file=None):
+            R0_thresh=30e-3, save=False, bg_map_file=None, fit_tau_effs=True):
         """
         Runs the bias step analysis.
 
@@ -450,7 +450,8 @@ class BiasStepAnalysis:
                                             update_file=True)
 
 
-        self._fit_tau_effs(tmin=fit_tmin)
+        if fit_tau_effs:
+            self._fit_tau_effs(tmin=fit_tmin)
 
         if save:
             self.save()
@@ -995,7 +996,8 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True,g3_tag=None):
+               use_waveform=True, show_plots=True, g3_tag=None,
+               downsample=True):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -1037,6 +1039,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         g3_tag: string, optional
             if not None, overrides the default tag "oper,bgmap" sent to the g3
             file
+        downsample: bool
+            If True, will downsample data taken during the bias steps.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1053,14 +1057,15 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 
     _analysis_kwargs = {
         'assignment_thresh': 0.3,
-        'create_bg_map': True, 'save_bg_map': True
+        'create_bg_map': True, 'save_bg_map': True,
+        'fit_tau_effs': False,
     }
     _analysis_kwargs.update(analysis_kwargs)
     bsa = take_bias_steps(
         S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, g3_tag=g3_tag,
+        use_waveform=use_waveform, g3_tag=g3_tag, downsample=downsample,
         analysis_kwargs=_analysis_kwargs
     )
 
@@ -1079,7 +1084,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None, g3_tag=None):
+                    use_waveform=True, channel_mask=None, g3_tag=None,
+                    downsample=False):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1130,6 +1136,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         g3_tag: string, optional
             if not None, overrides the default tag "oper,bias_steps" sent to the 
             g3 file
+        downsample: bool
+            If True, will downsample data during bias steps. If you want good
+            fits of tau, this should be False.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1137,6 +1146,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     if g3_tag is None:
         g3_tag = "oper,bias_steps"
+
+    ds_factor = 1
+    if downsample:
+        ds_factor = None
 
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
@@ -1168,7 +1181,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
 
         bsa.sid = sdl.stream_g3_on(
-            S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
+            S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=ds_factor,
             filter_disable=True
         )
 
