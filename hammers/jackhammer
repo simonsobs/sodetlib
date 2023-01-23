@@ -399,6 +399,7 @@ def hammer_func(args):
         services.append(f'ocs-pysmurf-s{slot}')
 
     start_services(services)
+    start_sync_dockers()
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")

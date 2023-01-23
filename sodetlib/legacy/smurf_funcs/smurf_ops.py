@@ -432,7 +432,12 @@ def load_session(cfg, session_id, idx=None, stream_id=None, show_pb=False):
     idx: int, list(int), optional
     """
     files = get_session_files(cfg, session_id, idx, stream_id=stream_id)
-    return load_smurf.load_file(files, show_pb=show_pb)
+    am = load_smurf.load_file(files, show_pb=show_pb)
+
+    if 'ch_info' not in am._fields:
+        am.wrap('ch_info', am.det_info.smurf)
+
+    return am
 
 
 @set_action()
