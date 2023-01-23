@@ -12,7 +12,7 @@ import scipy.optimize as opt
 from scipy import interpolate
 import pickle as pkl
 import sodetlib.util as su
-from sodetlib.smurf_funcs import smurf_ops as so
+from sodetlib.legacy.smurf_funcs import smurf_ops as so
 from pysmurf.client.util.pub import set_action
 from tqdm.auto import tqdm
 

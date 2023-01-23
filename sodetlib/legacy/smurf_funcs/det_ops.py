@@ -10,8 +10,8 @@ import time
 import os
 import sys
 from sodetlib.util import make_filename
-import sodetlib.smurf_funcs.smurf_ops as so
-from sodetlib.analysis import det_analysis
+import sodetlib.legacy.smurf_funcs.smurf_ops as so
+from sodetlib.legacy.analysis import det_analysis
 
 from pysmurf.client.util.pub import set_action
 

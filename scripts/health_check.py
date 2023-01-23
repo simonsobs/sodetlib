@@ -4,7 +4,7 @@ import os
 matplotlib.use('Agg')
 
 from sodetlib.det_config import DetConfig
-from sodetlib.smurf_funcs.optimize_params import cryo_amp_check
+from sodetlib.legacy.smurf_funcs.optimize_params import cryo_amp_check
 
 if __name__ == '__main__':
     cfg = DetConfig()

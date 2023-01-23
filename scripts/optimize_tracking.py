@@ -1,4 +1,4 @@
-from sodetlib.smurf_funcs.optimize_params import optimize_tracking
+from sodetlib.legacy.smurf_funcs.optimize_params import optimize_tracking
 from sodetlib.det_config import DetConfig
 import numpy as np
 import argparse

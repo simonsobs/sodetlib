@@ -1,4 +1,4 @@
-from sodetlib.analysis import squid_fit as sf
+from sodetlib.legacy.analysis import squid_fit as sf
 import numpy as np
 import matplotlib.pylab as plt
 import os
