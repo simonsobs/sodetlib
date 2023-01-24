@@ -5,7 +5,6 @@ import numpy as np
 import time
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
-from pysmurf.client.base.smurf_control import SmurfControl
 
 
 def find_min_total_atten(S, band, atten_offset=2):
@@ -41,7 +40,7 @@ def find_min_total_atten(S, band, atten_offset=2):
     return False
 
 @sdl.set_action()
-def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30, 
+def optimize_band_atten(S, cfg, band, meas_time=30, 
     total_att=None, ucs=None, show_pb=False, bgs=None, full_tune=False):
     """
     This function will optimize values for uc and dc attenuators. First, it

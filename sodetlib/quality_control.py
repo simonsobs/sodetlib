@@ -1,7 +1,6 @@
 import sodetlib as sdl
 import numpy as np
 import time
-from pysmurf.client.base.smurf_control import SmurfControl
 
 def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     """
@@ -69,8 +68,7 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     return ams, res
 
 @sdl.set_action()
-def measure_bias_line_resistances(
-    S: SmurfControl, cfg, vstep=0.001, bgs=None, sleep_time=2.0):
+def measure_bias_line_resistances(S, cfg, vstep=0.001, bgs=None, sleep_time=2.0):
     """
     Function to measure the bias line resistance and high-low-current-ratio for
     each bias group. This needs to be run with the smurf hooked up to the
