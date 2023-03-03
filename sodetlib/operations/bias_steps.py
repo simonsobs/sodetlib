@@ -1081,9 +1081,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
                     use_waveform=True, channel_mask=None, g3_tag=None):
     """
-    Takes bias step data at the current DC voltage. Assumes bias lines
-    are already in low-current mode (if they are in high-current this will
-    not run correction). This function runs bias steps and returns a
+    Takes bias step data at the current DC voltage. 
+    This function runs bias steps and returns a
     BiasStepAnalysis object, which can be used to easily view and re-analyze
     data.
 
@@ -1110,8 +1109,9 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         nsteps (int):
             Number of steps to run
         high_current_mode (bool):
-            If true, switches to high-current-mode. If False, leaves in LCM
-            which runs through the bias-line filter, so make sure you
+            If true, switches to high-current-mode. If False, leaves in whichever
+            current mode was set initially.
+            LCM runs through the bias-line filter, so make sure you
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
@@ -1159,7 +1159,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         dc_biases = initial_dc_biases
         init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
-            dc_biases = dc_biases / S.high_low_current_ratio
+            dc_biases[init_current_mode == 0] = (dc_biases[init_current_mode == 0] /
+                                                 S.high_low_current_ratio)
             step_voltage /= S.high_low_current_ratio
             sdl.set_current_mode(S, bgs, 1)
             S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
