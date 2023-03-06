@@ -854,15 +854,14 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
     S.log(f"Waiting at ob volt for {wait_time} sec")
     time.sleep(wait_time)
 
-    _biases = np.zeros_like(S.get_tes_bias_bipolar_array())
     for bg in bias_groups:
         if biases is not None:
-            _biases[bg] = biases[bg]
+            _bias = biases[bg]
         else:
-            _biases[bg] = cfg.dev.bias_groups[bg]['cool_voltage']
+            _bias = cfg.dev.bias_groups[bg]['cool_voltage']
+        S.set_tes_bias_bipolar(bg, _bias)
 
     lcm_bgs = np.where(high_current_mode)[0]
-    S.set_tes_bias_bipolar_array(_biases)
     set_current_mode(S, lcm_bgs, 0, const_current=False)
 
     if cool_wait is not None:
