@@ -127,10 +127,10 @@ def take_g3_data(S, dur, **stream_kw):
 
 
 @set_action()
-def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
+def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
-                 filter_disable=False):
+                 filter_disable=False, oper=None):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -144,24 +144,46 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag='',
     emulator : bool
         If True, will enable the emulator source data-generator. Defaults to
         False.
+    tag : optional(string)
+        If set, this will attach the tag to the g3 stream
+    channel_mask : optional(list)
+        List of channels to stream. If None, this will stream all channels with
+        a probe tone
+    filter_wait_time : float
+        Seconds to wait after resetting the filter before writing data to disk
+    make_datfile bool
+        If True, will create a datfile
+    downsample_factor : optional(int)
+        Downsample factor. If None, this will be pulled from the device
+        cfg.
+    downsample_mode : optional(string)
+        Downsample mode, can either be 'internal' or 'external'. If not set,
+        this will be pulled from the device cfg.
+    filter_disable : bool
+        If true, will disable the downsample filter before streaming.
+    oper : optional(string)
+        operation tag. If set, the g3-tag will be `oper,<oper>,<tag>`. If None,
+        the g3-tag will be `obs,stream,<tag>.
 
     Return
     -------
     session_id : int
         Id used to read back streamed data
     """
-    # TEMPORARY tag edit logic to make observations look like
-    # they always come from sorunlib/pysmurf-controller
-    # if not running an operation, assume it's a stream
-    if tag.split(',')[0] != "oper": 
-        if tag.split(',')[0] != "obs":
-            tag = "obs,stream," + tag
+
+    if oper is None:
+        tags = 'obs,stream'
+    else:
+        tags = f'oper,{oper}'
+
+    if tag is not None:
+        tags += ',' + tag
     
     reg = Registers(S)
 
     reg.pysmurf_action.set(S.pub._action)
     reg.pysmurf_action_timestamp.set(S.pub._action_ts)
-    reg.stream_tag.set(tag)
+    reg.stream_tag.set(tags)
 
     cfg = S._sodetlib_cfg
     if downsample_mode is None:

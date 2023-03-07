@@ -510,7 +510,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
         passing low-f requirement (i.e. fknee set by wl = 65pA/rtHz and
         slope must be <= 1/f^{1/2} in the ASD)
     g3_tag: string, optional
-        if not None, overrides default tag "oper,noise" sent to g3 file
+        Tag to be attached to g3 stream 
     
     Returns
     -------
@@ -543,9 +543,7 @@ def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
     if save_dir is None:
         save_dir = S.plot_dir
 
-    if g3_tag is None:
-        g3_tag = "oper,noise"
-    sid = sdl.take_g3_data(S, acq_time, tag=g3_tag)
+    sid = sdl.take_g3_data(S, acq_time, tag=g3_tag, oper='noise')
     am = sdl.load_session(cfg.stream_id, sid, base_dir=cfg.sys['g3_dir'])
     ctime = int(am.timestamps[0])
     noisedict = get_noise_params(am, wl_f_range=wl_f_range, fit=fit,

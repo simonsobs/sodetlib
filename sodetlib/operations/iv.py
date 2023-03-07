@@ -574,9 +574,6 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
-    if g3_tag is None:
-        g3_tag = "oper,iv"
-
     if biases is None:
         biases = np.arange(bias_high, bias_low - bias_step, -bias_step)
     # Make sure biases is in decreasing order for run function
@@ -626,7 +623,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if high_current_mode:
         biases /= S.high_low_current_ratio
     try:
-        sid = sdl.stream_g3_on(S, tag=g3_tag)
+        sid = sdl.stream_g3_on(S, tag=g3_tag, oper='iv')
         if run_serially:
             for bg in bias_groups:
                 overbias_and_sweep(bg, cool_voltage=cool_voltage)
