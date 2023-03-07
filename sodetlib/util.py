@@ -856,10 +856,10 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
 
     for bg in bias_groups:
         if biases is not None:
-            _bias = biases[bg]
+            bias = biases[bg]
         else:
-            _bias = cfg.dev.bias_groups[bg]['cool_voltage']
-        S.set_tes_bias_bipolar(bg, _bias)
+            bias = cfg.dev.bias_groups[bg]['cool_voltage']
+        S.set_tes_bias_bipolar(bg, bias)
 
     lcm_bgs = np.where(high_current_mode)[0]
     set_current_mode(S, lcm_bgs, 0, const_current=False)
