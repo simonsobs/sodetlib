@@ -1076,7 +1076,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
                     use_waveform=True, channel_mask=None, g3_tag=None,
-                    stream_subtype=None):
+                    stream_subtype='bias_steps'):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1126,16 +1126,13 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Mask containing absolute smurf-channels to write to disk
         g3_tag: string, optional
             Tag to attach to g3 stream.
-        oper : optional, string
-            Operation tag to attach to G3Stream. If left blank, this will default
-            to 'bias_steps'.
+        stream_subtype : optional, string
+            Stream subtype for this operation. This will default to 'bias_steps'.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
 
-    if stream_subtype is None:
-        stream_subtype = 'bias_steps'
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
 

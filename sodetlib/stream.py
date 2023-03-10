@@ -130,7 +130,7 @@ def take_g3_data(S, dur, **stream_kw):
 def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
-                 filter_disable=False, stream_type=None, subtype=None):
+                 filter_disable=False, stream_type=None, subtype='stream'):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -161,18 +161,18 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
         this will be pulled from the device cfg.
     filter_disable : bool
         If true, will disable the downsample filter before streaming.
-    oper : optional(string)
-        operation tag. If set, the g3-tag will be `oper,<oper>,<tag>`. If None,
-        the g3-tag will be `obs,stream,<tag>.
+    stream_type : optional(string)
+        Type of stream. This should either be "obs" or "oper". If None,
+        it will be determined based off of the subtype. ('stream', 'cmb', and
+        'cal', will automatically be set to 'obs' type)
+    subtype : optional(string)
+        Stream subtype. This defaults to 'stream'.
 
     Return
     -------
     session_id : int
         Id used to read back streamed data
     """
-    if subtype is None:
-        subtype = 'stream'
-
     if stream_type is None:
         if subtype in ['stream', 'cmb', 'cal']:
             stream_type = 'obs'
