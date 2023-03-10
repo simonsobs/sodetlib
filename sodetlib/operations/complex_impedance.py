@@ -560,7 +560,7 @@ def take_complex_impedance(
             channel_mask = ds.bands[m] * S.get_number_channels() + ds.channels[m]
 
             ds.sids[bg] = sdl.stream_g3_on(
-                S, channel_mask=channel_mask, oper='complex_impedance')
+                S, channel_mask=channel_mask, subtype='complex_impedance')
             for j, freq in enumerate(freqs):
                 meas_time = min(1./freq * nperiods, max_meas_time)
                 S.log(f"Tickle with bg={bg}, freq={freq}")

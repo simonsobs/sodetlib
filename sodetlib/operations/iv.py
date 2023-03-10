@@ -623,7 +623,7 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if high_current_mode:
         biases /= S.high_low_current_ratio
     try:
-        sid = sdl.stream_g3_on(S, tag=g3_tag, oper='iv')
+        sid = sdl.stream_g3_on(S, tag=g3_tag, subtype='iv')
         if run_serially:
             for bg in bias_groups:
                 overbias_and_sweep(bg, cool_voltage=cool_voltage)

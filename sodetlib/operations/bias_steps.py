@@ -1056,7 +1056,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, g3_tag=g3_tag, oper='bgmap',
+        use_waveform=use_waveform, g3_tag=g3_tag, stream_subtype='bgmap',
         analysis_kwargs=_analysis_kwargs
     )
 
@@ -1075,7 +1075,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None, g3_tag=None, oper=None):
+                    use_waveform=True, channel_mask=None, g3_tag=None,
+                    stream_subtype=None):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1133,8 +1134,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
 
-    if oper is None:
-        oper = 'bias_steps'
+    if stream_subtype is None:
+        stream_subtype = 'bias_steps'
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
 
@@ -1166,7 +1167,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa.sid = sdl.stream_g3_on(
             S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
-            filter_disable=True, oper=oper
+            filter_disable=True, subtype=stream_subtype
         )
 
         bsa.start = time.time()

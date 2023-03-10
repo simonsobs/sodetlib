@@ -130,7 +130,7 @@ def take_g3_data(S, dur, **stream_kw):
 def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
-                 filter_disable=False, oper=None):
+                 filter_disable=False, stream_type=None, subtype=None):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -170,14 +170,19 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
     session_id : int
         Id used to read back streamed data
     """
+    if subtype is None:
+        subtype = 'stream'
 
-    if oper is None:
-        tags = 'obs,stream'
-    else:
-        tags = f'oper,{oper}'
+    if stream_type is None:
+        if subtype in ['stream', 'cmb', 'cal']:
+            stream_type = 'obs'
+        else:
+            stream_type = 'oper'
 
+    tags = f'{stream_type},{subtype}'
     if tag is not None:
         tags += ',' + tag
+
     
     reg = Registers(S)
 
