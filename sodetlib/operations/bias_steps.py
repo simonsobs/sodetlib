@@ -1020,11 +1020,12 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         nsteps (int):
             Number of steps to run
         high_current_mode (bool):
-            If true, switches to high-current-mode. If False, leaves in LCM
-            which runs through the bias-line filter, so make sure you
+            If True, switches bias groups to high-current-mode.
+            If False, switches bias groups to low-current-mode.
+            LCM runs through the bias-line filter, so make sure you
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
-            Time to wait after switching to high-current-mode.
+            Time to wait after switching to/from high-current-mode.
         dacs : str
             Which group of DACs to play bias-steps on. Can be 'pos',
             'neg', or 'both'
@@ -1109,12 +1110,12 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         nsteps (int):
             Number of steps to run
         high_current_mode (bool):
-            If true, switches to high-current-mode. If False, leaves in whichever
-            current mode was set initially.
+            If True, switches bias groups to high-current-mode.
+            If False, switches bias groups to low-current-mode.
             LCM runs through the bias-line filter, so make sure you
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
-            Time to wait after switching to high-current-mode.
+            Time to wait after switching to/from high-current-mode.
         dacs : str
             Which group of DACs to play bias-steps on. Can be 'pos',
             'neg', or 'both'
@@ -1153,17 +1154,20 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
-    initial_dc_biases = S.get_tes_bias_bipolar_array()
 
     try:
-        dc_biases = initial_dc_biases
         init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
-            dc_biases[init_current_mode == 0] = (dc_biases[init_current_mode == 0] /
-                                                 S.high_low_current_ratio)
             step_voltage /= S.high_low_current_ratio
-            sdl.set_current_mode(S, bgs, 1)
-            S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
+            # Only switch to hcm if not already set on relevant bgs
+            if np.sum(init_current_mode[bgs]) < len(bgs):
+                sdl.set_current_mode(S, bgs, 1)
+                S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
+                time.sleep(hcm_wait_time)
+        # Only switch to lcm if not already set on relevant bgs
+        elif np.sum(init_current_mode[bgs]) > 0:
+            sdl.set_current_mode(S, bgs, 0)
+            S.log(f"Waiting {hcm_wait_time} sec after switching to lcm")
             time.sleep(hcm_wait_time)
 
         bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
