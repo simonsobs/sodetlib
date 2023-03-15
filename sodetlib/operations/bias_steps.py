@@ -745,7 +745,7 @@ class BiasStepAnalysis:
         # If resistance is too high, most likely crosstalk so just reset
         # bg mapping and det params
         if R0_thresh is not None:
-            m = R0 > R0_thresh
+            m = np.abs(R0) > R0_thresh
             self.bgmap[m] = -1
             for arr in [R0, I0, Pj, Si]:
                 arr[m] = np.nan
@@ -833,7 +833,6 @@ def plot_steps(bsa, rc, nsteps=5, offset=0, ax=None, **kw):
     ts = bsa.am.timestamps[sl]
     ts = ts - ts[0]
     sig = bsa.am.signal[rc, sl]
-    sig = bsa.am.biases[bg, sl]
     sig = sig - np.nanmean(sig) + offset
     ax.plot(ts, sig, **kw)
 
