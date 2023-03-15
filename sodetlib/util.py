@@ -506,7 +506,7 @@ def get_wls_from_am(am, nperseg=2**16, fmin=10., fmax=20., pA_per_phi0=9e6):
     wls = np.median(pxx[:, fmask], axis=1)
     band_medians = np.zeros(8)
     for i in range(8):
-        m = am.ch_info.band == i
+        m = am.det_info.smurf.band == i
         band_medians[i] = np.median(wls[m])
     return wls, band_medians
 
