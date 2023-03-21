@@ -211,6 +211,8 @@ def get_metadata(S, cfg):
         'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
         'fpga_git_hash': S.get_fpga_git_hash_short(),
         'cryocard_fw_version': S.C.get_fw_version(),
+        'crate_id': cfg.sys['crate_id'],
+        'slot': cfg.slot,
     }
 
 
