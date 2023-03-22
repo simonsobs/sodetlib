@@ -190,12 +190,12 @@ def setup_fixed_tones(S, cfg, tones_per_band=256, bands=None, jitter=0.5,
         bands = np.arange(8)
     bands = np.atleast_1d(bands)
 
+    chans_per_band = S.get_number_channels()
     for band in bands:
         S.log(f"Setting fixed tones for band {band}")
         if tone_power is None:
             tone_power = cfg.dev.bands[band]['tone_power']
         
-        chans_per_band = S.get_number_channels()
         sbs = np.linspace(0, chans_per_band, tones_per_band, dtype=int, endpoint=False)
         asa = np.zeros_like(S.get_amplitude_scale_array(band))
         asa[sbs] = tone_power
@@ -277,7 +277,7 @@ def plot_fixed_tone_loopback(res):
 
 def fixed_tone_loopback(
         S, cfg, bands=None, tones_per_band=256, meas_chans_per_band=5,
-        setup_fixed_tones=False, tone_power=12, show_pb=True, noise_freq=30e3,
+        setup_tones=False, tone_power=12, show_pb=True, noise_freq=30e3,
         noise_bw=100, att_uc=None, att_dc=None):
     """
     Runs QC test to check noise levels across band with many fixed tones enabled.
@@ -327,8 +327,8 @@ def fixed_tone_loopback(
         for b in bands:
             S.set_att_uc(b, att_dc)
 
-    if setup_fixed_tones:
-        setup_fixed_tones(S, cfg, ntones=tones_per_band, bands=bands,
+    if setup_tones:
+        setup_fixed_tones(S, cfg, tones_per_band=tones_per_band, bands=bands,
                           tone_power=tone_power)
     else: # Just update the tone power
         S.log(f"Setting tone power to {tone_power} for bands {bands}...")
