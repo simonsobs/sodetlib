@@ -206,7 +206,7 @@ def setup_fixed_tones(S, cfg, tones_per_band=256, bands=None, jitter=0.5,
 def get_noise_dBcHz(S, band, chan, nsamp=2**20, nperseg=2**16,
                     noise_freq=30e3, noise_bw=100):
     """
-    Takes debug data nd measures I/Q noise in dBc/Hz.
+    Takes debug data and measures I/Q noise in dBc/Hz.
 
     Args
     -----
@@ -235,6 +235,7 @@ def get_noise_dBcHz(S, band, chan, nsamp=2**20, nperseg=2**16,
     fsamp = S.get_channel_frequency_mhz() * 1e6
     
     sig_i, sig_q, _ = S.take_debug_data(band, channel=chan, rf_iq=True, nsamp=nsamp)
+    datfile = S.get_streamdatawriter_datafile()
 
     fs, pxxi = signal.welch(sig_i, fs=fsamp, nperseg=nperseg)
     fs, pxxq = signal.welch(sig_q, fs=fsamp, nperseg=nperseg)
@@ -248,7 +249,7 @@ def get_noise_dBcHz(S, band, chan, nsamp=2**20, nperseg=2**16,
     noise_i = np.nanmedian(pxxi_dbc[m])
     noise_q = np.nanmedian(pxxq_dbc[m])
 
-    return noise_i, noise_q
+    return noise_i, noise_q, datfile
     
 
 def plot_fixed_tone_loopback(res):
@@ -322,10 +323,10 @@ def fixed_tone_loopback(
             S.set_att_uc(b, att_uc)
 
     if att_dc is None:
-        att_dc = S.get_att_uc(bands[0])
+        att_dc = S.get_att_dc(bands[0])
     else:
         for b in bands:
-            S.set_att_uc(b, att_dc)
+            S.set_att_dc(b, att_dc)
 
     if setup_tones:
         setup_fixed_tones(S, cfg, tones_per_band=tones_per_band, bands=bands,
@@ -373,16 +374,18 @@ def fixed_tone_loopback(
 
     noise_i = np.full_like(meas_freqs, np.nan)
     noise_q = np.full_like(meas_freqs, np.nan)
+    datfiles = []
     for i in trange(len(meas_bands), disable=not(show_pb)):
         b, c = meas_bands[i], meas_chans[i]
         S.log(f"Band {b}, Chan {c}")
         try:
-            noise_i[i], noise_q[i] = get_noise_dBcHz(
+            noise_i[i], noise_q[i], _ = get_noise_dBcHz(
                 S, b, c, noise_freq=noise_freq,
                 noise_bw=noise_bw)
         except IndexError as e:
             S.log(f"Take Data failed...\n{e}")
             S.log("Skipping channel")
+        datfiles.append(S.get_streamdatawriter_datafile())
 
     fname = sdl.make_filename(S, 'fixed_tone_loopback.npy')
     res = dict(
@@ -392,6 +395,7 @@ def fixed_tone_loopback(
         ft_bands_all=ft_bands_all, ft_channels_all=ft_chans_all,
         ft_freqs_all=ft_freqs_all, noise_freq=noise_freq,
         att_uc=att_uc, att_dc=att_dc, tone_power=tone_power,
+        datfiles=datfiles
     )
     np.save(fname, res, allow_pickle=True)
     S.pub.register_file(fname, 'loopback', format='npy')
