@@ -1,7 +1,10 @@
 import sodetlib as sdl
 import numpy as np
 import time
+from scipy import signal
+from tqdm.auto import trange
 from pysmurf.client.base.smurf_control import SmurfControl
+import matplotlib.pyplot as plt
 
 def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     """
@@ -161,3 +164,247 @@ def measure_bias_line_resistances(
     S.pub.register_file(path, 'bias_line_resistances', format='npy')
 
     return am, data
+
+def setup_fixed_tones(S, cfg, tones_per_band=256, bands=None, jitter=0.5,
+                      tone_power=None):
+    """
+    Enables many fixed tones across a selection of bands.
+
+    Args
+    ----------
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    tones_per_band : int
+        Number of fixed tones to create in each band
+    bands : int, list[int]
+        Bands to set fixed tones in. Defaults to all 8.
+    jitter : float
+        Noise [Mhz] to add to the center freq so that fixed tones are not
+        equispaced.
+    tone_power : int
+        Tone power of fixed tones.
+    """
+    if bands is None:
+        bands = np.arange(8)
+    bands = np.atleast_1d(bands)
+
+    chans_per_band = S.get_number_channels()
+    for band in bands:
+        S.log(f"Setting fixed tones for band {band}")
+        if tone_power is None:
+            tone_power = cfg.dev.bands[band]['tone_power']
+        
+        sbs = np.linspace(0, chans_per_band, tones_per_band, dtype=int, endpoint=False)
+        asa = np.zeros_like(S.get_amplitude_scale_array(band))
+        asa[sbs] = tone_power
+        S.set_amplitude_scale_array(band, asa)
+        S.set_center_frequency_array(band, np.random.uniform(-jitter/2, jitter/2, chans_per_band))
+        S.set_feedback_enable_array(band, np.zeros(chans_per_band, dtype=int))
+
+def get_noise_dBcHz(S, band, chan, nsamp=2**20, nperseg=2**16,
+                    noise_freq=30e3, noise_bw=100):
+    """
+    Takes debug data and measures I/Q noise in dBc/Hz.
+
+    Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    band : int
+        Smurf band
+    chan : int
+        Smurf chan
+    nsamp : int
+        Number of samples to take
+    nperseg : int
+        Nperseg to use when creating the psd
+    noise_freq : float
+        Freq to measure the readout noise at.
+    noise_bw : float
+        Frequency bandwidth over which the noise median will be taken
+
+    Returns
+    ---------
+    noise_i : float
+        Noise of the I data stream in dBc/Hz
+    noise_q : float
+        Noise of the Q data stream in dBc/Hz
+    """
+    fsamp = S.get_channel_frequency_mhz() * 1e6
+    
+    sig_i, sig_q, _ = S.take_debug_data(band, channel=chan, rf_iq=True, nsamp=nsamp)
+    datfile = S.get_streamdatawriter_datafile()
+
+    fs, pxxi = signal.welch(sig_i, fs=fsamp, nperseg=nperseg)
+    fs, pxxq = signal.welch(sig_q, fs=fsamp, nperseg=nperseg)
+
+    magfac = np.mean(sig_q)**2 + np.mean(sig_i)**2
+    pxxi_dbc = 10. * np.log10(pxxi/magfac)
+    pxxq_dbc = 10. * np.log10(pxxq/magfac)
+
+    f0, f1 = noise_freq - noise_bw/2, noise_freq + noise_bw/2
+    m = (f0 < fs) & (fs < f1)
+    noise_i = np.nanmedian(pxxi_dbc[m])
+    noise_q = np.nanmedian(pxxq_dbc[m])
+
+    return noise_i, noise_q, datfile
+    
+
+def plot_fixed_tone_loopback(res):
+    """Plot results from fixed_tone_loopback"""
+    fig, ax = plt.subplots()
+    fig.patch.set_facecolor('white')
+
+    ax.plot(res['freqs'], res['noise_q'], '.', alpha=0.8)
+    ax.plot(res['freqs'], res['noise_i'], '.', alpha=0.8)
+    txt = '\n'.join([
+        f"num tones: {len(res['ft_freqs_all'])}",
+        f"tone power: {res['tone_power']}",
+        f"UC att: {res['att_uc']}",
+        f"DC att: {res['att_dc']}",
+    ])
+    ax.text(0.05, 0.8, txt, transform=ax.transAxes,
+            bbox=dict(fc='white', alpha=0.6))
+    ax.set_xlabel("Freq [MHz]")
+    ax.set_ylabel("Noise [dBc/Hz]")
+    crate_id = res['meta']['crate_id']
+    slot = res['meta']['slot']
+    ax.set_title(f"Crate {crate_id}, Slot {slot}")
+
+    return fig, ax
+
+
+def fixed_tone_loopback(
+        S, cfg, bands=None, tones_per_band=256, meas_chans_per_band=5,
+        setup_tones=False, tone_power=12, show_pb=True, noise_freq=30e3,
+        noise_bw=100, att_uc=None, att_dc=None):
+    """
+    Runs QC test to check noise levels across band with many fixed tones enabled.
+    
+    Args
+    ------
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    bands : int, list[int]
+        Bands to run on. Default is all 8
+    tones_per_band : int
+        Number of fixed tones to enable per band. This defaults to 256, which
+        is 2048 tones total with all 8 bands enabled.
+    meas_chans_per_band : int
+        Number of channels per band to measure readout noise
+    setup_fixed_tones : bool
+        If true, will set up fixed tones across specified bands. If false,
+        this will skip the setup and assume tones are already set up.
+    tone_power : int
+        Tone power to use
+    show_pb : bool
+        If True will show a progress bar
+    noise_freq : float
+        Target frequency to measure the readout noise
+    noise_bw : float
+        Frequency bandwidth over which the noise median will be taken
+    att_uc : int
+        UC atten. If not set, will use current uc atten.
+    att_dc : int
+        DC atten. If not set, will use current dc atten
+    """
+    if bands is None:
+        bands = np.arange(8)
+    bands = np.atleast_1d(bands)
+
+    if att_uc is None:
+        att_uc = S.get_att_uc(bands[0])
+    else:
+        for b in bands:
+            S.set_att_uc(b, att_uc)
+
+    if att_dc is None:
+        att_dc = S.get_att_dc(bands[0])
+    else:
+        for b in bands:
+            S.set_att_dc(b, att_dc)
+
+    if setup_tones:
+        setup_fixed_tones(S, cfg, tones_per_band=tones_per_band, bands=bands,
+                          tone_power=tone_power)
+    else: # Just update the tone power
+        S.log(f"Setting tone power to {tone_power} for bands {bands}...")
+        for band in bands:
+            asa = S.get_amplitude_scale_array(band)
+            if tone_power in np.unique(asa):
+                continue
+            asa[asa != 0] = tone_power
+            S.set_amplitude_scale_array(band, asa)
+    
+    meas_bands = []
+    meas_chans = []
+    meas_freqs = []
+    ft_chans_all = []
+    ft_freqs_all = []
+    ft_bands_all = []
+    S.log("Finding fixed tones and meas_channels")
+    for band in bands:
+        freqs = S.get_center_frequency_array(band) \
+                 + S.get_tone_frequency_offset_mhz(band) \
+                 + S.get_band_center_mhz(band)
+
+        ft_chans = np.where(S.get_amplitude_scale_array(band))[0]
+        freqs = freqs[ft_chans]
+        sort_idx = np.argsort(freqs)
+        meas_idx = np.unique(np.round(np.linspace(
+            0, len(ft_chans) - 1, meas_chans_per_band)).astype(int))
+        # We want to sort first so meas_chans are evenly distributed across
+        # freq space
+        meas_chans.append(ft_chans[sort_idx][meas_idx])
+        meas_bands.append([band for _ in meas_idx])
+        meas_freqs.append(freqs[sort_idx][meas_idx])
+        ft_chans_all.append(ft_chans)
+        ft_bands_all.append([band for _ in ft_chans])
+        ft_freqs_all.append(freqs)
+    meas_bands = np.hstack(meas_bands)
+    meas_chans = np.hstack(meas_chans)
+    meas_freqs = np.hstack(meas_freqs)
+    ft_chans_all = np.hstack(ft_chans_all)
+    ft_bands_all = np.hstack(ft_freqs_all)
+    ft_freqs_all = np.hstack(ft_freqs_all)
+
+    noise_i = np.full_like(meas_freqs, np.nan)
+    noise_q = np.full_like(meas_freqs, np.nan)
+    datfiles = []
+    for i in trange(len(meas_bands), disable=not(show_pb)):
+        b, c = meas_bands[i], meas_chans[i]
+        S.log(f"Band {b}, Chan {c}")
+        try:
+            noise_i[i], noise_q[i], _ = get_noise_dBcHz(
+                S, b, c, noise_freq=noise_freq,
+                noise_bw=noise_bw)
+        except IndexError as e:
+            S.log(f"Take Data failed...\n{e}")
+            S.log("Skipping channel")
+        datfiles.append(S.get_streamdatawriter_datafile())
+
+    fname = sdl.make_filename(S, 'fixed_tone_loopback.npy')
+    res = dict(
+        meta=sdl.get_metadata(S, cfg),
+        bands=meas_bands, channels=meas_chans, freqs=meas_freqs,
+        noise_i=noise_i, noise_q=noise_q,
+        ft_bands_all=ft_bands_all, ft_channels_all=ft_chans_all,
+        ft_freqs_all=ft_freqs_all, noise_freq=noise_freq,
+        att_uc=att_uc, att_dc=att_dc, tone_power=tone_power,
+        datfiles=datfiles
+    )
+    np.save(fname, res, allow_pickle=True)
+    S.pub.register_file(fname, 'loopback', format='npy')
+
+
+    fname = sdl.make_filename(S, 'fixed_tone_loopback.png', plot=True)
+    fig, _ = plot_fixed_tone_loopback(res)
+    fig.savefig(fname)
+    S.pub.register_file(fname, 'loopback', format='png', plot=True)
+
+    return res
+
