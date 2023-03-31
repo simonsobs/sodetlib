@@ -474,9 +474,12 @@ class BiasStepAnalysis:
                 fsamp, t0 = np.polyfit(self.am.primary['FrameCounter'],
                                        self.am.timestamps, 1)
                 self.am.timestamps = t0 + self.am.primary['FrameCounter']*fsamp
-
-            self.bands = self.am.ch_info.band
-            self.channels = self.am.ch_info.channel
+            if "det_info" in self.am:
+                self.bands = self.am.det_info.smurf.band
+                self.channels = self.am.det_info.smurf.channel
+            else:
+                self.bands = self.am.ch_info.band
+                self.channels = self.am.ch_info.channel
             self.abs_chans = self.bands*512 + self.channels
             self.nbgs = len(self.am.biases)
             self.nchans = len(self.am.signal)
