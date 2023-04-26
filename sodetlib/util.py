@@ -844,6 +844,7 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
 
     if isinstance(high_current_mode, (bool, int)):
         high_current_mode = [high_current_mode for _ in range(12)]
+    high_current_mode = np.atleast_1d(high_current_mode)
 
     S.log("Overbiasing Detectors")
     set_current_mode(S, bias_groups, 1, const_current=False)
@@ -861,7 +862,7 @@ def overbias_dets(S, cfg, bias_groups=None, biases=None, cool_wait=None,
             bias = cfg.dev.bias_groups[bg]['cool_voltage']
         S.set_tes_bias_bipolar(bg, bias)
 
-    lcm_bgs = np.where(high_current_mode)[0]
+    lcm_bgs = np.where(~high_current_mode)[0]
     set_current_mode(S, lcm_bgs, 0, const_current=False)
 
     if cool_wait is not None:
