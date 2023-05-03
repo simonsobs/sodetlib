@@ -323,8 +323,8 @@ def biasstep_rebias(
             new_bias_voltage[bl] =  initial_dc_biases[bl] - delta_dc_bias
         ## if the detector is normal, take a larger step
         if bl in bg_detectors_normal:
-            if initial_dc_biases[bl] > cfg.dev.bias_groups[replace_bg]["testbed_100mK_bias_voltage"]:
-                initial_dc_biases[bl] = cfg.dev.bias_groups[replace_bg]["testbed_100mK_bias_voltage"]
+            if initial_dc_biases[bl] > cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]:
+                initial_dc_biases[bl] = cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]
             new_bias_voltage[bl] =  initial_dc_biases[bl] - 0.5 * v_spread
 
     S.log("applying new voltage for 2nd biasstep")
