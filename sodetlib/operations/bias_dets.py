@@ -426,6 +426,8 @@ def biasstep_rebias(
     bsa_2 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
         bias_steps.plot_Rfrac(bsa_2)
+        
+    return bsa_2
 
 
 
