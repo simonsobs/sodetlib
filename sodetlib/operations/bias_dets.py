@@ -216,6 +216,8 @@ def biasstep_rebias(
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
+    intical_current_biasvoltage = S.set_tes_bias_bipolar_array
+    S.log(f"current biasvoltage {intical_current_biasvoltage}")
     bsa_0 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
         bias_steps.plot_Rfrac(bsa_0)
@@ -327,7 +329,7 @@ def biasstep_rebias(
                 initial_dc_biases[bl] = cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]
             new_bias_voltage[bl] =  initial_dc_biases[bl] - 0.5 * v_spread
 
-    S.log("applying new voltage for 2nd biasstep")
+    S.log(f"applying new voltage for 2nd biasstep {new_bias_voltage}")
     S.set_tes_bias_bipolar_array(new_bias_voltage)  
 
     ## taking the second bias step
@@ -378,7 +380,8 @@ def biasstep_rebias(
             v_spread = np.nanmedian(v_norm) - np.nanmedian(v_sc)
             previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.5 * v_spread
         
-        S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)  
+        S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)
+        S.log(f"applying: {previous_dc_biases_dfn}")
         bsa_1 = bias_steps.take_bias_steps(S, cfg)
         percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
         drop_from_normal = False
@@ -421,13 +424,13 @@ def biasstep_rebias(
 
     S.log("applying the new bias voltages")
     S.set_tes_bias_bipolar_array(vbias_estimate)  
-
+    S.log(f"applying {set_tes_bias_bipolar_array}")
     S.log("taking the final biasstep")
     bsa_2 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
         bias_steps.plot_Rfrac(bsa_2)
         
-    return bsa_2
+    return bsa_2,vbias_estimate
 
 
 
