@@ -216,7 +216,7 @@ def biasstep_rebias(
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
-    intical_current_biasvoltage = S.set_tes_bias_bipolar_array
+    intical_current_biasvoltage = S.get_tes_bias_bipolar_array()
     S.log(f"current biasvoltage {intical_current_biasvoltage}")
     bsa_0 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
