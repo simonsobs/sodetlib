@@ -424,7 +424,7 @@ def biasstep_rebias(
 
     S.log("applying the new bias voltages")
     S.set_tes_bias_bipolar_array(vbias_estimate)  
-    S.log(f"applying {set_tes_bias_bipolar_array}")
+    S.log(f"applying {vbias_estimate}")
     S.log("taking the final biasstep")
     bsa_2 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
