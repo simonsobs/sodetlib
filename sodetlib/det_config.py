@@ -83,7 +83,7 @@ exp_defaults = {
 band_defaults = {
     # General
     "band_delay_us": None, "uc_att": None, "dc_att": None,
-    "attens_optimized": False, "tone_power": 12,
+    "attens_optimized": False, "tone_power": 12, "synthesis_scale": None,
 
     # Band-specific tracking stuff
     "lms_gain": 0, "feedback_gain": 2048, "frac_pp": None, "lms_freq_hz": None,
