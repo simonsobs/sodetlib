@@ -5,7 +5,7 @@ from collections import OrderedDict
 import sys
 import time
 import shutil
-
+from sodetlib.operations import uxm_setup
 
 class YamlReps:
     class FlowSeq(list):
@@ -308,10 +308,7 @@ class DeviceConfig:
         that this does not set any of the tracking-related params since this
         shouldn't replace tracking_setup.
         """
-        S.set_amplifier_bias(
-            bias_hemt=self.exp['amp_hemt_Vg'],
-            bias_50k=self.exp['amp_50k_Vg']
-        )
+        uxm_setup.setup_amps(S, cfg, optimize=False, update_cfg=False)
 
         if load_tune:
             tunefile = self.exp['tunefile']
