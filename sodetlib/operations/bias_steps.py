@@ -1220,6 +1220,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             if analysis_kwargs is None:
                 analysis_kwargs = {}
             bsa.run_analysis(save=True, **analysis_kwargs)
+            plot_Rfrac(bsa)
         except Exception:
             print(f"Bias step analysis failed with exception:")
             print(traceback.format_exc())
