@@ -684,7 +684,10 @@ def set_current_mode(S, bgs, mode, const_current=True):
     else:
         S._caput(dac_data_reg, dac_data)
         time.sleep(0.04)
-        S._caput(S.C.writepv, relay_data)
+        if isinstance(S.C.writepv, str): # for older version of pysmurf
+            S._caput(S.C.writepv, relay_data)
+        else:
+            S._caput(S.C.writepv.pvname, relay_data)
 
     time.sleep(0.1)  # Just to be safe
 
