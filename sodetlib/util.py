@@ -674,20 +674,22 @@ def set_current_mode(S, bgs, mode, const_current=True):
     dac_data_reg = S.rtm_spi_max_root + S._rtm_slow_dac_data_array_reg
 
 
+    if isinstance(S.C.writepv, str):
+        cryocard_writepv = S.C.writepv
+    else:
+        cryocard_writepv = S.C.writepv.pvname
+
     # It takes longer for DC voltages to settle than it does to toggle the
     # high-current relay, so we can set them at the same time when switchign
     # to hcm, but when switching to lcm we need a sleep statement to prevent
     # dets from latching.
     if mode:
-        epics.caput_many([S.C.writepv, dac_data_reg], [relay_data, dac_data],
+        epics.caput_many([cryocard_writepv, dac_data_reg], [relay_data, dac_data],
                          wait=True)
     else:
         S._caput(dac_data_reg, dac_data)
         time.sleep(0.04)
-        if isinstance(S.C.writepv, str): # for older version of pysmurf
-            S._caput(S.C.writepv, relay_data)
-        else:
-            S._caput(S.C.writepv.pvname, relay_data)
+        S._caput(cryocard_writepv, relay_data)
 
     time.sleep(0.1)  # Just to be safe
 
