@@ -44,7 +44,8 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
         S = Ss[s]
         S.flux_ramp_setup(fr_khz, 0.4, band=0)
         sdl.stream_g3_on(
-            S, channel_mask=np.arange(nchans), downsample_factor=1
+            S, channel_mask=np.arange(nchans), downsample_factor=1,
+            subtype='check_packet_loss'
         )
 
     time.sleep(dur)
@@ -114,7 +115,7 @@ def measure_bias_line_resistances(
         t1 = time.time()
         return (t0, t1)
 
-    sdl.stream_g3_on(S)
+    sdl.stream_g3_on(S, subtype='measure_bias_line_resistance')
     time.sleep(0.5)
 
     segs.append(take_step(vb_low, sleep_time, wait_time=0.5))

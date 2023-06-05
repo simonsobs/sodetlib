@@ -1037,8 +1037,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             Keyword arguments to be passed to the BiasStepAnalysis run_analysis
             function.
         g3_tag: string, optional
-            if not None, overrides the default tag "oper,bgmap" sent to the g3
-            file
+            Tag to attach to g3 stream.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1046,9 +1045,6 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 
     if analysis_kwargs is None:
         analysis_kwargs = {}
-
-    if g3_tag is None:
-        g3_tag = "oper,bgmap"
 
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, dc_voltage)
@@ -1062,7 +1058,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, g3_tag=g3_tag,
+        use_waveform=use_waveform, g3_tag=g3_tag, stream_subtype='bgmap',
         analysis_kwargs=_analysis_kwargs
     )
 
@@ -1081,7 +1077,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
 def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None, g3_tag=None):
+                    use_waveform=True, channel_mask=None, g3_tag=None,
+                    stream_subtype='bias_steps'):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1130,15 +1127,13 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         channel_mask : np.ndarray, optional
             Mask containing absolute smurf-channels to write to disk
         g3_tag: string, optional
-            if not None, overrides the default tag "oper,bias_steps" sent to the 
-            g3 file
+            Tag to attach to g3 stream.
+        stream_subtype : optional, string
+            Stream subtype for this operation. This will default to 'bias_steps'.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
-
-    if g3_tag is None:
-        g3_tag = "oper,bias_steps"
 
     # Adds to account for steps that may be cut in analysis
     nsteps += 4
@@ -1171,7 +1166,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa.sid = sdl.stream_g3_on(
             S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
-            filter_disable=True
+            filter_disable=True, subtype=stream_subtype
         )
 
         bsa.start = time.time()
