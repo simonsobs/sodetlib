@@ -186,10 +186,10 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
 
 
 @sdl.set_action()
-def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
+def setup_phase_delay(S, cfg, bands, update_cfg=True):
     """
-    Sets uc and dc attens to reasonable values and runs estimate phase delay
-    for desired bands.
+    Runs estimate phase delay and updates the device cfg with the results.
+    This will run with the current set of attenuation values.
 
     Args
     -----
@@ -211,16 +211,10 @@ def setup_phase_delay(S, cfg, bands, update_cfg=True, modify_attens=True):
         'band_delay_us': [],
     }
     for b in bands:
-        #init_att_uc = S.get_att_uc(b)
-        #init_att_dc = S.get_att_dc(b)
-        #S.set_att_uc(b, 30)
-        #S.set_att_dc(b, 30)
         summary['bands'].append(int(b))
         band_delay_us, _ = S.estimate_phase_delay(b, make_plot=True, show_plot=False)
         band_delay_us = float(band_delay_us)
         summary['band_delay_us'].append(band_delay_us)
-        #S.set_att_uc(b, init_att_uc)
-        #S.set_att_dc(b, init_att_dc)
         if update_cfg:
             cfg.dev.bands[b].update({
                 'band_delay_us': band_delay_us
