@@ -266,7 +266,7 @@ def biasstep_rebias(
 
 
     if overbias_needed:
-        S.log("some BL are stuck in SC, going to over bias them, this takes about 5mins")
+        S.log(f"some BL: {bg_overbias_needed} are stuck in SC, going to over bias them, this takes about 5mins")
         previous_dc_biases = S.get_tes_bias_bipolar_array()
         
         sdl.overbias_dets(S, cfg, bias_groups=bg_overbias_needed)
