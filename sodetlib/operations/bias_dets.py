@@ -294,6 +294,42 @@ def biasstep_rebias(
                 bg_detectors_normal.append(bl)   
                 drop_from_normal = True
 
+## drop normal detector into transition first
+    while drop_from_normal:
+        S.log(f"some biaslines are still in normal state: {bg_detectors_normal}")
+        percentage_rn_0 = bsa_0.R0/bsa_0.R_n_IV
+        S.log("droping detectors from normal to transition")
+        previous_dc_biases_dfn = S.get_tes_bias_bipolar_array()
+
+        S.log(f"current tes bias voltages are: {previous_dc_biases_dfn}")
+        for bl in bg_detectors_normal:
+            mask_bg = np.where(bsa_0.bgmap==bl)[0]
+            v_sc = iva.v_bias[iva.idxs[[mask_bg], 0]]
+            v_norm = iva.v_bias[iva.idxs[[mask_bg], 1]]
+            v_spread = np.nanmedian(v_norm) - np.nanmedian(v_sc)
+            previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.5 * v_spread
+        
+        S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)
+        S.log(f"applying: {previous_dc_biases_dfn}")
+        S.log(f"waiting 10s for dissipation of UFM local heating")
+        time.sleep(10)
+        bsa_0 = bias_steps.take_bias_steps(S, cfg)
+        percentage_rn_0 = bsa_0.R0/bsa_0.R_n_IV
+        drop_from_normal = False
+        for bl in bg_detectors_normal:
+            mask_bg = np.where(bsa_0.bgmap==bl)[0]
+            per_bl_percentage_rn_0 = percentage_rn_0[mask_bg]
+            ## mask for normal
+            mask_normal = np.where((per_bl_percentage_rn_0 > 0.9) | (per_bl_percentage_rn_0 < -0.9))
+            ## if more than half of the detectors are normal
+            if len(mask_normal[0]) > 0.5*len(mask_bg):
+                drop_from_normal = True
+        for bl in bg_detectors_normal:
+            if previous_dc_biases_dfn[bl] < 0.5:
+                bg_detectors_normal.remove(bl)
+
+
+                
 
     ##preparing for the 2nd step
     initial_dc_biases = S.get_tes_bias_bipolar_array()
@@ -323,12 +359,6 @@ def biasstep_rebias(
             new_bias_voltage[bl] =  initial_dc_biases[bl] + delta_dc_bias
         if med_per_bl_percentage_rn >= 0.5:
             new_bias_voltage[bl] =  initial_dc_biases[bl] - delta_dc_bias
-        ## if the detector is normal, take a larger step
-        if bl in bg_detectors_normal:
-            S.log(f"some detectors are in normal state for bl{bl}, taking a large step")
-            if initial_dc_biases[bl] > cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]:
-                initial_dc_biases[bl] = cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]
-            new_bias_voltage[bl] =  initial_dc_biases[bl] - 0.3 * v_spread
 
     S.log(f"applying new voltage for 2nd biasstep {new_bias_voltage}")
     S.set_tes_bias_bipolar_array(new_bias_voltage)  
@@ -353,54 +383,6 @@ def biasstep_rebias(
         repeat_biasstep = False
 
     percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
-
-    ## add in check if detectors were normal are still normal
-    if drop_from_normal:
-        S.log(f"some biaslines were in normal state during 1st biasstep: {bg_detectors_normal}")
-        drop_from_normal = False
-        for bl in bg_detectors_normal:
-            mask_bg = np.where(bsa_1.bgmap==bl)[0]
-            per_bl_percentage_rn_1 = percentage_rn_1[mask_bg]
-            ## mask for normal
-            mask_normal = np.where((per_bl_percentage_rn_1 > 0.9) | (per_bl_percentage_rn_1 < -0.9))
-            ## if more than half of the detectors are normal
-            if len(mask_normal[0]) > 0.5*len(mask_bg):
-                drop_from_normal = True
-
-    while drop_from_normal:
-        S.log(f"some biaslines are still in normal state: {bg_detectors_normal}")
-        percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
-        S.log("droping detectors from normal to transition")
-        previous_dc_biases_dfn = S.get_tes_bias_bipolar_array()
-
-        S.log(f"current tes bias voltages are: {previous_dc_biases_dfn}")
-        for bl in bg_detectors_normal:
-            mask_bg = np.where(bsa_1.bgmap==bl)[0]
-            v_sc = iva.v_bias[iva.idxs[[mask_bg], 0]]
-            v_norm = iva.v_bias[iva.idxs[[mask_bg], 1]]
-            v_spread = np.nanmedian(v_norm) - np.nanmedian(v_sc)
-            previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.5 * v_spread
-        
-        S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)
-        S.log(f"applying: {previous_dc_biases_dfn}")
-        S.log(f"waiting 30s for dissipation of UFM local heating")
-        time.sleep(30)
-        bsa_1 = bias_steps.take_bias_steps(S, cfg)
-        percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
-        drop_from_normal = False
-        bg_detectors_normal = []
-        for bl in bias_groups:
-            mask_bg = np.where(bsa_1.bgmap==bl)[0]
-            per_bl_percentage_rn_1 = percentage_rn_1[mask_bg]
-            ## mask for normal
-            mask_normal = np.where((per_bl_percentage_rn_1 > 0.9) | (per_bl_percentage_rn_1 < -0.9))
-            ## if more than half of the detectors are normal
-            if len(mask_normal[0]) > 0.5*len(mask_bg):
-                drop_from_normal = True
-                bg_detectors_normal.append(bl)
-        for bl in bg_detectors_normal:
-            if previous_dc_biases_dfn[bl] < 1:
-                drop_from_normal = False
 
     target_percentage_rn_array = target_percentage_rn * np.ones(len(percentage_rn_0))
     ## getting result from the previous 2
