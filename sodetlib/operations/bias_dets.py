@@ -266,12 +266,12 @@ def biasstep_rebias(
 
 
     if overbias_needed:
-        S.log("some BL are stuck in SC, going to over bias them, this takes about 4mins")
+        S.log("some BL are stuck in SC, going to over bias them, this takes about 5mins")
         previous_dc_biases = S.get_tes_bias_bipolar_array()
         
         sdl.overbias_dets(S, cfg, bias_groups=bg_overbias_needed)
-        ##force wait time 3 mins for UFM to reach equalibrium 
-        for sleep_index in range(3):
+        ##force wait time 5 mins for UFM to reach equalibrium 
+        for sleep_index in range(5):
             time.sleep(60)
         safe_dc_biases = previous_dc_biases.copy()
         for replace_bg in bg_overbias_needed:
@@ -325,9 +325,10 @@ def biasstep_rebias(
             new_bias_voltage[bl] =  initial_dc_biases[bl] - delta_dc_bias
         ## if the detector is normal, take a larger step
         if bl in bg_detectors_normal:
+            S.log(f"some detectors are in normal state for bl{bl}, taking a large step")
             if initial_dc_biases[bl] > cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]:
                 initial_dc_biases[bl] = cfg.dev.bias_groups[bl]["testbed_100mK_bias_voltage"]
-            new_bias_voltage[bl] =  initial_dc_biases[bl] - 0.5 * v_spread
+            new_bias_voltage[bl] =  initial_dc_biases[bl] - 0.3 * v_spread
 
     S.log(f"applying new voltage for 2nd biasstep {new_bias_voltage}")
     S.set_tes_bias_bipolar_array(new_bias_voltage)  
@@ -382,6 +383,8 @@ def biasstep_rebias(
         
         S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)
         S.log(f"applying: {previous_dc_biases_dfn}")
+        S.log(f"waiting 30s for dissipation of UFM local heating")
+        time.sleep(30)
         bsa_1 = bias_steps.take_bias_steps(S, cfg)
         percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
         drop_from_normal = False
@@ -427,10 +430,119 @@ def biasstep_rebias(
     S.log(f"applying {vbias_estimate}")
     S.log("taking the final biasstep")
     bsa_2 = bias_steps.take_bias_steps(S, cfg)
+
+    ## check for script failue
+    for bl in bias_groups:
+        mask_bg = np.where(bsa_2.bgmap==bl)[0]
+        per_bl_R0 = bsa_2.R0[mask_bg]
+        if np.isnan(np.nanmedian(per_bl_R0)):
+            ## the yield is very low, could it be the biasstep analysis script failed? repeat again
+            repeat_biasstep = True
+            S.log("the biasstep script might have failed, going to repeat the measurement")
+
+    if repeat_biasstep:
+        bsa_2 = bias_steps.take_bias_steps(S, cfg)
+        repeat_biasstep = False
+
     if not math_only:
         bias_steps.plot_Rfrac(bsa_2)
+
+
+    S.log("confirming if the current result is close to the target")
+    percentage_rn_confirm = bsa_2.R0/bsa_2.R_n_IV
+    succeeded_bl = []
+    un_succeeded_bl = []
+    for bl in bias_groups:
+        mask_bg = np.where(bsa_2.bgmap==bl)[0]
+        per_bl_percentage_rn_confirm = np.nanmedian(percentage_rn_confirm[mask_bg])
+        if per_bl_percentage_rn_confirm > target_percentage_rn - 0.05 and per_bl_percentage_rn_confirm < target_percentage_rn + 0.05:
+            succeeded_bl.append(bl)
+        else:
+            un_succeeded_bl.append(bl)
+    S.log(f"succeeded bl: {succeeded_bl}")
+    S.log(f"unsucceeded bl: {un_succeeded_bl}")
+
+    if len(un_succeeded_bl)==0:
+        bsa_final = bsa_2
+        vbias_estimate_final = vbias_estimate
+
+
+    if len(un_succeeded_bl)!=0:
+        extra_step_bias_voltage = vbias_estimate.copy()
+        S.log("fine tunning unsucceeded bl")
+        for bl in un_succeeded_bl:
+            mask_bg = np.where(bsa_2.bgmap==bl)[0]
+            per_bl_percentage_rn_confirm = percentage_rn_confirm[mask_bg]
+            med_per_bl_percentage_confirm = np.nanmedian(per_bl_percentage_rn_confirm)
+
+            ## use the latest IV to decide the step size, might be tricky to get a good step size in field
+            v_sc = iva.v_bias[iva.idxs[[mask_bg], 0]]
+            v_norm = iva.v_bias[iva.idxs[[mask_bg], 1]]
+            v_spread = np.nanmedian(v_norm) - np.nanmedian(v_sc)
+            ## take 15% of the spread as the step size, so the next biasstep will be taken from 0.25 ~ 0.75 percent Rn after considering the spread
+            delta_dc_bias = 0.15 * v_spread
+            ## if the current bias point is below 50% Rn, increase V_biaa
+            if med_per_bl_percentage_confirm < 0.5:
+                extra_step_bias_voltage[bl] =  vbias_estimate[bl] + delta_dc_bias
+            if med_per_bl_percentage_confirm >= 0.5:
+                extra_step_bias_voltage[bl] =  vbias_estimate[bl] - delta_dc_bias
+
+        S.log(f"applying new voltage for extra step biasstep {extra_step_bias_voltage}")
+        S.set_tes_bias_bipolar_array(extra_step_bias_voltage)
+
+        ## taking the extra bias step
+        S.log("taking the extra biasstep")
+        bsa_extra = bias_steps.take_bias_steps(S, cfg)
         
-    return bsa_2,vbias_estimate
+        ## check for script failue
+        for bl in bias_groups:
+            mask_bg = np.where(bsa_extra.bgmap==bl)[0]
+            per_bl_R0 = bsa_extra.R0[mask_bg]
+            if np.isnan(np.nanmedian(per_bl_R0)):
+            ## the yield is very low, could it be the biasstep analysis script failed? repeat again
+                repeat_biasstep = True
+                S.log("the biasstep script might have failed, going to repeat the measurement")
+
+        if repeat_biasstep:
+            bsa_extra = bias_steps.take_bias_steps(S, cfg)
+            repeat_biasstep = False
+        
+        if not math_only:
+            bias_steps.plot_Rfrac(bsa_extra)
+
+        percentage_rn_extra = bsa_extra.R0/bsa_extra.R_n_IV
+
+        ## getting result from the previous 2
+        v0 = np.zeros(bsa_2.bgmap.shape[0])
+        for bl in range(12):
+            mask_bl = np.where(bsa_2.bgmap==bl)[0]
+            v0[mask_bl] = vbias_estimate[bl]
+
+        v1 = np.zeros(bsa_extra.bgmap.shape[0])
+        for bl in range(12):
+            mask_bl = np.where(bsa_extra.bgmap==bl)[0]
+            v1[mask_bl] = extra_step_bias_voltage[bl]
+        ## deciding the new bias point
+        vbias_estimate_array_extra = (v0*(target_percentage_rn_array-percentage_rn_extra) + v1*(percentage_rn_confirm - target_percentage_rn_array)) / (percentage_rn_confirm - percentage_rn_extra)
+
+        vbias_estimate_final = initial_dc_biases.copy()
+        for bl in bias_groups:
+            mask_bg = np.where(bsa_2.bgmap==bl)[0]
+
+            per_bl_vbias_estimate = vbias_estimate_array_extra[mask_bg]
+            med_per_bl_vbias_estimate = np.nanmedian(per_bl_vbias_estimate)
+            vbias_estimate_final[bl] = med_per_bl_vbias_estimate
+
+        S.log("applying the new bias voltages")
+        S.set_tes_bias_bipolar_array(vbias_estimate_final)
+        S.log(f"applying {vbias_estimate_final}")
+        S.log("taking the final biasstep")
+        bsa_final = bias_steps.take_bias_steps(S, cfg)
+        if not math_only:
+            bias_steps.plot_Rfrac(bsa_final)
+
+
+    return bsa_final,vbias_estimate_final
 
 
 
