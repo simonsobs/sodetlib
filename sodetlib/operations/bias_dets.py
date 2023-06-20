@@ -212,7 +212,8 @@ def biasstep_rebias(
 
 
     """
-
+    ## load IV analysis result so can use dynamic step size
+    iva = iv.IVAnalysis.load(bsa_0.meta['iv_file'])
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
@@ -335,8 +336,7 @@ def biasstep_rebias(
     initial_dc_biases = S.get_tes_bias_bipolar_array()
     new_bias_voltage = initial_dc_biases.copy()
 
-    ## load IV analysis result so can use dynamic step size
-    iva = iv.IVAnalysis.load(bsa_0.meta['iv_file'])
+
 
 
     for bl in bias_groups:
