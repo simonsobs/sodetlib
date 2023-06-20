@@ -101,6 +101,7 @@ bg_defaults = {
     'overbias_voltage': 19.9,
     'cool_voltage': 10.0,
     'testbed_100mK_bias_voltage': 10.0
+    'overbias_sleep_time_sec': 300
 }
 
 
