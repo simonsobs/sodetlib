@@ -239,7 +239,7 @@ def biasstep_rebias(
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
-    S.log(f"Initial dc biases {S.get_tes_bipolar_array()}")
+    S.log(f"Initial dc biases {S.get_tes_bias_bipolar_array()}")
     bsa_0 = bias_steps.take_bias_steps(S, cfg)
     if make_plots:
         fig, ax = bias_steps.plot_Rfrac(bsa_0)
