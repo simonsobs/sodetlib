@@ -78,7 +78,10 @@ exp_defaults = {
     "res_fit_file": None,
 
     # Overbiasing
-    'overbias_wait': 2.0
+    'overbias_wait': 2.0,
+
+    # overbias wait time
+    'overbias_sleep_time_sec': 300
 }
 band_defaults = {
     # General
@@ -100,8 +103,7 @@ band_defaults = {
 bg_defaults = {
     'overbias_voltage': 19.9,
     'cool_voltage': 10.0,
-    'testbed_100mK_bias_voltage': 10.0,
-    'overbias_sleep_time_sec': 300
+    'testbed_100mK_bias_voltage': 10.0
 }
 
 
