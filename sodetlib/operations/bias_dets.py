@@ -310,7 +310,13 @@ def biasstep_rebias(
             
         S.set_tes_bias_bipolar_array(safe_dc_biases)  
         bsa_0 = bias_steps.take_bias_steps(S, cfg)
-        bias_steps.plot_Rfrac(bsa_0)
+        if make_plots:
+            fig, ax = bias_steps.plot_Rfrac(bsa_0)
+            fname = sdl.make_filename(S, 'post_overbiasing_Rfrac.png', plot=True)
+            fig.savefig(fname)
+            S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+            if not show_plots:
+                plt.close(fig)
         
         ## add in check if detectors are normal now
         percentage_rn_0 = bsa_0.R0/bsa_0.R_n_IV
