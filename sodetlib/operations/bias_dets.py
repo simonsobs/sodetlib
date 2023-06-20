@@ -3,7 +3,7 @@ import sodetlib as sdl
 import time
 import matplotlib.pyplot as plt
 from sodetlib.operations.iv import IVAnalysis
-from sodetlib.operations import uxm_setup, uxm_relock, tracking, bias_steps, iv, bias_dets
+from sodetlib.operations import bias_steps, iv
 np.seterr(all="ignore")
 
 
@@ -203,23 +203,52 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 
 def biasstep_rebias(
         S, cfg, target_percentage_rn = 0.5, bias_groups=None,
-        math_only=False):
+        show_plots=True, make_plots=True):
 
     """
-    Scripts work well when detectors are already in transistion. For extreme cases
-    such as detectors are all in SC, it takes a few run to put them perfectly in
-    transition. Next step is making this script can handle extreme cases faster
+    re-bias detectors by taking bias_steps.
+    
+     Args
+    -----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        det config instance
+    target_percentage_rn : float
+        this is the target percentage rn for the script to bias to, numbers should be
+        between 0.3 and 0.7 for general usage.
+    bias_groups : list
+        List of bias groups to bias. If None, this will default to the active
+        bgs specified in the device cfg.
+    make_plots : bool
+        If this is set to False, the script will still apply the bias-voltage but will not
+        generate plots
+    show_plots : bool
+        If this is set to False, the script will not show plots
 
-
+    Returns
+    ----------
+    bsa_final :
+        analysis result of the last biasstep taken with the re-biased bais voltage
+    vbias_estimate_final :
+        final bias_voltages calculated and applied by the script
     """
+    if bias_groups is None:
+        bias_groups = cfg.dev.exp['active_bgs']
+    bias_groups = np.atleast_1d(bias_groups)
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
-    intical_current_biasvoltage = S.get_tes_bias_bipolar_array()
-    S.log(f"current biasvoltage {intical_current_biasvoltage}")
+    S.log(f"Initial dc biases {S.get_tes_bipolar_array()}")
     bsa_0 = bias_steps.take_bias_steps(S, cfg)
-    if not math_only:
-        bias_steps.plot_Rfrac(bsa_0)
+    if make_plots:
+        fig, ax = bias_steps.plot_Rfrac(bsa_0)
+        fname = sdl.make_filename(S, 'intial_Rfrac.png', plot=True)
+        fig.savefig(fname)
+        S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+        if not show_plots:
+            plt.close(fig)
+            
             
     ## load IV analysis result so can use dynamic step size
     iva = iv.IVAnalysis.load(bsa_0.meta['iv_file'])
@@ -374,8 +403,13 @@ def biasstep_rebias(
     ## taking the second bias step
     S.log("taking the 2nd biasstep")
     bsa_1 = bias_steps.take_bias_steps(S, cfg)
-    if not math_only:
-        bias_steps.plot_Rfrac(bsa_1)
+    if make_plots:
+        fig, ax = bias_steps.plot_Rfrac(bsa_1)
+        fname = sdl.make_filename(S, '2nd_Rfrac.png', plot=True)
+        fig.savefig(fname)
+        S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+        if not show_plots:
+            plt.close(fig)
 
     ## check for script failue
     for bl in bias_groups:
@@ -435,8 +469,13 @@ def biasstep_rebias(
         bsa_2 = bias_steps.take_bias_steps(S, cfg)
         repeat_biasstep = False
 
-    if not math_only:
-        bias_steps.plot_Rfrac(bsa_2)
+    if make_plots:
+        fig, ax = bias_steps.plot_Rfrac(bsa_2)
+        fname = sdl.make_filename(S, 'rebiased_Rfrac.png', plot=True)
+        fig.savefig(fname)
+        S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+        if not show_plots:
+            plt.close(fig)
 
 
     S.log("confirming if the current result is close to the target")
@@ -498,8 +537,13 @@ def biasstep_rebias(
             bsa_extra = bias_steps.take_bias_steps(S, cfg)
             repeat_biasstep = False
         
-        if not math_only:
-            bias_steps.plot_Rfrac(bsa_extra)
+        if make_plots:
+            fig, ax = bias_steps.plot_Rfrac(bsa_extra)
+            fname = sdl.make_filename(S, '3rd_Rfrac.png', plot=True)
+            fig.savefig(fname)
+            S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+            if not show_plots:
+                plt.close(fig)
 
         percentage_rn_extra = bsa_extra.R0/bsa_extra.R_n_IV
 
@@ -532,8 +576,13 @@ def biasstep_rebias(
         S.log(f"applying {vbias_estimate_final}")
         S.log("taking the final biasstep")
         bsa_final = bias_steps.take_bias_steps(S, cfg)
-        if not math_only:
-            bias_steps.plot_Rfrac(bsa_final)
+        if make_plots:
+            fig, ax = bias_steps.plot_Rfrac(bsa_final)
+            fname = sdl.make_filename(S, 'rebiased_Rfrac_2.png', plot=True)
+            fig.savefig(fname)
+            S.pub.register_file(fname, 'biasstep_rfrac', format='png', plot=True)
+            if not show_plots:
+                plt.close(fig)
 
 
     return bsa_final,vbias_estimate_final
