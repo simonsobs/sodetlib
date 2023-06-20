@@ -306,7 +306,13 @@ def biasstep_rebias(
             time.sleep(60)
         safe_dc_biases = previous_dc_biases.copy()
         for replace_bg in bg_overbias_needed:
-            safe_dc_biases[replace_bg] = cfg.dev.bias_groups[replace_bg]["testbed_100mK_bias_voltage"]
+            try:
+                safe_dc_biases[replace_bg] = cfg.dev.bias_groups[replace_bg]["testbed_100mK_bias_voltage"]
+            except:
+                mask_bg = np.where(bsa_0.bgmap==replace_bg)[0]
+                v_norm_bl = np.nanmedian(iva.v_bias[iva.idxs[[mask_bg], 1]])
+                safe_dc_biases[replace_bg] = v_norm_bl
+                
             
         S.set_tes_bias_bipolar_array(safe_dc_biases)  
         bsa_0 = bias_steps.take_bias_steps(S, cfg)
