@@ -308,7 +308,7 @@ def biasstep_rebias(
         for replace_bg in bg_overbias_needed:
             try:
                 safe_dc_biases[replace_bg] = cfg.dev.bias_groups[replace_bg]["testbed_100mK_bias_voltage"]
-            except:
+            except KeyError:
                 mask_bg = np.where(bsa_0.bgmap==replace_bg)[0]
                 v_norm_bl = np.nanmedian(iva.v_bias[iva.idxs[[mask_bg], 1]])
                 safe_dc_biases[replace_bg] = v_norm_bl
