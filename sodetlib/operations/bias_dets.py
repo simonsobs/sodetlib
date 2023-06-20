@@ -326,6 +326,8 @@ def biasstep_rebias(
             ## if more than half of the detectors are normal
             if len(mask_normal[0]) > 0.5*len(mask_bg):
                 drop_from_normal = True
+            else:
+                bg_detectors_normal.remove(bl)
         for bl in bg_detectors_normal:
             if previous_dc_biases_dfn[bl] < 0.5:
                 bg_detectors_normal.remove(bl)
