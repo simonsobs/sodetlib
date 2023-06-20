@@ -459,7 +459,7 @@ def biasstep_rebias(
         per_bl_vbias_estimate = vbias_estimate_array[mask_bg]
         med_per_bl_vbias_estimate = np.nanmedian(per_bl_vbias_estimate)
         if np.isnan(med_per_bl_vbias_estimate):
-            med_per_bl_vbias_estimate = (v1 + v0)/2
+            med_per_bl_vbias_estimate = (np.nanmedian(v1[mask_bg]) + np.nanmedian(v0[mask_bg]))/2
         vbias_estimate[bl] = med_per_bl_vbias_estimate
 
     S.log("applying the new bias voltages")
@@ -579,7 +579,7 @@ def biasstep_rebias(
             per_bl_vbias_estimate = vbias_estimate_array_extra[mask_bg]
             med_per_bl_vbias_estimate = np.nanmedian(per_bl_vbias_estimate)
             if np.isnan(med_per_bl_vbias_estimate):
-                med_per_bl_vbias_estimate = (v1 + v0)/2
+                med_per_bl_vbias_estimate = (np.nanmedian(v1[mask_bg]) + np.nanmedian(v0[mask_bg]))/2
             vbias_estimate_final[bl] = med_per_bl_vbias_estimate
 
 
