@@ -212,8 +212,6 @@ def biasstep_rebias(
 
 
     """
-    ## load IV analysis result so can use dynamic step size
-    iva = iv.IVAnalysis.load(bsa_0.meta['iv_file'])
 
     ## take the initial biasstep
     S.log("taking the first biasstep")
@@ -222,7 +220,10 @@ def biasstep_rebias(
     bsa_0 = bias_steps.take_bias_steps(S, cfg)
     if not math_only:
         bias_steps.plot_Rfrac(bsa_0)
-
+            
+    ## load IV analysis result so can use dynamic step size
+    iva = iv.IVAnalysis.load(bsa_0.meta['iv_file'])
+                
     repeat_biasstep = False
     ## check for script failue
     for bl in bias_groups:
