@@ -301,9 +301,9 @@ def biasstep_rebias(
         previous_dc_biases = S.get_tes_bias_bipolar_array()
         
         sdl.overbias_dets(S, cfg, bias_groups=bg_overbias_needed)
-        ##force wait time 5 mins for UFM to reach equalibrium 
-        for sleep_index in range(5):
-            time.sleep(60)
+        ##force wait for UFM to reach equalibrium 
+        sleep_time = cfg.dev.experiment["overbias_sleep_time_sec"]
+        time.sleep(sleep_time)
         safe_dc_biases = previous_dc_biases.copy()
         for replace_bg in bg_overbias_needed:
             try:
