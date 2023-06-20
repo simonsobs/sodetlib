@@ -309,7 +309,12 @@ def biasstep_rebias(
             v_sc = iva.v_bias[iva.idxs[[mask_bg], 0]]
             v_norm = iva.v_bias[iva.idxs[[mask_bg], 1]]
             v_spread = np.nanmedian(v_norm) - np.nanmedian(v_sc)
-            previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.5 * v_spread
+            if previous_dc_biases_dfn[bl] > v_spread:
+                previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.5 * v_spread
+            else:
+                previous_dc_biases_dfn[bl] =  previous_dc_biases_dfn[bl] - 0.3 * v_spread 
+                bg_detectors_normal.remove(bl)
+                S.log(f'biasline {bl} is approching 0 voltage, a confirmation new IV curve is recommended')
         
         S.set_tes_bias_bipolar_array(previous_dc_biases_dfn)
         S.log(f"applying: {previous_dc_biases_dfn}")
@@ -407,7 +412,8 @@ def biasstep_rebias(
 
         per_bl_vbias_estimate = vbias_estimate_array[mask_bg]
         med_per_bl_vbias_estimate = np.nanmedian(per_bl_vbias_estimate)
-        ## if the current bias point is below 50% Rn, increase V_biaa
+        if np.isnan(med_per_bl_vbias_estimate):
+            med_per_bl_vbias_estimate = (v1 + v0)/2
         vbias_estimate[bl] = med_per_bl_vbias_estimate
 
     S.log("applying the new bias voltages")
