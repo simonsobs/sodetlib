@@ -359,8 +359,8 @@ class BiasStepAnalysis:
 
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
-            arc=None, step_window=0.03, fit_tmin=1.5e-3, transition=None,
-            R0_thresh=30e-3, save=False, bg_map_file=None):
+            arc=None, base_dir='/data/so/timestreams', step_window=0.03, fit_tmin=1.5e-3,
+            transition=None, R0_thresh=30e-3, save=False, bg_map_file=None):
         """
         Runs the bias step analysis.
 
@@ -378,6 +378,9 @@ class BiasStepAnalysis:
             arc (optional, G3tSmurf):
                 G3tSmurf archive. If specified, will attempt to load
                 axis-manager using archive instead of sid.
+            base_dir (optiional, str):
+                Base directory where timestreams are stored. Defaults to
+                /data/so/timestreams.
             step_window (float):
                 Time after the bias step (in seconds) to use for the analysis.
             fit_tmin (float):
@@ -398,7 +401,7 @@ class BiasStepAnalysis:
                 If create_bg_map is false and this file is not None, use this file
                 to load the bg_map.
         """
-        self._load_am(arc=arc)
+        self._load_am(arc=arc, base_dir=base_dir)
         self._find_bias_edges()
         if create_bg_map:
             self._create_bg_map(assignment_thresh=assignment_thresh,
@@ -455,7 +458,7 @@ class BiasStepAnalysis:
         if save:
             self.save()
 
-    def _load_am(self, arc=None, fix_timestamps=True):
+    def _load_am(self, arc=None, base_dir='/data/so/timestreams', fix_timestamps=True):
         """
         Attempts to load the axis manager from the sid or return one that's
         already loaded. Also sets the `abs_chans` array.
@@ -467,7 +470,8 @@ class BiasStepAnalysis:
             if arc:
                 self.am = arc.load_data(self.start, self.stop)
             else:
-                self.am = sdl.load_session(self.meta['stream_id'], self.sid)
+                self.am = sdl.load_session(self.meta['stream_id'], self.sid,
+                                           base_dir=base_dir)
 
             # Fix up timestamp jitter from timestamping in software
             if fix_timestamps:
