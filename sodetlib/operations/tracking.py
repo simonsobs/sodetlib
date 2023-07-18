@@ -395,6 +395,8 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         'feedback_start_frac': exp['feedback_start_frac'],
         'feedback_end_frac': exp['feedback_end_frac'],
     }
+    frac_pp_all=0
+    frac_pp0=0
     for band in bands:
         sdl.pub_ocs_log(S, f"Setting up trackng params: band {band}")
         bcfg = cfg.dev.bands[band]
@@ -416,8 +418,13 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         # Calculate trracking parameters
         S.tracking_setup(band, **tk)
         lms_meas = S.lms_freq_hz[band]
-        lms_freq = exp['nphi0'] * tk['reset_rate_khz'] * 1e3
-        frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas
+        if band==bands[0]:
+            lms_freq = exp['nphi0'] * tk['reset_rate_khz'] * 1e3
+            frac_pp = tk['fraction_full_scale'] * lms_freq / lms_meas #frac_pp for 20k for band0
+            frac_pp_all=frac_pp
+            frac_pp0=tk['fraction_full_scale']
+        else:
+            lms_freq=lms_meas*frac_pp_all/frac_pp0
 
         # Re-enables all channels and re-run tracking setup with correct params
         S.set_amplitude_scale_array(band, asa_init)
