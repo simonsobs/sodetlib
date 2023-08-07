@@ -1001,7 +1001,9 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True,g3_tag=None):
+               use_waveform=True, show_plots=True,g3_tag=None,
+               enable_compression=False):
+
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -1042,6 +1044,10 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             function.
         g3_tag: string, optional
             Tag to attach to g3 stream.
+        enable_compression: bool, optional
+            If True, will tell the smurf-streamer to compress G3Frames. Defaults
+            to False because this dominates frame-processing time for high
+            data-rate streams.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1063,7 +1069,7 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
         use_waveform=use_waveform, g3_tag=g3_tag, stream_subtype='bgmap',
-        analysis_kwargs=_analysis_kwargs
+        analysis_kwargs=_analysis_kwargs, enable_compression=enable_compression,
     )
 
     if hasattr(bsa, 'bgmap'):
@@ -1082,7 +1088,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
                     use_waveform=True, channel_mask=None, g3_tag=None,
-                    stream_subtype='bias_steps'):
+                    stream_subtype='bias_steps', enable_compression=False):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1134,6 +1140,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Tag to attach to g3 stream.
         stream_subtype : optional, string
             Stream subtype for this operation. This will default to 'bias_steps'.
+        enable_compression: bool, optional
+            If True, will tell the smurf-streamer to compress G3Frames. Defaults
+            to False because this dominates frame-processing time for high
+            data-rate streams.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1170,7 +1180,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa.sid = sdl.stream_g3_on(
             S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
-            filter_disable=True, subtype=stream_subtype
+            filter_disable=True, subtype=stream_subtype, enable_compression=enable_compression
         )
 
         bsa.start = time.time()

@@ -130,7 +130,8 @@ def take_g3_data(S, dur, **stream_kw):
 def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
-                 filter_disable=False, stream_type=None, subtype='stream'):
+                 filter_disable=False, stream_type=None, subtype='stream',
+                 enable_compression=True):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -167,6 +168,8 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
         'cal', will automatically be set to 'obs' type)
     subtype : optional(string)
         Stream subtype. This defaults to 'stream'.
+    enable_compression : optional(bool)
+        If true, will tell the smurf-streamer to compress data.
 
     Return
     -------
@@ -189,6 +192,8 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
     reg.pysmurf_action.set(S.pub._action)
     reg.pysmurf_action_timestamp.set(S.pub._action_ts)
     reg.stream_tag.set(tags)
+
+    reg.enable_compression.set(enable_compression)
 
     cfg = S._sodetlib_cfg
     if downsample_mode is None:
