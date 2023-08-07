@@ -56,7 +56,7 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
 
     ams = {}
     for s, sid in sids.items():
-        ams[s] = sdl.load_session(cfgs[s].stream_id, sid)
+        ams[s] = sdl.load_session(cfgs[s].stream_id, sid, no_signal=True)
 
     res = {}
     for s, am in ams.items():

@@ -36,6 +36,14 @@ sys_config_file = os.path.join(os.environ['OCS_CONFIG_DIR'], 'sys_config.yml')
 with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
+def get_slot_ip(slot):
+    if 'switch_ip' not in sys_config:
+        return f"10.0.{sys_config['crate_id']}.{slot + 100}"
+    ip_list = sys_config['switch_ip'].split('.')
+    res =  '.'.join(ip_list[:-1] + [str(slot + 100)])
+    print(res)
+    return res
+
 ########################################################################
 # Various utility functions
 ########################################################################
@@ -381,7 +389,8 @@ def hammer_func(args):
 
         print("Waiting for carriers to come back online (this takes a bit)")
         for slot in slots:
-            ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
+            # ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
+            ip = get_slot_ip(slot)
             subprocess.run(['ping_carrier', ip])
     else:
         print("Skipping reboot process")
