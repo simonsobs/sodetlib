@@ -1170,7 +1170,7 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
         bsa.sid = sdl.stream_g3_on(
             S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
-            filter_disable=True, subtype=stream_subtype
+            filter_disable=True, subtype=stream_subtype, enable_compression=False
         )
 
         bsa.start = time.time()
