@@ -4,7 +4,7 @@ import time
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 import sodetlib as sdl
-from sodetlib.analysis import squid_fit as sqf
+from sodetlib.legacy.analysis import squid_fit as sqf
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm, trange
 
