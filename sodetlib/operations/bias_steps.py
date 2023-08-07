@@ -1044,6 +1044,10 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             function.
         g3_tag: string, optional
             Tag to attach to g3 stream.
+        enable_compression: bool, optional
+            If True, will tell the smurf-streamer to compress G3Frames. Defaults
+            to False because this dominates frame-processing time for high
+            data-rate streams.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1136,6 +1140,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             Tag to attach to g3 stream.
         stream_subtype : optional, string
             Stream subtype for this operation. This will default to 'bias_steps'.
+        enable_compression: bool, optional
+            If True, will tell the smurf-streamer to compress G3Frames. Defaults
+            to False because this dominates frame-processing time for high
+            data-rate streams.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
