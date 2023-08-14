@@ -320,13 +320,14 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False)
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
 
+    ts = am.primary.UnixTime / 1e9
     # Calculate phase response and bias_voltages / currents
     for i in trange(iva.nbiases, disable=(not show_pb)):
         # Start from back because analysis is easier low->high voltages
         for j, bg in enumerate(iva.bias_groups):
             t0, t1 = iva.start_times[bg, -(i+1)], iva.stop_times[bg, -(i+1)]
             chan_mask = iva.bgmap == bg
-            m = (t0 < am.timestamps) & (am.timestamps < t1)
+            m = (t0 < ts) & (ts < t1)
             iva.resp[chan_mask, i] = np.nanmean(am.signal[:, m][chan_mask], axis=1)
             if j == 0:
                 bias_bits = np.median(am.biases[bg, m])
