@@ -131,7 +131,7 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
                  filter_disable=False, stream_type=None, subtype='stream',
-                 enable_compression=True):
+                 enable_compression=None):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -176,16 +176,19 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
     session_id : int
         Id used to read back streamed data
     """
+    cfg = S._sodetlib_cfg
     if stream_type is None:
         if subtype in ['stream', 'cmb', 'cal']:
             stream_type = 'obs'
         else:
             stream_type = 'oper'
+    
+    if enable_compression is None:
+        enable_compression = cfg.dev.exp.get('enable_compression', True)
 
     tags = f'{stream_type},{subtype}'
     if tag is not None:
         tags += ',' + tag
-
     
     reg = Registers(S)
 
@@ -195,7 +198,6 @@ def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
 
     reg.enable_compression.set(enable_compression)
 
-    cfg = S._sodetlib_cfg
     if downsample_mode is None:
         downsample_mode = cfg.dev.exp['downsample_mode']
     if downsample_factor is None:

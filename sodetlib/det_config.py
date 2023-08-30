@@ -40,6 +40,7 @@ exp_defaults = {
     'active_bands': [0, 1, 2, 3, 4, 5, 6, 7],
     'active_bgs': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     'downsample_mode': 'internal',
+    'enable_compression': True,
 
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
