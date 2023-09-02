@@ -238,10 +238,12 @@ def biasstep_rebias(
         bias_groups = cfg.dev.exp['active_bgs']
     bias_groups = np.atleast_1d(bias_groups)
 
+    g3_tag = 'oper,biasstep_rebias'
+
     ## take the initial biasstep
     S.log("taking the first biasstep")
     S.log(f"Initial dc biases {S.get_tes_bias_bipolar_array()}")
-    bsa_0 = bias_steps.take_bias_steps(S, cfg)
+    bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag='oper,biasstep_rebias')
     if make_plots:
         fig, ax = bias_steps.plot_Rfrac(bsa_0)
         fname = sdl.make_filename(S, 'intial_Rfrac.png', plot=True)
@@ -266,7 +268,7 @@ def biasstep_rebias(
 
     if repeat_biasstep:
         S.log("retaking biasstep due to failure")
-        bsa_0 = bias_steps.take_bias_steps(S, cfg)
+        bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         repeat_biasstep = False
     
     percentage_rn_0 = bsa_0.R0/bsa_0.R_n_IV
@@ -316,7 +318,7 @@ def biasstep_rebias(
                 
             
         S.set_tes_bias_bipolar_array(safe_dc_biases)  
-        bsa_0 = bias_steps.take_bias_steps(S, cfg)
+        bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         if make_plots:
             fig, ax = bias_steps.plot_Rfrac(bsa_0)
             fname = sdl.make_filename(S, 'post_overbiasing_Rfrac.png', plot=True)
@@ -362,7 +364,7 @@ def biasstep_rebias(
         S.log(f"applying: {previous_dc_biases_dfn}")
         S.log(f"waiting 10s for dissipation of UFM local heating")
         time.sleep(10)
-        bsa_0 = bias_steps.take_bias_steps(S, cfg)
+        bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         percentage_rn_0 = bsa_0.R0/bsa_0.R_n_IV
         drop_from_normal = False
         for bl in bg_detectors_normal:
@@ -415,7 +417,7 @@ def biasstep_rebias(
 
     ## taking the second bias step
     S.log("taking the 2nd biasstep")
-    bsa_1 = bias_steps.take_bias_steps(S, cfg)
+    bsa_1 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
     if make_plots:
         fig, ax = bias_steps.plot_Rfrac(bsa_1)
         fname = sdl.make_filename(S, '2nd_Rfrac.png', plot=True)
@@ -434,7 +436,7 @@ def biasstep_rebias(
             S.log("the biasstep script might have failed, going to repeat the measurement")
 
     if repeat_biasstep:
-        bsa_1 = bias_steps.take_bias_steps(S, cfg)
+        bsa_1 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         repeat_biasstep = False
 
     percentage_rn_1 = bsa_1.R0/bsa_1.R_n_IV
@@ -467,7 +469,7 @@ def biasstep_rebias(
     S.set_tes_bias_bipolar_array(vbias_estimate)  
     S.log(f"applying {vbias_estimate}")
     S.log("taking the final biasstep")
-    bsa_2 = bias_steps.take_bias_steps(S, cfg)
+    bsa_2 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
 
     ## check for script failue
     for bl in bias_groups:
@@ -479,7 +481,7 @@ def biasstep_rebias(
             S.log("the biasstep script might have failed, going to repeat the measurement")
 
     if repeat_biasstep:
-        bsa_2 = bias_steps.take_bias_steps(S, cfg)
+        bsa_2 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         repeat_biasstep = False
 
     if make_plots:
@@ -535,7 +537,7 @@ def biasstep_rebias(
 
         ## taking the extra bias step
         S.log("taking the extra biasstep")
-        bsa_extra = bias_steps.take_bias_steps(S, cfg)
+        bsa_extra = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         
         ## check for script failue
         for bl in bias_groups:
@@ -547,7 +549,7 @@ def biasstep_rebias(
                 S.log("the biasstep script might have failed, going to repeat the measurement")
 
         if repeat_biasstep:
-            bsa_extra = bias_steps.take_bias_steps(S, cfg)
+            bsa_extra = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
             repeat_biasstep = False
         
         if make_plots:
@@ -588,7 +590,7 @@ def biasstep_rebias(
         S.set_tes_bias_bipolar_array(vbias_estimate_final)
         S.log(f"applying {vbias_estimate_final}")
         S.log("taking the final biasstep")
-        bsa_final = bias_steps.take_bias_steps(S, cfg)
+        bsa_final = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
         if make_plots:
             fig, ax = bias_steps.plot_Rfrac(bsa_final)
             fname = sdl.make_filename(S, 'rebiased_Rfrac_2.png', plot=True)
