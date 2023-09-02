@@ -651,7 +651,10 @@ if __name__ == '__main__':
     start_sync_parser.set_defaults(func=start_sync_func)
 
     ########### Jackhammer start-sync parser ###########
-    start_sync_parser = subparsers.add_parser('setup-fans')
+    start_sync_parser = subparsers.add_parser(
+        'setup-fans', 
+        help="Sets fan speeds and policy on crate based on sys-config"
+    )
     start_sync_parser.set_defaults(func=setup_fans_func)
 
     args = parser.parse_args()
