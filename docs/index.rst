@@ -22,6 +22,7 @@ Contents
 
    operations/setup
    operations/bias_steps
+   operations/biasstep_rebias
    operations/iv
    operations/squid_curves
    operations/complex_impedance

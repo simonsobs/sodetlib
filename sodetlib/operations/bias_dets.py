@@ -201,6 +201,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 
     return biases
 
+sdl.set_action()
 def biasstep_rebias(
         S, cfg, target_percentage_rn = 0.5, bias_groups=None,
         show_plots=True, make_plots=True):
