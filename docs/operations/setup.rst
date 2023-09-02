@@ -341,11 +341,13 @@ Debugging Issues
 
 There are many issues that result in failure somewhere in the setup or relock procedure,
 including:
+
  - Amplifiers not functioning properly
  - Flux-ramp not being received by the UFM
  - SMuRF's resonance center frequency is off of the true resonance frequency
  - SMuRF's eta estimation is off
  - Phase-delay estimation is off
+
 Any of these may result in bad tracking performance and high noise levels.
 
 In order to debug, it is extremely useful to visualize the resonator response

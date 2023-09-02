@@ -49,8 +49,8 @@ The following parameters can be set in the top-level of the yaml file
      - ID of the smurf-crate, e.g. ``1``
    * - ``shelf_manager``
      - Shelf manager name
-   * - ``max_fan_level``
-     - Max Fan Level to be set on reboot
+   * - ``smurf_fans``
+     - Dict used to set fan-policy and speed on hammer
    * - ``comm_type``
      - Communication type to the crate -- either ``eth`` or ``pcie``
    * - ``meta_register_file``
@@ -59,6 +59,64 @@ The following parameters can be set in the top-level of the yaml file
    * - ``slot_order``
      - A list containing all active slots in the order that they should be 
        started.
+  
+Fan Confiuration
+```````````````````
+The ``smurf_fans`` key is a dict which can be used to set the fan policy and
+speed during hammer, or with the ``jackhammer setup-fans`` command.
+
+Before configuring you need to determine the address of the fans on the smurf. 
+To do this, ssh into the shelf-manager, and run the following:
+
+.. code-block:: bash
+
+  # clia fans
+  > Pigeon Point Shelf Manager Command Line Interpreter
+  > 20: FRU # 4
+  > Current Level: 14
+  > Minimum Speed Level: 1, Maximum Speed Level: 100 Dynamic minimum fan level: 11
+  > 20: FRU # 3
+  > Current Level: 14
+  > Minimum Speed Level: 1, Maximum Speed Level: 100
+
+This tells us that there are two configurable fans, one with address 20 and FRU-id 4, and the other with address 20 and FRU-id 3.
+This also tells us that the maximum speed of the fan is 100.
+
+Our sys-config entry under ``smurf_fans`` should look like
+
+.. code-block:: yaml
+
+  smurf_fans:
+    addresses:
+      - [<address-1>, <fru_id-1>]
+      - [<address-2>, <fru_id-2>]
+    speed: <speed>
+    policy: <policy>
+
+Here, ``speed`` is the speed it will set all fans to, ``policy`` can be
+``enable`` or ``disable``, where ``enable`` will have the fan-controller
+auto-adjust the speed based on the junction temps, and disable will keep the fan
+speed fixed.
+
+It can be dangerous to disable the fan-controller if you are not setting fans to
+their max speed, as the controller will have no ability to increase the speed to
+keep smurf cool if they need to.
+
+However, keeping the fan speeds fixed at their max speed can be beneficial, as
+fan-speed changes cause sudden changes FPGA temp and electronics temp, which make its way into our data.
+
+For operating the SAT (and for most SO smurfs), the max-fan speed is 100, so our configuration looks like:
+
+.. code-block:: yaml
+
+  smurf_fans:
+    addresses:
+      - [20, 3]
+      - [20, 4]
+    speed: 100
+    policy: disable
+
+
 
 Slot Configuration
 ````````````````````
