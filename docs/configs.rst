@@ -60,7 +60,7 @@ The following parameters can be set in the top-level of the yaml file
      - A list containing all active slots in the order that they should be 
        started.
   
-Fan Confiuration
+Fan Configuration
 ```````````````````
 The ``smurf_fans`` key is a dict which can be used to set the fan policy and
 speed during hammer, or with the ``jackhammer setup-fans`` command.
