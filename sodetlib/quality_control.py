@@ -6,7 +6,7 @@ from tqdm.auto import trange
 from pysmurf.client.base.smurf_control import SmurfControl
 import matplotlib.pyplot as plt
 
-def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
+def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None, downsample_factor=1):
     """
     Takes a short G3 Stream on multiple slots simultaneously and checks for
     dropped samples. This function is strange since it requires simultaneous
@@ -28,6 +28,8 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
     slots : list
         Which slots to stream data on. If None, will stream on all slots in the
         Ss object.
+    downsample_factor : int
+        Downsample factor to use
 
     Returns
     --------
@@ -44,7 +46,7 @@ def check_packet_loss(Ss, cfgs, dur=10, fr_khz=4, nchans=2000, slots=None):
         S = Ss[s]
         S.flux_ramp_setup(fr_khz, 0.4, band=0)
         sdl.stream_g3_on(
-            S, channel_mask=np.arange(nchans), downsample_factor=1,
+            S, channel_mask=np.arange(nchans), downsample_factor=downsample_factor,
             subtype='check_packet_loss'
         )
 
