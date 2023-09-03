@@ -522,7 +522,7 @@ def setup_fans():
     if 'smurf_fans' not in sys_config:
         # Old way of setting up fans
         cprint(
-            "'fans' key not found in sys config. Setting fan levels using "
+            "'smurf_fans' key not found in sys config. Setting fan levels using "
             "'max_fan_level', however this allows fan speed to change over "
             "time."
         )
@@ -650,7 +650,7 @@ if __name__ == '__main__':
     start_sync_parser = subparsers.add_parser('start-sync')
     start_sync_parser.set_defaults(func=start_sync_func)
 
-    ########### Jackhammer start-sync parser ###########
+    ########### Jackhammer setup-fans parser ###########
     start_sync_parser = subparsers.add_parser(
         'setup-fans', 
         help="Sets fan speeds and policy on crate based on sys-config"
