@@ -243,7 +243,7 @@ def biasstep_rebias(
     ## take the initial biasstep
     S.log("taking the first biasstep")
     S.log(f"Initial dc biases {S.get_tes_bias_bipolar_array()}")
-    bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag='oper,biasstep_rebias')
+    bsa_0 = bias_steps.take_bias_steps(S, cfg, g3_tag=g3_tag)
     if make_plots:
         fig, ax = bias_steps.plot_Rfrac(bsa_0)
         fname = sdl.make_filename(S, 'intial_Rfrac.png', plot=True)
