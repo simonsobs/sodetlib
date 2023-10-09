@@ -26,6 +26,7 @@ autodoc_mock_imports = [
     'sotodlib.tod_ops',
     'sotodlib.core',
     'tqdm.auto'
+    'tqdm',
 ]
 
 from unittest import mock

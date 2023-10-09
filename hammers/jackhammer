@@ -351,24 +351,7 @@ def hammer_func(args):
 
         # Sets fan levels on crate
         cprint("Setting fan levels", style=TermColors.HEADER)
-
-        min_fan_level = sys_config.get('min_fan_level')
-        init_fan_level = sys_config.get('init_fan_level')
-
-        if (min_fan_level is None) or (init_fan_level is None):
-            # Run with old way, using max_fan_level to set both minfanlevel and
-            # init
-            min_fan_level = sys_config['max_fan_level']
-            init_fan_level = sys_config['max_fan_level']
-            cprint("Using max_fan_level sys_config value to set minfanlevel and "
-                   "initial level. If you've switched to a Comtel crate, please "
-                   "change your sys_config to use the `min_fan_level` and "
-                   "`init_fan_level` variables", style=TermColors.WARNING)
-
-        cmd = f'clia minfanlevel {min_fan_level}; '
-        cmd += f'clia setfanlevel all {init_fan_level}'
-        print(f"Setting crate fans to {init_fan_level}...")
-        run_on_shelf_manager(cmd)
+        setup_fans()
 
     if reboot:
         cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
@@ -535,6 +518,46 @@ def activate_func(args):
 def write_env_func(args):
     write_docker_env()
 
+def setup_fans():
+    if 'smurf_fans' not in sys_config:
+        # Old way of setting up fans
+        cprint(
+            "'smurf_fans' key not found in sys config. Setting fan levels using "
+            "'max_fan_level', however this allows fan speed to change over "
+            "time."
+        )
+
+        min_fan_level = sys_config.get('min_fan_level')
+        init_fan_level = sys_config.get('init_fan_level')
+
+        if (min_fan_level is None) or (init_fan_level is None):
+            # Run with old way, using max_fan_level to set both minfanlevel and
+            # init
+            min_fan_level = sys_config['max_fan_level']
+            init_fan_level = sys_config['max_fan_level']
+            cprint("Using max_fan_level sys_config value to set minfanlevel and "
+                   "initial level. If you've switched to a Comtel crate, please "
+                   "change your sys_config to use the `min_fan_level` and "
+                   "`init_fan_level` variables", style=TermColors.WARNING)
+
+        cmd = f'clia minfanlevel {min_fan_level}; '
+        cmd += f'clia setfanlevel all {init_fan_level}'
+        print(f"Setting crate fans to {init_fan_level}...")
+        run_on_shelf_manager(cmd)
+        return
+
+    fans = sys_config['smurf_fans']
+    cmd = ''
+    for addr in fans['addresses']:
+        a, b = addr
+
+        cmd += f"clia setfanpolicy {a} {b} {fans['policy']}; "
+    cmd += f"clia setfanlevel all {fans['speed']};"
+    run_on_shelf_manager(cmd)
+
+# Entrypoint for jackhammer setup-fans
+def setup_fans_func(args):
+    setup_fans()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -580,7 +603,7 @@ if __name__ == '__main__':
     setup_parser.set_defaults(func=setup_func)
     setup_parser.add_argument('slots', nargs='*', type=int,
                                help="Specifies the slots to setup")
-    
+
 
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
@@ -623,8 +646,16 @@ if __name__ == '__main__':
     write_env_parser = subparsers.add_parser('write-env', help='writes docker-env to .env file')
     write_env_parser.set_defaults(func=write_env_func)
 
+    ########### Jackhammer start-sync parser ###########
     start_sync_parser = subparsers.add_parser('start-sync')
     start_sync_parser.set_defaults(func=start_sync_func)
+
+    ########### Jackhammer setup-fans parser ###########
+    start_sync_parser = subparsers.add_parser(
+        'setup-fans', 
+        help="Sets fan speeds and policy on crate based on sys-config"
+    )
+    start_sync_parser.set_defaults(func=setup_fans_func)
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
