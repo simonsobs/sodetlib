@@ -1019,6 +1019,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             Bias groups to run steps on, defaulting to all 12. It is
             recommended that this isn't modified unless necessary to create a
             full bg-map.
+        dc_voltage : float
+            DC bias used at low end of bias step to avoid divide by zeros in
+            the analysis.
         step_voltage (float):
             Step voltage in Low-current-mode units. (i.e. this will be divided
             by the high-low-ratio before running the steps in high-current
@@ -1079,6 +1082,9 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             plt.show()
         else:
             plt.close()
+
+    for bg in bgs:
+        S.set_tes_bias_bipolar(bg, 0.)
 
     return bsa
 
