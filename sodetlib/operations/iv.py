@@ -5,6 +5,8 @@ import sodetlib as sdl
 import matplotlib.pyplot as plt
 import os
 from tqdm.auto import trange
+from typing import Optional
+from dataclasses import dataclass, asdict
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -501,14 +503,37 @@ def plot_channel_iv(iva, rc):
     axes[-1].set_xlabel("Voltage (V)")
     return fig, axes
 
+@dataclass
+class IVConfig:
+    bias_groups: Optional[list] = None
+    overbias_voltage: float = 18.0
+    overbias_wait: float = 5.0
+    high_current_mode: bool = True
+    cool_wait: float = 30.
+    cool_voltage: Optional[float] = None
+    biases: Optional[np.ndarray] = None
+    bias_high: float = 18.0
+    bias_low: float = 0.0
+    bias_step: float = 0.025
+    show_plots: bool = True
+    wait_time: float = 0.1
+    run_analysis: bool = True
+    run_serially: bool = False
+    serial_wait_time: float = 10.
+    g3_tag: Optional[str] = None
+    analysis_kwargs: Optional[dict] = None
+
+    def __post_init__(self):
+        if self.biases is None:
+            self.biases = np.arange(self.bias_high, self.bias_low - self.bias_step, -self.bias_step)
+        self.biases = np.sort(self.biases)[::-1]
+
+        if self.analysis_kwargs is None:
+            self.analysis_kwargs = {}
+
 
 @sdl.set_action()
-def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
-            high_current_mode=True, cool_wait=30, cool_voltage=None,
-            biases=None, bias_high=18, bias_low=0, bias_step=0.025,
-            show_plots=True, wait_time=0.1, run_analysis=True,
-            run_serially=False, serial_wait_time=10, g3_tag=None,
-            **analysis_kwargs):
+def take_iv(S, cfg, **kwargs):
     """
     Takes an IV.
 
@@ -576,28 +601,19 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
     if not hasattr(S, 'tune_file'):
         raise AttributeError('No tunefile loaded in current '
                              'pysmurf session. Load active tunefile.')
+    
+    kw = cfg.dev.exp['iv_defaults']
+    kw.update(kwargs)
+    ivcfg = IVConfig(**kw)
 
-    if bias_groups is None:
-        bias_groups = cfg.dev.exp['active_bgs']
-    bias_groups = np.atleast_1d(bias_groups)
+    if ivcfg.bias_groups is None:
+        ivcfg.bias_groups = cfg.dev.exp['active_bgs']
+    ivcfg.bias_groups = np.atleast_1d(ivcfg.bias_groups).astype(int)
 
-    if biases is None:
-        biases = np.arange(bias_high, bias_low - bias_step, -bias_step)
-    # Make sure biases is in decreasing order for run function
-    biases = np.sort(biases)[::-1]
+    run_kwargs = asdict(ivcfg)
 
-    run_kwargs = {
-        'bias_groups': bias_groups, 'overbias_voltage': overbias_voltage,
-        'overbias_wait': overbias_wait, 'high_current_mode': high_current_mode,
-        'cool_wait': cool_wait, 'cool_voltage': cool_voltage,  'biases': biases,
-        'bias_high': bias_high, 'bias_low': bias_low, 'bias_step': bias_step,
-        'wait_time': wait_time, 'run_analysis': run_analysis,
-        'run_serially': run_serially, 'serial_wait_time': serial_wait_time,
-        'analysis_kwargs': analysis_kwargs
-    }
-
-    start_times = np.zeros((S._n_bias_groups, len(biases)))
-    stop_times = np.zeros((S._n_bias_groups, len(biases)))
+    start_times = np.zeros((S._n_bias_groups, len(ivcfg.biases)))
+    stop_times = np.zeros((S._n_bias_groups, len(ivcfg.biases)))
     sdl.stop_point(S)
     def overbias_and_sweep(bgs, cool_voltage=None):
         """
@@ -605,71 +621,71 @@ def take_iv(S, cfg, bias_groups=None, overbias_voltage=18.0, overbias_wait=5.0,
         """
         bgs = np.atleast_1d(bgs).astype(int)
         _bias_arr = S.get_tes_bias_bipolar_array()
-        _bias_arr[bias_groups] = 0
+        _bias_arr[ivcfg.bias_groups] = 0
         S.set_tes_bias_bipolar_array(_bias_arr)
-        if overbias_voltage > 0:
+        if ivcfg.overbias_voltage > 0:
             if cool_voltage is None:
-                cool_voltage = np.max(biases)
+                cool_voltage = np.max(ivcfg.biases)
             S.overbias_tes_all(
-                bias_groups=bgs, overbias_wait=overbias_wait,
-                tes_bias=cool_voltage, cool_wait=cool_wait,
-                high_current_mode=high_current_mode,
-                overbias_voltage=overbias_voltage
+                bias_groups=bgs, overbias_wait=ivcfg.overbias_wait,
+                tes_bias=cool_voltage, cool_wait=ivcfg.cool_wait,
+                high_current_mode=ivcfg.high_current_mode,
+                overbias_voltage=ivcfg.overbias_voltage
             )
 
         S.log(f"Starting TES Bias Ramp on bg {bgs}")
-        for i, bias in enumerate(biases):
+        for i, bias in enumerate(ivcfg.biases):
             sdl.stop_point(S)
             S.log(f"Setting bias to {bias:4.3f}")
             _bias_arr[bgs] = bias
             S.set_tes_bias_bipolar_array(_bias_arr)
             start_times[bgs, i] = time.time()
-            time.sleep(wait_time)
+            time.sleep(ivcfg.wait_time)
             stop_times[bgs, i] = time.time()
 
-    if high_current_mode:
+    if ivcfg.high_current_mode:
         biases /= S.high_low_current_ratio
     try:
-        sid = sdl.stream_g3_on(S, tag=g3_tag, subtype='iv')
-        if run_serially:
-            for bg in bias_groups:
-                overbias_and_sweep(bg, cool_voltage=cool_voltage)
-                time.sleep(serial_wait_time)
+        sid = sdl.stream_g3_on(S, tag=ivcfg.g3_tag, subtype='iv')
+        if ivcfg.run_serially:
+            for bg in ivcfg.bias_groups:
+                overbias_and_sweep(bg, cool_voltage=ivcfg.cool_voltage)
+                time.sleep(ivcfg.serial_wait_time)
         else:
-            overbias_and_sweep(bias_groups)
+            overbias_and_sweep(ivcfg.bias_groups)
     finally:
         sdl.stream_g3_off(S)
 
         # Turn off biases and streaming on error
-        for bg in bias_groups:
+        for bg in ivcfg.bias_groups:
             S.set_tes_bias_bipolar(bg, 0)
 
 
     iva = IVAnalysis(S, cfg, run_kwargs, sid, start_times, stop_times)
 
-    if run_analysis:
+    if ivcfg.run_analysis:
         sdl.stop_point(S)
         _analysis_kwargs = {'save': True, 'update_cfg': True}
-        _analysis_kwargs.update(analysis_kwargs)
+        _analysis_kwargs.update(ivcfg.analysis_kwargs)
         analyze_iv(iva, **_analysis_kwargs)
 
         # Save and publish plots
         is_interactive = plt.isinteractive()
         try:
-            if not show_plots:
+            if not ivcfg.show_plots:
                 plt.ioff()
             fig, ax = plot_Rfracs(iva)
             fname = sdl.make_filename(S, 'iv_rfracs.png', plot=True)
             fig.savefig(fname)
             S.pub.register_file(fname, 'iv', format='png', plot=True)
-            if not show_plots:
+            if not ivcfg.show_plots:
                 plt.close(fig)
 
             fig, ax = plot_Rn_hist(iva)
             fname = sdl.make_filename(S, 'iv_rns.png', plot=True)
             fig.savefig(fname)
             S.pub.register_file(fname, 'iv', format='png', plot=True)
-            if not show_plots:
+            if not ivcfg.show_plots:
                 plt.close(fig)
         finally:
             if is_interactive:
