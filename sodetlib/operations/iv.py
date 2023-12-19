@@ -4,6 +4,7 @@ from scipy.interpolate import interp1d
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 import os
+from copy import deepcopy
 from tqdm.auto import trange
 from typing import Optional
 from dataclasses import dataclass, asdict
@@ -602,7 +603,7 @@ def take_iv(S, cfg, **kwargs):
         raise AttributeError('No tunefile loaded in current '
                              'pysmurf session. Load active tunefile.')
     
-    kw = cfg.dev.exp['iv_defaults']
+    kw = deepcopy(cfg.dev.exp['iv_defaults'])
     kw.update(kwargs)
     ivcfg = IVConfig(**kw)
 
