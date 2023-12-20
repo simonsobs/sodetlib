@@ -42,6 +42,9 @@ exp_defaults = {
     'downsample_mode': 'internal',
     'enable_compression': True,
 
+    # Dict of device-specific default params to use for take_iv
+    'iv_defaults': {},
+
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
     "amp_enable_wait_time": 10.0, "amp_step_wait_time": 0.2,
