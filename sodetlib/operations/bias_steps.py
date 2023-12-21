@@ -1001,9 +1001,8 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
                step_duration=0.05, nsteps=20, high_current_mode=True,
                hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True,g3_tag=None,
-               enable_compression=False):
-
+               use_waveform=True, show_plots=True, g3_tag=None,
+               enable_compression=False, plot_rfrac=False):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -1051,6 +1050,10 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
             If True, will tell the smurf-streamer to compress G3Frames. Defaults
             to False because this dominates frame-processing time for high
             data-rate streams.
+        plot_rfrac : bool
+            Create rfrac plot, publish it, and save it. Default is False.
+        show_plots : bool
+            Show plot in addition to saving when running interactively. Default is False.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1072,7 +1075,8 @@ def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
         nsteps=nsteps, high_current_mode=high_current_mode,
         hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
         use_waveform=use_waveform, g3_tag=g3_tag, stream_subtype='bgmap',
-        analysis_kwargs=_analysis_kwargs, enable_compression=enable_compression,
+        plot_rfrac=plot_rfrac, show_plots=show_plots,
+        enable_compression=enable_compression, analysis_kwargs=_analysis_kwargs
     )
 
     if hasattr(bsa, 'bgmap'):
@@ -1094,7 +1098,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
                     nsteps=20, high_current_mode=True, hcm_wait_time=3,
                     run_analysis=True, analysis_kwargs=None, dacs='pos',
                     use_waveform=True, channel_mask=None, g3_tag=None,
-                    stream_subtype='bias_steps', enable_compression=False):
+                    stream_subtype='bias_steps', enable_compression=False,
+                    plot_rfrac=True, show_plots=False):
     """
     Takes bias step data at the current DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1150,6 +1155,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             If True, will tell the smurf-streamer to compress G3Frames. Defaults
             to False because this dominates frame-processing time for high
             data-rate streams.
+        plot_rfrac : bool
+            Create rfrac plot, publish it, and save it. Default is True.
+        show_plots : bool
+            Show plot in addition to saving when running interactively. Default is False.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -1220,6 +1229,13 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             if analysis_kwargs is None:
                 analysis_kwargs = {}
             bsa.run_analysis(save=True, **analysis_kwargs)
+            if plot_rfrac:
+                fig, ax = plot_Rfrac(bsa)
+                path = sdl.make_filename(S, 'bs_rfrac_summary.png', plot=True)
+                fig.savefig(path)
+                S.pub.register_file(path, 'bs_rfrac_summary', plot=True, format='png')
+                if not show_plots:
+                    plt.close(fig)
         except Exception:
             print(f"Bias step analysis failed with exception:")
             print(traceback.format_exc())
