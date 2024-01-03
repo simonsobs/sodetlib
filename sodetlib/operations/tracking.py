@@ -430,27 +430,22 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
         f, df, sync = S.tracking_setup(band, **tk)
         res.add_band_data(band, f, df, sync, tracking_kwargs=tk)
 
+        # Print tracking params
+        d = {
+            'frac_pp': frac_pp,
+            'lms_freq_hz': lms_freq,
+        }
+        S.log(f"Tracking params found for band {band}: {d}")
+
         # Update det config
         if update_cfg:
-            cfg.dev.update_band(band, {
-                'frac_pp':            frac_pp,
-                'lms_freq_hz':        lms_freq,
-            }, update_file=True)
+            cfg.dev.update_band(band, d, update_file=True)
 
     res.save()
-    is_interactive = plt.isinteractive()
-    try:
-        if not show_plots:
-            plt.ioff()
-        fig, ax = plot_tracking_summary(res)
-        path = sdl.make_filename(S, 'tracking_results.png', plot=True)
-        fig.savefig(path)
-        S.pub.register_file(path, 'tracking_summary', plot=True, format='png')
-        if not show_plots:
-            plt.close(fig)
-    finally:
-        if is_interactive:
-            plt.ion()
+
+    S.log("Running relock tracking setup...")
+    res = relock_tracking_setup(S, cfg, bands=bands, show_plots=show_plots)
+
     return res
 
 
