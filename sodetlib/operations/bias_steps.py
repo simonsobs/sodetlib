@@ -468,7 +468,7 @@ class BiasStepAnalysis:
         """
         if self.am is None:
             if arc:
-                self.am = arc.load_data(self.start, self.stop)
+                self.am = arc.load_data(self.start, self.stop, stream_id=self.meta['stream_id'])
             else:
                 self.am = sdl.load_session(self.meta['stream_id'], self.sid,
                                            base_dir=base_dir)
