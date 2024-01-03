@@ -44,6 +44,8 @@ exp_defaults = {
 
     # Dict of device-specific default params to use for take_iv
     'iv_defaults': {},
+    'take_bgmap_defaults': {},
+    'take_bias_step_defaults': {},
 
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
