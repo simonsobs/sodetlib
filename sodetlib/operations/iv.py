@@ -645,7 +645,7 @@ def take_iv(S, cfg, **kwargs):
             stop_times[bgs, i] = time.time()
 
     if ivcfg.high_current_mode:
-        biases /= S.high_low_current_ratio
+        ivcfg.biases /= S.high_low_current_ratio
     try:
         sid = sdl.stream_g3_on(S, tag=ivcfg.g3_tag, subtype='iv')
         if ivcfg.run_serially:
