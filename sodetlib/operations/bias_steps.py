@@ -364,7 +364,6 @@ class BiasStepAnalysis:
         """
         Runs the bias step analysis.
 
-
         Parameters:
             create_bg_map (bool):
                 If True, will create a bg map from the step data. If False,
@@ -386,11 +385,7 @@ class BiasStepAnalysis:
             fit_tmin (float):
                 tmin used for the fit
             transition: (tuple, bool, optional)
-                Range of voltage bias values (in low-cur units) where the
-                "in-transition" resistance calculation should be used. If True,
-                or False, will use in-transition or normal calc for all
-                channels. Will default to ``cfg.dev.exp['transition_range']`` or
-                (1, 8) if that does not exist or if self._cfg is not set.
+                DEPRECATED!! do not use.
             R0_thresh (float):
                 Any channel with resistance greater than R0_thresh will be
                 unassigned from its bias group under the assumption that it's
@@ -414,7 +409,7 @@ class BiasStepAnalysis:
                 self.bands, self.channels, self.meta['bgmap_file'])
 
         self._get_step_response(step_window=step_window)
-        self._compute_dc_params(transition=transition, R0_thresh=R0_thresh)
+        self._compute_dc_params(R0_thresh=R0_thresh)
 
         # Load R_n from IV
         self.R_n_IV = np.full(self.nchans, np.nan)
@@ -634,7 +629,7 @@ class BiasStepAnalysis:
 
         return ts, sigs
 
-    def _compute_R0_I0_Pj(self, transition=False):
+    def _compute_R0_I0_Pj(self):
         """
         Computes the DC params R0 I0 and Pj
         """
@@ -646,13 +641,12 @@ class BiasStepAnalysis:
         dIrat = dItes / dIb
 
         R_sh = self.meta["R_sh"]
-        if not transition:
-            # Assumes dRtes / dIb = 0
-            I0 = Ib * dIrat
 
-        else:
-            # Assumes dPj / dIb = 0
-            I0 = Ib * dIrat / (2 * dIrat - 1)
+        I0 = np.zeros_like(dIrat)
+        I0_nontransition = Ib * dIrat
+        I0_transition = Ib * dIrat / (2 * dIrat - 1)
+        I0[dIrat>0] = I0_nontransition[dIrat>0]
+        I0[dIrat<0] = I0_transition[dIrat<0]
 
         Pj = I0 * R_sh * (Ib - I0)
         R0 = Pj / I0**2
@@ -660,7 +654,7 @@ class BiasStepAnalysis:
 
         return R0, I0, Pj
 
-    def _compute_dc_params(self, transition=None, R0_thresh=30e-3):
+    def _compute_dc_params(self, R0_thresh=30e-3):
         """
         Calculates Ibias, dIbias, and dItes from axis manager, and then
         runs the DC param calc to estimate R0, I0, Pj, etc. Here you must
@@ -722,30 +716,7 @@ class BiasStepAnalysis:
         self.dVbias = dIbias * bias_line_resistance
         self.dItes = dItes
 
-        default_transition = (1, 8)
-        if transition is None:
-            if self._cfg is None:
-                transition = default_transition
-            else:
-                transition = self._cfg.dev.exp.get('transition_range',
-                                                   default_transition)
-
-        tmask = np.zeros(self.nchans, dtype=bool)
-        if transition is True or transition is False:
-            tmask[:] = transition
-        else:
-            # Calculate transition mask based on bias voltage and specified 
-            # range
-            tr0, tr1 = transition
-            vb = self.Vbias[self.bgmap]
-            tmask = (tr0 < vb) & (vb < tr1)
-
-        R0, I0, Pj = self._compute_R0_I0_Pj(transition=False)
-        R0_trans, I0_trans, Pj_trans = self._compute_R0_I0_Pj(transition=True)
-
-        R0[tmask] = R0_trans[tmask]
-        I0[tmask] = I0_trans[tmask]
-        Pj[tmask] = Pj_trans[tmask]
+        R0, I0, Pj = self._compute_R0_I0_Pj()
 
         Si = -1./(I0 * (R0 - self.meta['R_sh']))
 
