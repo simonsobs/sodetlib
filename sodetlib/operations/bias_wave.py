@@ -5,6 +5,7 @@ import numpy as np
 import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
+from scipy.signal import welch
 from sodetlib.operations import bias_steps
 
 np.seterr(all='ignore')
@@ -12,7 +13,27 @@ np.seterr(all='ignore')
 def play_bias_wave(S, bias_group, freqs_wave, amp_wave, duration,
                    dc_bias=None):
     """
-    UPDATE THE DOCSTRING
+    Play a sine wave on the bias group.
+
+    Args
+    ----
+    bias_group : int
+        The bias group
+    freq_wave : float array
+        List of frequencies to play. Unit = Hz.
+    amp_wave : float
+        Amplitude of sine wave to use. Unit = Volts.
+    duration : float
+        Duration each sine wave is played  
+    dc_bias : float, optional
+        Offset voltage of sine wave. Unit = Volts.
+
+    Returns
+    -------
+    start_times : float list
+        unix timestamp for the beginning of each sine wave.
+    stop_times : float list
+        unix timestamp for the end of each sine wave.
     """
     start_times, stop_times = [], []
 
@@ -29,9 +50,42 @@ def play_bias_wave(S, bias_group, freqs_wave, amp_wave, duration,
         S.set_tes_bias_bipolar(bias_group, dc_bias)
     return start_times, stop_times
 
+def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
+    """
+    Function for calculating the amplitude of a sine wave.
+
+    Args
+    ----
+    f_c : float
+        Target frequency to calculate sine wave amplitude at.
+    x : np.array
+        Data to analyze
+    fs : int
+        Sample rate. Unit = samples/second.
+    N : int
+        Number of samples to calculate FFT on.
+    window : str
+        Window function to use. See scipy.signal.get_window for a list of 
+        valid window functions to use. Default is ``hann``.
+
+    Returns
+    -------
+    a_peak : float
+        Amplitudes of sine waves. Shape is len(x)
+
+    COULD ADD HERE OPTION TO GET AMPLITUDE FROM LINEAR REGRESSION INSTEAD OF FFT/Periodogram.
+    """
+    f, p = welch(x, fs = fs, nperseg = N, 
+                        scaling = 'spectrum',return_onesided=True,
+                        window = window)
+    a = np.sqrt(p)
+    a_rms = a[:, f == f_c]
+    a_peak = np.sqrt(2)*a_rms
+    return a_peak
+
 class BiasWaveAnalysis:
     """
-    UPDATE THE DOCSTRING
+    UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
     """
     def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
         self._S = S
@@ -39,11 +93,8 @@ class BiasWaveAnalysis:
 
         self.bgs = bgs
         self.am = None
-        # WHAT DO I REPLACE THIS WITH??
-        # self.edge_idxs = None
-        
-        # DOES BEN USE THIS?
-        # self.transition_range = None
+
+        self.transition_range = None
 
         if S is not None:
             self.meta = sdl.get_metadata(S, cfg)
@@ -63,10 +114,10 @@ class BiasWaveAnalysis:
             # Bgmap data
             'bgmap', 'polarity',
             # Step data and fits
-            'resp_times', 'mean_resp', 'step_resp',
-            # Step fit data
-            'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs',
-            'tau_eff',
+            'resp_times', 'mean_resp', 'wave_resp',
+            # Add in tau fit stuff here.
+            # 'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs',
+            # 'tau_eff',
             # Det param data
             'transition_range', 'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
             'R0', 'I0', 'Pj', 'Si',
@@ -98,11 +149,31 @@ class BiasWaveAnalysis:
         self.filepath = filepath
         return self
     
-    def run_analysis(self, assignment_thresh=0.3, arc=None, base_dir='/data/so/timestreams', 
-                     step_window=0.03, fit_tmin=1.5e-3, transition=None, R0_thresh=30e-3,
-                     save=False, bg_map_file=None):
+    def run_analysis(self, arc=None, base_dir='/data/so/timestreams',
+                     R0_thresh=30e-3, save=False, bg_map_file=None):
         """
-        UPDATE THE DOCSTRING
+        Analyzes data taken with take_bias_waves.
+
+        Parameters
+        ----------
+        arc (optional, G3tSmurf):
+                G3tSmurf archive. If specified, will attempt to load
+                axis-manager using archive instead of sid.
+        base_dir (optiional, str):
+                Base directory where timestreams are stored. Defaults to
+                /data/so/timestreams.
+        R0_thresh (float):
+                Any channel with resistance greater than R0_thresh will be
+                unassigned from its bias group under the assumption that it's
+                crosstalk
+        save (bool):
+                If true will save the analysis to a npy file.
+        bg_map_file (optional, path):
+                If create_bg_map is false and this file is not None, use this file
+                to load the bg_map.
+
+        CURRENTLY ONLY INCLUDES CALCULATION OF DC PARAMETERS.
+        NO TIME CONSTANT FITS.
         """
         self._load_am(arc=arc, base_dir=base_dir)
         self._split_frequencies()
@@ -131,30 +202,8 @@ class BiasWaveAnalysis:
                 self.R_n_IV[chmap == -1] = np.nan
                 self.Rfrac = self.R0 / self.R_n_IV
 
-        if create_bg_map and save_bg_map and self._S is not None:
-            # Write bgmap after compute_dc_params because bg-assignment
-            # will be un-set if resistance estimation is too high.
-            ts = str(int(time.time()))
-            data = {
-                'bands': self.bands,
-                'channels': self.channels,
-                'sid': self.sid,
-                'meta': self.meta,
-                'bgmap': self.bgmap,
-                'polarity': self.polarity,
-            }
-            path = os.path.join('/data/smurf_data/bias_group_maps',
-                                ts[:5],
-                                self.meta['stream_id'],
-                                f'{ts}_bg_map.npy')
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            sdl.validate_and_save(path, data, S=self._S, cfg=self._cfg,
-                                    register=True, make_path=False)
-            self._cfg.dev.update_experiment({'bgmap_file': path},
-                                            update_file=True)
-
-
-        self._fit_tau_effs(tmin=fit_tmin)
+        # Can add in function for fitting time constant from multifrequency data here.
+        # self._fit_tau_effs(tmin=fit_tmin)
 
         if save:
             self.save()
@@ -189,7 +238,16 @@ class BiasWaveAnalysis:
 
     def _split_frequencies(self, am=None):
         """
-        UPDATE THE DOCSTRING
+        Gets indices for each sine wave frequency on each bias group.
+
+        Returns
+        -------
+        start_idxs : float array
+            Array of indices for the start of each frequency sine wave.
+            Shape (n_bias_groups, n_frequencies).
+        stop_idxs : float array
+            Array of indices for the end of each frequency sine wave.
+            Shape (n_bias_groups, n_frequencies).
         """
         if am is None:
             am = self.am
@@ -206,9 +264,19 @@ class BiasWaveAnalysis:
 
         return self.start_idxs, self.stop_idxs
     
-    def _get_wave_response(self, step_window=0.03, pts_before_step=20,
-                            restrict_to_bg_sweep=False, am=None):
+    def _get_wave_response(self, am=None):
         """
+        Splits up full axis manager into each sine wave.
+        Here we enforce the number of points in each sine wave to be equal.
+
+        Returns
+        -------
+        ts : float array
+            Array of timestamps for each sine wave period
+            Shape (n_bias_groups, n_frequencies, n_pts_in_sine_wave).
+        sigs : float array
+            Array of sine response data.
+            Shape (n_detectors, n_frequencies, n_pts_in_sine_wave).
         UPDATE THE DOCSTRING
         """
         if am is None:
@@ -220,7 +288,7 @@ class BiasWaveAnalysis:
         npts = np.nanmin(self.stop_idxs-self.start_idxs)
 
         sigs = np.full((nchans, n_freqs, npts), np.nan)
-        ts = np.full((nbgs, npts), np.nan)
+        ts = np.full((nbgs, n_freqs, npts), np.nan)
 
         A_per_rad = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
         for bg in np.unique(self.bgmap):
@@ -230,24 +298,161 @@ class BiasWaveAnalysis:
             for i, si in enumerate(self.start_idxs[bg]):
                 s = slice(si, si + npts)
                 if np.isnan(ts[bg]).all():
-                    ts[bg, :] = am.timestamps[s] - am.timestamps[si]
+                    ts[bg, i, :] = am.timestamps[s] - am.timestamps[si]
                 sigs[rcs, i, :] = am.signal[rcs, s] * A_per_rad
 
-        # NEED TO ADD BACK IN POLARITY STUFF HERE DERIVED FROM BGMAP
         self.resp_times = ts
-        self.step_resp = sigs.T
-        self.mean_resp = np.nanmean(sigs, axis=1)
+        self.wave_resp = (sigs.T * self.polarity).T
+        self.mean_resp = (np.nanmean(sigs, axis=1).T * self.polarity).T
 
         return ts, sigs
+    
+    def _compute_dc_params(self, R0_thresh=30e-3):
+        """
+        Calculates Ibias, dIbias, and dItes from axis manager, and then
+        runs the DC param calc to estimate R0, I0, Pj, etc. 
+        If multiple frequency are taken, the DC Params are only calculated
+        off of the minimum frequency in the array of frequencies.
+
+        Args:
+            transition: (tuple)
+                Range of voltage bias values (in low-cur units) where the
+                "in-transition" resistance calculation should be used. If True,
+                or False, will use in-transition or normal calc for all
+                channels. Will default to ``cfg.dev.exp['transition_range']`` or
+                (1, 8) if that does not exist or if self._cfg is not set.
+            R0_thresh: (float)
+                Any channel with resistance greater than R0_thresh will be
+                unassigned from its bias group under the assumption that it's
+                crosstalk
+
+        Saves:
+            Ibias:
+                Array of shape (nbgs) containing the DC bias current for each
+                bias group
+            Vbias:
+                Array of shape (nbgs) containing the DC bias voltage for each
+                bias group
+            dIbias:
+                Array of shape (nbgs) containing the wave current amplitude for
+                each bias group
+            dVbias:
+                Array of shape (nbgs) containing the wave voltage amplitude for
+                each bias group
+            dItes:
+                Array of shape (nchans) containing the wave current amplitude for
+                each detector.
+        """
+        nbgs = len(self.am.biases)
+        nchans = len(am.signal)
+        npts = np.nanmin(self.stop_idxs-self.start_idxs)
+
+        Ibias = np.full(nbgs, np.nan)
+        dIbias = np.full(nbgs, 0.0, dtype=float)
+        dItes = np.full(nchans, np.nan)
+
+        # Compute Ibias and dIbias
+        bias_line_resistance = self.meta['bias_line_resistance']
+        high_low_current_ratio = self.meta['high_low_current_ratio']
+        rtm_bit_to_volt = self.meta['rtm_bit_to_volt']
+        amp_per_bit = 2 * rtm_bit_to_volt / bias_line_resistance
+        if self.high_current_mode:
+            amp_per_bit *= high_low_current_ratio
+        
+        for bg in range(nbgs):
+            if len(self.start_idxs[bg]) == 0:
+                continue
+            rcs = np.where(self.bgmap == bg)[0]
+            s = slice(self.start_idxs[bg][0], self.start_idxs[bg][0] + npts)
+            Ibias[bg] = np.nanmean(self.am.biases[bg, s]) * amp_per_bit
+            dIbias[bg] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
+                                        self.am.biases[bg, s]) * amp_per_bit
+            dItes[rcs] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
+                                        self.wave_resp[rcs,0,:])
+
+        self.Ibias = Ibias
+        self.Vbias = Ibias * bias_line_resistance
+        self.dIbias = dIbias
+        self.dVbias = dIbias * bias_line_resistance
+        self.dItes = dItes
+
+        R0, I0, Pj = bias_steps._compute_R0_I0_Pj()
+
+        Si = -1./(I0 * (R0 - self.meta['R_sh']))
+
+        # If resistance is too high, most likely crosstalk so just reset
+        # bg mapping and det params
+        if R0_thresh is not None:
+            m = np.abs(R0) > R0_thresh
+            self.bgmap[m] = -1
+            for arr in [R0, I0, Pj, Si]:
+                arr[m] = np.nan
+
+        self.R0 = R0
+        self.I0 = I0
+        self.Pj = Pj
+        self.Si = Si
+
+        return R0, I0, Pj, Si
 
 @sdl.set_action()
 def take_bias_waves(S, cfg, bgs=None, amp_wave=0.05, freqs_wave=[23.0],
                     duration=10, high_current_mode=True, hcm_wait_time=3,
-                    run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    channel_mask=None, g3_tag=None, stream_subtype='bias_waves',
+                    run_analysis=True, analysis_kwargs=None, channel_mask=None,
+                    g3_tag=None, stream_subtype='bias_waves',
                     enable_compression=False, plot_rfrac=True, show_plots=False):
     """
-    UPDATE DOCSTRING 
+    Takes bias wave data at the current DC voltage. Assumes bias lines
+    are already in low-current mode (if they are in high-current this will
+    not run correction). This function runs bias waves and returns a
+    BiasWaveAnalysis object, which can be used to easily view and re-analyze
+    data.
+
+    Parameters:
+        S (SmurfControl):
+            Pysmurf control instance
+        cfg (DetConfig):
+            Detconfig instance
+        bgs ( int, list, optional):
+            Bias groups to run steps on, defaulting to all 12. Note that the
+            bias-group mapping generated by the bias step analysis will be
+            restricted to the bgs set here so if you only run with a small
+            subset of bias groups, the map might not be correct.
+        amp_wave (float):
+            Bias wave amplitude voltage in Low-current-mode units.
+            This will be divided by the high-low-ratio before running the steps
+            in high-current mode.
+        freqs_wave (float):
+            List of frequencies to take bias wave data at.
+        duration (float):
+            Duration in seconds of bias wave frequency
+        high_current_mode (bool):
+            If true, switches to high-current-mode. If False, leaves in LCM
+            which runs through the bias-line filter, so make sure you
+            extend the step duration to be like >2 sec or something
+        hcm_wait_time (float):
+            Time to wait after switching to high-current-mode.
+        run_analysis (bool):
+            If True, will attempt to run the analysis to calculate DC params
+            and tau_eff. If this fails, the analysis object will
+            still be returned but will not contain all analysis results.
+        analysis_kwargs (dict, optional):
+            Keyword arguments to be passed to the BiasWaveAnalysis run_analysis
+            function.
+        channel_mask : np.ndarray, optional
+            Mask containing absolute smurf-channels to write to disk
+        g3_tag: string, optional
+            Tag to attach to g3 stream.
+        stream_subtype : optional, string
+            Stream subtype for this operation. This will default to 'bias_waves'.
+        enable_compression: bool, optional
+            If True, will tell the smurf-streamer to compress G3Frames. Defaults
+            to False because this dominates frame-processing time for high
+            data-rate streams.
+        plot_rfrac : bool
+            Create rfrac plot, publish it, and save it. Default is True.
+        show_plots : bool
+            Show plot in addition to saving when running interactively. Default is False.
     """
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
@@ -255,6 +460,7 @@ def take_bias_waves(S, cfg, bgs=None, amp_wave=0.05, freqs_wave=[23.0],
 
     # Dumb way to get all run kwargs, but we probably want to save these in
     # data object
+    freqs_wave = np.sort(np.asarray(freqs_wave)) # Enforces lowest frequency first.
     run_kwargs = {
         'bgs': bgs, 'amp_wave': amp_wave,
         'freqs_wave': freqs_wave, 'duration': duration,
