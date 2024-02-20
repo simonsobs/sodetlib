@@ -470,7 +470,7 @@ def plot_channel_noise(am, rc, save_dir=None, noisedict=None, wl_f_range=(10,30)
 
 @sdl.set_action()
 def take_noise(S, cfg, acq_time=30, plot_band_summary=True, nbins=40,
-               show_plot=True, save_plot=False, plotted_rchans=None,
+               show_plot=True, save_plot=True, plotted_rchans=None,
                wl_f_range=(10,30), fit=False,
                nperdecade=10, plot1overfregion=False, save_dir=None,
                g3_tag=None,
