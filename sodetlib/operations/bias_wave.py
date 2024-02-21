@@ -6,11 +6,11 @@ import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
 from scipy.signal import welch
-from sodetlib.operations import bias_steps
+from sodetlib.operations import bias_steps, iv
 
 np.seterr(all='ignore')
 
-def play_bias_wave(S, bias_group, freqs_wave, amp_wave, duration,
+def play_bias_wave(S, cfg, bias_group, freqs_wave, amp_wave, duration,
                    dc_bias=None):
     """
     Play a sine wave on the bias group.
@@ -42,7 +42,9 @@ def play_bias_wave(S, bias_group, freqs_wave, amp_wave, duration,
 
     for freq in freqs_wave:
         S.log(f"BL sine wave with bg={bias_group}, freq={freq}")
-        S.play_sine_tes(bias_group, amp_wave, freq, dc_amp=dc_bias)
+        S.play_sine_tes(bias_group=bias_group,
+                        tone_amp=amp_wave,
+                        tone_freq=freq, dc_amp=dc_bias)
         start_times.append(time.time())
         time.sleep(duration)
         stop_times.append(time.time())
@@ -75,11 +77,15 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
 
     COULD ADD HERE OPTION TO GET AMPLITUDE FROM LINEAR REGRESSION INSTEAD OF FFT/Periodogram.
     """
+    x = np.atleast_2d(x)
     f, p = welch(x, fs = fs, nperseg = N, 
                         scaling = 'spectrum',return_onesided=True,
                         window = window)
     a = np.sqrt(p)
-    a_rms = a[:, f == f_c]
+    # Ran into problem with f == f_c when nperseg and len(x) are not right.
+    # Ben to add a function to check this or enforce correct choice somehow.
+    idx = np.argmin(np.abs(f-f_c))
+    a_rms = a[:, idx]
     a_peak = np.sqrt(2)*a_rms
     return a_peak
 
@@ -255,8 +261,8 @@ class BiasWaveAnalysis:
         self.start_idxs = np.full(np.shape(self.start_times), np.nan)
         self.stop_idxs = np.full(np.shape(self.stop_times), np.nan)
 
-        for bg, bias in enumerate(am.biases):
-            if np.isnan(self.start_times[bg,:]):
+        for bg, bias in enumerate(am.biases[:12]):
+            if np.all(np.isnan(self.start_times[bg,:])):
                 continue
             for i, [start, stop] in enumerate(zip(self.start_times[bg,:], self.stop_times[bg,:])):
                 self.start_idxs[bg, i] = np.argmin(np.abs(am.timestamps - start))
@@ -283,9 +289,9 @@ class BiasWaveAnalysis:
             am = self.am
 
         nchans = len(am.signal)
-        nbgs = len(am.biases)
+        nbgs = 12
         n_freqs = np.shape(self.start_idxs)[-1]
-        npts = np.nanmin(self.stop_idxs-self.start_idxs)
+        npts = np.nanmin(self.stop_idxs-self.start_idxs).astype(int)
 
         sigs = np.full((nchans, n_freqs, npts), np.nan)
         ts = np.full((nbgs, n_freqs, npts), np.nan)
@@ -295,11 +301,10 @@ class BiasWaveAnalysis:
             if bg == -1:
                 continue
             rcs = np.where(self.bgmap == bg)[0]
-            for i, si in enumerate(self.start_idxs[bg]):
-                s = slice(si, si + npts)
-                if np.isnan(ts[bg]).all():
-                    ts[bg, i, :] = am.timestamps[s] - am.timestamps[si]
-                sigs[rcs, i, :] = am.signal[rcs, s] * A_per_rad
+            for i, si in enumerate(self.start_idxs[bg].astype(int)):
+                if np.isnan(ts[bg,i]).all():
+                    ts[bg, i, :] = am.timestamps[si:si+npts] - am.timestamps[si]
+                sigs[rcs, i, :] = am.signal[rcs, si:si+npts] * A_per_rad
 
         self.resp_times = ts
         self.wave_resp = (sigs.T * self.polarity).T
@@ -343,8 +348,8 @@ class BiasWaveAnalysis:
                 Array of shape (nchans) containing the wave current amplitude for
                 each detector.
         """
-        nbgs = len(self.am.biases)
-        nchans = len(am.signal)
+        nbgs = 12
+        nchans = len(self.am.signal)
         npts = np.nanmin(self.stop_idxs-self.start_idxs)
 
         Ibias = np.full(nbgs, np.nan)
@@ -363,10 +368,11 @@ class BiasWaveAnalysis:
             if len(self.start_idxs[bg]) == 0:
                 continue
             rcs = np.where(self.bgmap == bg)[0]
-            s = slice(self.start_idxs[bg][0], self.start_idxs[bg][0] + npts)
+            s = slice(int(self.start_idxs[bg][0]),
+                      int(self.start_idxs[bg][0] + npts))
             Ibias[bg] = np.nanmean(self.am.biases[bg, s]) * amp_per_bit
             dIbias[bg] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
-                                        self.am.biases[bg, s]) * amp_per_bit
+                                        self.am.biases[bg, s])[0] * amp_per_bit
             dItes[rcs] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
                                         self.wave_resp[rcs,0,:])
 
@@ -376,7 +382,7 @@ class BiasWaveAnalysis:
         self.dVbias = dIbias * bias_line_resistance
         self.dItes = dItes
 
-        R0, I0, Pj = bias_steps._compute_R0_I0_Pj()
+        R0, I0, Pj = self._compute_R0_I0_Pj()
 
         Si = -1./(I0 * (R0 - self.meta['R_sh']))
 
@@ -394,6 +400,33 @@ class BiasWaveAnalysis:
         self.Si = Si
 
         return R0, I0, Pj, Si
+
+    def _compute_R0_I0_Pj(self):
+        """
+        Computes the DC params R0 I0 and Pj
+
+        Carbon copy from BiasStepAnalysis
+        """
+        Ib = self.Ibias[self.bgmap]
+        dIb = self.dIbias[self.bgmap]
+        dItes = self.dItes
+        Ib[self.bgmap == -1] = np.nan
+        dIb[self.bgmap == -1] = np.nan
+        dIrat = dItes / dIb
+    
+        R_sh = self.meta["R_sh"]
+
+        I0 = np.zeros_like(dIrat)
+        I0_nontransition = Ib * dIrat
+        I0_transition = Ib * dIrat / (2 * dIrat - 1)
+        I0[dIrat>0] = I0_nontransition[dIrat>0]
+        I0[dIrat<0] = I0_transition[dIrat<0]
+
+        Pj = I0 * R_sh * (Ib - I0)
+        R0 = Pj / I0**2
+        R0[I0 == 0] = 0
+
+        return R0, I0, Pj
 
 @sdl.set_action()
 def take_bias_waves(S, cfg, bgs=None, amp_wave=0.05, freqs_wave=[23.0],
@@ -460,7 +493,7 @@ def take_bias_waves(S, cfg, bgs=None, amp_wave=0.05, freqs_wave=[23.0],
 
     # Dumb way to get all run kwargs, but we probably want to save these in
     # data object
-    freqs_wave = np.sort(np.asarray(freqs_wave)) # Enforces lowest frequency first.
+    freqs_wave = np.sort(np.atleast_1d(freqs_wave)) # Enforces lowest frequency first.
     run_kwargs = {
         'bgs': bgs, 'amp_wave': amp_wave,
         'freqs_wave': freqs_wave, 'duration': duration,
