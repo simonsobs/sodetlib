@@ -93,7 +93,22 @@ class BiasWaveAnalysis:
     """
     UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
     """
+    def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
+        self._S = S
+        self._cfg = cfg
 
+        self.bgs = bgs
+        self.am = None
+
+        if S is not None:
+            self.meta = sdl.get_metadata(S, cfg)
+            self.stream_id = cfg.stream_id
+
+            if run_kwargs is None:
+                run_kwargs = {}
+            self.run_kwargs = run_kwargs
+            self.high_current_mode = run_kwargs.get("high_current_mode", True)
+          
     def save(self, path=None):
         data = {}
         saved_fields = [
