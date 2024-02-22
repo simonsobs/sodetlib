@@ -61,7 +61,7 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     f_c : float
         Target frequency to calculate sine wave amplitude at.
     x : np.array
-        Data to analyze
+        Data to analyze. Either can be shape nsamp or ndet x nsamp.
     fs : int
         Sample rate. Unit = samples/second.
     N : int
@@ -93,23 +93,6 @@ class BiasWaveAnalysis:
     """
     UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
     """
-    def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
-        self._S = S
-        self._cfg = cfg
-
-        self.bgs = bgs
-        self.am = None
-
-        self.transition_range = None
-
-        if S is not None:
-            self.meta = sdl.get_metadata(S, cfg)
-            self.stream_id = cfg.stream_id
-
-            if run_kwargs is None:
-                run_kwargs = {}
-            self.run_kwargs = run_kwargs
-            self.high_current_mode = run_kwargs.get("high_current_mode", True)
 
     def save(self, path=None):
         data = {}
@@ -121,7 +104,7 @@ class BiasWaveAnalysis:
             'bgmap', 'polarity',
             # Step data and fits
             'resp_times', 'mean_resp', 'wave_resp',
-            # Add in tau fit stuff here.
+            # Add in tau fit stuff here. The below commented out params are anticipated to be reported for tau analysis. 
             # 'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs',
             # 'tau_eff',
             # Det param data
@@ -258,8 +241,8 @@ class BiasWaveAnalysis:
         if am is None:
             am = self.am
 
-        self.start_idxs = np.full(np.shape(self.start_times), np.nan)
-        self.stop_idxs = np.full(np.shape(self.stop_times), np.nan)
+        self.start_idxs = np.full(np.shape(self.start_times), -1)
+        self.stop_idxs = np.full(np.shape(self.stop_times), -1)
 
         for bg, bias in enumerate(am.biases[:12]):
             if np.all(np.isnan(self.start_times[bg,:])):
@@ -291,7 +274,7 @@ class BiasWaveAnalysis:
         nchans = len(am.signal)
         nbgs = 12
         n_freqs = np.shape(self.start_idxs)[-1]
-        npts = np.nanmin(self.stop_idxs-self.start_idxs).astype(int)
+        npts = np.nanmin(self.stop_idxs-self.start_idxs)
 
         sigs = np.full((nchans, n_freqs, npts), np.nan)
         ts = np.full((nbgs, n_freqs, npts), np.nan)
@@ -301,7 +284,7 @@ class BiasWaveAnalysis:
             if bg == -1:
                 continue
             rcs = np.where(self.bgmap == bg)[0]
-            for i, si in enumerate(self.start_idxs[bg].astype(int)):
+            for i, si in enumerate(self.start_idxs[bg]):
                 if np.isnan(ts[bg,i]).all():
                     ts[bg, i, :] = am.timestamps[si:si+npts] - am.timestamps[si]
                 sigs[rcs, i, :] = am.signal[rcs, si:si+npts] * A_per_rad
@@ -320,12 +303,6 @@ class BiasWaveAnalysis:
         off of the minimum frequency in the array of frequencies.
 
         Args:
-            transition: (tuple)
-                Range of voltage bias values (in low-cur units) where the
-                "in-transition" resistance calculation should be used. If True,
-                or False, will use in-transition or normal calc for all
-                channels. Will default to ``cfg.dev.exp['transition_range']`` or
-                (1, 8) if that does not exist or if self._cfg is not set.
             R0_thresh: (float)
                 Any channel with resistance greater than R0_thresh will be
                 unassigned from its bias group under the assumption that it's
@@ -371,6 +348,7 @@ class BiasWaveAnalysis:
             s = slice(int(self.start_idxs[bg][0]),
                       int(self.start_idxs[bg][0] + npts))
             Ibias[bg] = np.nanmean(self.am.biases[bg, s]) * amp_per_bit
+          
             dIbias[bg] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
                                         self.am.biases[bg, s])[0] * amp_per_bit
             dItes[rcs] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
