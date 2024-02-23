@@ -407,9 +407,9 @@ class BiasWaveAnalysis:
         #obtain sign of phase information to determine dIrat sign
         vects = np.atleast_2d(dIb)
         I = np.linalg.inv(np.tensordot(vects, vects, (1, 1)))
-        coeffs = np.zeros(self.am.dets.count)
+        coeffs = np.zeros(len(self.am.signal))
 
-        for di in range(self.am.dets.count):
+        for di in range(len(self.am.signal)):
             c = np.matmul(np.atleast_2d(dItes[di]), vects.T)
             c = np.dot(I, c.T).T
             coeffs[di] = c[0]
