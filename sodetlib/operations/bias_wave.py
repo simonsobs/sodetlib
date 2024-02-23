@@ -403,9 +403,22 @@ class BiasWaveAnalysis:
         Ib = self.Ibias[self.bgmap]
         dIb = self.dIbias[self.bgmap]
         dItes = self.dItes
+
+        #obtain sign of phase information to determine dIrat sign
+        vects = np.atleast_2d(dIb)
+        I = np.linalg.inv(np.tensordot(vects, vects, (1, 1)))
+        coeffs = np.zeros(self.am.dets.count)
+
+        for di in range(self.am.dets.count):
+            c = np.matmul(np.atleast_2d(dItes[di]), vects.T)
+            c = np.dot(I, c.T).T
+            coeffs[di] = c[0]
+        coeffs = np.sign(coeffs)
+      
         Ib[self.bgmap == -1] = np.nan
         dIb[self.bgmap == -1] = np.nan
-        dIrat = dItes / dIb
+      
+        dIrat = coeffs * (dItes / dIb)
     
         R_sh = self.meta["R_sh"]
 
