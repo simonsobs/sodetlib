@@ -117,8 +117,8 @@ class BiasWaveAnalysis:
             'high_current_mode', 'start_times', 'stop_times',
             # Bgmap data
             'bgmap', 'polarity',
-            # Step data and fits
-            'resp_times', 'mean_resp', 'wave_resp',
+            # Step data and fits, including chunked bias data
+            'resp_times', 'mean_resp', 'wave_resp', 'wave_biases',
             # Add in tau fit stuff here. The below commented out params are anticipated to be reported for tau analysis. 
             # 'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs',
             # 'tau_eff',
@@ -292,6 +292,7 @@ class BiasWaveAnalysis:
         npts = np.nanmin(self.stop_idxs-self.start_idxs)
 
         sigs = np.full((nchans, n_freqs, npts), np.nan)
+        biases = np.full((nchans, n_freqs, npts), np.nan)
         ts = np.full((nbgs, n_freqs, npts), np.nan)
 
         A_per_rad = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
@@ -303,12 +304,14 @@ class BiasWaveAnalysis:
                 if np.isnan(ts[bg,i]).all():
                     ts[bg, i, :] = am.timestamps[si:si+npts] - am.timestamps[si]
                 sigs[rcs, i, :] = am.signal[rcs, si:si+npts] * A_per_rad
+                biases[rcs, i, :] = am.biases[rcs, si:si+npts]
 
         self.resp_times = ts
         self.wave_resp = (sigs.T * self.polarity).T
         self.mean_resp = (np.nanmean(sigs, axis=1).T * self.polarity).T
+        self.wave_biases = biases
 
-        return ts, sigs
+        return ts, sigs, biases
     
     def _compute_dc_params(self, R0_thresh=30e-3):
         """
@@ -403,22 +406,11 @@ class BiasWaveAnalysis:
         Ib = self.Ibias[self.bgmap]
         dIb = self.dIbias[self.bgmap]
         dItes = self.dItes
-
-        #obtain sign of phase information to determine dIrat sign
-        vects = np.atleast_2d(dIb)
-        I = np.linalg.inv(np.tensordot(vects, vects, (1, 1)))
-        coeffs = np.zeros(len(self.am.signal))
-
-        for di in range(len(self.am.signal)):
-            c = np.matmul(np.atleast_2d(dItes[di]), vects.T)
-            c = np.dot(I, c.T).T
-            coeffs[di] = c[0]
-        coeffs = np.sign(coeffs)
       
         Ib[self.bgmap == -1] = np.nan
         dIb[self.bgmap == -1] = np.nan
       
-        dIrat = coeffs * (dItes / dIb)
+        dIrat = dItes / dIb
     
         R_sh = self.meta["R_sh"]
 
