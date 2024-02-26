@@ -292,7 +292,7 @@ class BiasWaveAnalysis:
         npts = np.nanmin(self.stop_idxs-self.start_idxs)
 
         sigs = np.full((nchans, n_freqs, npts), np.nan)
-        biases = np.full((nchans, n_freqs, npts), np.nan)
+        biases = np.full((nbgs, n_freqs, npts), np.nan)
         ts = np.full((nbgs, n_freqs, npts), np.nan)
 
         A_per_rad = self.meta['pA_per_phi0'] / (2*np.pi) * 1e-12
@@ -304,7 +304,7 @@ class BiasWaveAnalysis:
                 if np.isnan(ts[bg,i]).all():
                     ts[bg, i, :] = am.timestamps[si:si+npts] - am.timestamps[si]
                 sigs[rcs, i, :] = am.signal[rcs, si:si+npts] * A_per_rad
-                biases[rcs, i, :] = am.biases[rcs, si:si+npts]
+                biases[bg, i, :] = am.biases[bg, si:si+npts]
 
         self.resp_times = ts
         self.wave_resp = (sigs.T * self.polarity).T
