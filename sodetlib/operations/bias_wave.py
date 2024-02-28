@@ -74,8 +74,6 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     -------
     a_peak : float
         Amplitudes of sine waves. Shape is len(x)
-
-    COULD ADD HERE OPTION TO GET AMPLITUDE FROM LINEAR REGRESSION INSTEAD OF FFT/Periodogram.
     """
     x = np.atleast_2d(x)
     f, p = welch(x, fs = fs, nperseg = N, 
@@ -89,6 +87,41 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     a_peak = np.sqrt(2)*a_rms
     return a_peak
 
+    def get_amplitudes_deprojection(f_c, x, ts):
+    """
+    Function for calculating the amplitude and phase of a wave by deprojecting sine and cosine components of desired frequency.
+
+    Args
+    ----
+    f_c : float
+        Target frequency to calculate wave amplitude at.
+    x : np.array
+        Data to analyze. Either can be shape nsamp or ndet x nsamp.
+    ts : np.array
+        Timestamps of data to analyze. Shape is nsamp.
+
+    Returns
+    -------
+    a_peak : float
+        Amplitudes of sine wave of the desired frequency. Shape is len(x)
+    phase : float
+        Phase of sine wave of the desired frequency. Shape is len(x)
+    """
+  
+    vects = np.zeros((2, len(ts)), dtype='float32')
+    vects[0, :] = np.sin(2*np.pi*f_c*ts)
+    vects[1, :] = np.cos(2*np.pi*f_c*ts)
+    I = np.linalg.inv(np.tensordot(vects, vects, (1, 1)))
+    coeffs = np.matmul(x, vects.T)
+    coeffs = np.dot(I, coeffs.T).T
+    coeffs = np.atleast_2d(coeffs)
+  
+    a_peak = np.sqrt(coeffs[:,0]**2 + coeffs[:,1]**2)
+    phase = np.arctan2(coeffs[:,0], coeffs[:,1])
+
+  
+    return a_peak, phase
+  
 class BiasWaveAnalysis:
     """
     UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
@@ -351,6 +384,9 @@ class BiasWaveAnalysis:
         dIbias = np.full(nbgs, 0.0, dtype=float)
         dItes = np.full(nchans, np.nan)
 
+        dIbias_phase = np.full(nbgs, 0.0, dtype=float)
+        dItes_phase = np.full(nchans, np.nan)
+
         # Compute Ibias and dIbias
         bias_line_resistance = self.meta['bias_line_resistance']
         high_low_current_ratio = self.meta['high_low_current_ratio']
@@ -366,17 +402,21 @@ class BiasWaveAnalysis:
             s = slice(int(self.start_idxs[bg][0]),
                       int(self.start_idxs[bg][0] + npts))
             Ibias[bg] = np.nanmean(self.am.biases[bg, s]) * amp_per_bit
+            
+            dIbias[bg], dIbias_phase[bg] = get_amplitudes_deprojection(self.run_kwargs['freqs_wave'][0],
+                                        self.am.biases[bg, s], self.resp_times[bg, 0, :])
+            dIbias[bg] = dIbias[bg] * amp_per_bit
           
-            dIbias[bg] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
-                                        self.am.biases[bg, s])[0] * amp_per_bit
-            dItes[rcs] = get_amplitudes(self.run_kwargs['freqs_wave'][0],
-                                        self.wave_resp[rcs,0,:])
+            dItes[rcs], dItes_phase[rcs] = get_amplitudes_deprojection(self.run_kwargs['freqs_wave'][0],
+                                        self.wave_resp[rcs,0,:], self.resp_times[bg, 0, :])
 
         self.Ibias = Ibias
         self.Vbias = Ibias * bias_line_resistance
         self.dIbias = dIbias
+        self.dIbias_phase = dIbias_phase
         self.dVbias = dIbias * bias_line_resistance
         self.dItes = dItes
+        self.dItes_phase = dItes_phase
 
         R0, I0, Pj = self._compute_R0_I0_Pj()
 
@@ -406,11 +446,20 @@ class BiasWaveAnalysis:
         Ib = self.Ibias[self.bgmap]
         dIb = self.dIbias[self.bgmap]
         dItes = self.dItes
+
+        dIb_phase = self.dIbias_phase[self.bgmap]
+        dItes_phase = self.dItes_phase
       
         Ib[self.bgmap == -1] = np.nan
         dIb[self.bgmap == -1] = np.nan
+
+        #sign of phase response, is there a better way to do it?
+        rel_phase = dItes_phase - dIb_phase 
+        rel_phase  = np.isclose(abs(rel_phase), np.pi, rtol = 1e-1)
+        rel_phase_sign = np.full(rel_phase.shape, 1.0)
+        rel_phase_sign[np.where(rel_phase == True)] = -1.0
       
-        dIrat = dItes / dIb
+        dIrat = rel_phase_sign * (dItes / dIb)
     
         R_sh = self.meta["R_sh"]
 
