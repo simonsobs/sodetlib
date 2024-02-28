@@ -87,7 +87,7 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     a_peak = np.sqrt(2)*a_rms
     return a_peak
 
-    def get_amplitudes_deprojection(f_c, x, ts):
+def get_amplitudes_deprojection(f_c, x, ts):
     """
     Function for calculating the amplitude and phase of a wave by deprojecting sine and cosine components of desired frequency.
 
@@ -107,7 +107,7 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     phase : float
         Phase of sine wave of the desired frequency. Shape is len(x)
     """
-  
+
     vects = np.zeros((2, len(ts)), dtype='float32')
     vects[0, :] = np.sin(2*np.pi*f_c*ts)
     vects[1, :] = np.cos(2*np.pi*f_c*ts)
@@ -115,13 +115,12 @@ def get_amplitudes(f_c, x, fs = 4000, N = 12000, window = 'hann'):
     coeffs = np.matmul(x, vects.T)
     coeffs = np.dot(I, coeffs.T).T
     coeffs = np.atleast_2d(coeffs)
-  
+
     a_peak = np.sqrt(coeffs[:,0]**2 + coeffs[:,1]**2)
     phase = np.arctan2(coeffs[:,0], coeffs[:,1])
 
-  
     return a_peak, phase
-  
+
 class BiasWaveAnalysis:
     """
     UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
