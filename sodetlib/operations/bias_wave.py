@@ -123,7 +123,84 @@ def get_amplitudes_deprojection(f_c, x, ts):
 
 class BiasWaveAnalysis:
     """
-    UPDATE THE DOCSTRING...Maybe we can ask Ben to do this one.
+    Container to manage analysis of bias waves taken with the take_bias_waves
+    function. The main function is ``run_analysis`` and will do a series of
+    analysis procedures to calculate DC detector parameters from a single bias 
+    wave frequency. The method will be extended to calculate tau_eff from multiple
+    frequencies. Procedure:
+
+     - Loads an axis manager with all the data
+     - Finds locations of bias wave frequencies for each bias group
+     - Gets detector response to each bias wave
+     - Computes DC params R0, I0, Pj, Si from step responses
+     - Later: fit multiple TES amplitudes with one-pole filter for tau_eff measurement.
+
+    Most analysis inputs and products will be saved to a npy file so they can
+    be loaded and re-analyzed easily on another computer like simons1.
+
+    To load data from an saved step file, you can run::
+
+        bwa = BiasWaveAnalysis.load(<path>)
+
+    Attributes:
+        bands (array (int) of shape (ndets)):
+            Smurf bands for each resonator.
+        channels (array (int) of shape (ndets)): 
+            Smurf channel for each resonator.
+        meta (dict) :
+            Dictionary of smurf metadata.
+        sid (int) :
+            Session-id of streaming session
+        run_kwargs :
+            input kwargs
+        start, stop (float):
+            start and stop time of all steps
+        high_current_mode (Bool) :
+            If high-current-mode was used
+        start_times, stop_times (array (float) of shape (nbgs, nfreqs)) :
+            Arrays of start and stop times for the start of each frequency sine wave.
+        bgmap (array (int) of shape (nchans)):
+            Map from readout channel to assigned bias group. -1 means not
+            assigned (that the assignment threshold was not met for any of the
+            12 bgs)
+        polarity (array (int) of shape (ndets)):
+            The sign of each channel.
+        resp_times (array (float) shape (nbgs, nfreqs, npts)):
+            Shared timestamps for each of the wave responses in <wave_resp> and
+            <mean_resp> with respect to the bg-wave location, with the wave
+            occuring at t=0.
+        mean_resp (array (float) shape (nchans, nfreqs, npts)):
+            Wave response averaged accross all bias steps for a given channel
+            in Amps.
+        wave_resp (array (float) shape (nchans, nfreqs, npts)):
+            Each individual wave response for a given channel in amps.
+        wave_biases (array (float) shape (nbgs, nfreqs, npts)):
+            Each individual bias wave for a given channel.
+        Ibias (array (float) shape (nbgs)):
+            DC bias current of each bias group (amps). DC Params are 
+            only calculated off of the minimum frequency in the array of frequencies.
+        Vbias:
+            DC bias voltage of each bias group (volts in low-current mode)
+        dIbias (array (float) shape (nbgs)):
+            Wave current amplitude for each bias group (amps)
+        dVbias (array (float) shape (nbgs)):
+            Wave voltage amplitude for each bias group (volts in low-current mode)
+        dItes (array (float) shape (nchans)):
+            Array of tes wave response height for each channel (amps)
+        R0 (array (float) shape (nchans)):
+            Computed TES resistances for each channel (ohms). 
+        I0 (array (float) shape (nchans)):
+            Computed TES currents for each channel (amps)
+        Pj (array (float) shape (nchans)):
+            Bias power computed for each channel
+        Si (array (float) shape (nchans)):
+            Responsivity computed for each channel
+        R_n_IV (array (float) shape (nchans)):
+            Array of normal resistances for each channel pulled from IV
+            in the device cfg.
+        Rfrac (array (float) shape (nchans)):
+            Rfrac of each channel, determined from R0 and the channel's normal
+            resistance.
     """
     def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
         self._S = S
@@ -155,7 +232,7 @@ class BiasWaveAnalysis:
             # 'step_fit_tmin', 'step_fit_popts', 'step_fit_pcovs',
             # 'tau_eff',
             # Det param data
-            'transition_range', 'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
+            'Ibias', 'Vbias', 'dIbias', 'dVbias', 'dItes',
             'R0', 'I0', 'Pj', 'Si',
             # From IV's
             'R_n_IV', 'Rfrac',
