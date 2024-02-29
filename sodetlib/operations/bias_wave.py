@@ -531,7 +531,7 @@ class BiasWaveAnalysis:
 
         #sign of phase response, is there a better way to do it?
         rel_phase = dItes_phase - dIb_phase 
-        rel_phase  = np.isclose(abs(rel_phase), np.pi, rtol = 1e-1)
+        rel_phase  = np.isclose(abs(rel_phase), np.pi, atol=3e-1, rtol = 1e-1) #arbitrary cutoff?
         rel_phase_sign = np.full(rel_phase.shape, 1.0)
         rel_phase_sign[np.where(rel_phase == True)] = -1.0
       
