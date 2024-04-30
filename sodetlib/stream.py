@@ -127,7 +127,7 @@ def take_g3_data(S, dur, **stream_kw):
 
 
 @set_action()
-def stream_g3_on(S, make_freq_mask=True, emulator=False, tag=None,
+def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
                  filter_disable=False, stream_type=None, subtype='stream',
