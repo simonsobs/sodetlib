@@ -20,3 +20,6 @@ from sodetlib.util import *
 from sodetlib.stream import *
 from sodetlib import noise
 
+
+from . import _version
+__version__ = _version.get_versions()['version']
