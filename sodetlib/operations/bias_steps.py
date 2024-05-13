@@ -1151,10 +1151,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
     initial_dc_biases = S.get_tes_bias_bipolar_array()
+    init_current_mode = sdl.get_current_mode_array(S)
 
     try:
         dc_biases = initial_dc_biases
-        init_current_mode = sdl.get_current_mode_array(S)
         if high_current_mode:
             dc_biases = dc_biases / S.high_low_current_ratio
             step_voltage /= S.high_low_current_ratio
