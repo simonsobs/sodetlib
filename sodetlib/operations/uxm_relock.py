@@ -320,7 +320,10 @@ def uxm_relock(
 
     for band in bands:
         band_cfg = cfg.dev.bands[band]
-        S.set_synthesis_scale(band, exp['synthesis_scale'])
+        scale = cfg.dev.bands.get('synthesis_scale')
+        if scale is None:
+            scale = exp['synthesis_scale']
+        S.set_synthesis_scale(band, scale)
         S.set_att_uc(band, band_cfg['uc_att'])
         S.set_att_dc(band, band_cfg['dc_att'])
         S.set_band_delay_us(band, band_cfg['band_delay_us'])
