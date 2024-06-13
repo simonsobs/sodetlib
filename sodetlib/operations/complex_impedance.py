@@ -549,8 +549,6 @@ def take_complex_impedance(
 
     pb = tqdm(total=len(freqs)*len(bgs), disable=False)
     try:
-        S.set_downsample_factor(1)
-        S.set_filter_disable(1)
         sdl.set_current_mode(S, bgs, 1)
         tickle_voltage /= S.high_low_current_ratio
 
@@ -560,7 +558,9 @@ def take_complex_impedance(
             channel_mask = ds.bands[m] * S.get_number_channels() + ds.channels[m]
 
             ds.sids[bg] = sdl.stream_g3_on(
-                S, channel_mask=channel_mask, subtype='complex_impedance')
+                S, channel_mask=channel_mask, subtype='complex_impedance',
+                downsample_factor=1, filter_disable=True
+            )
             for j, freq in enumerate(freqs):
                 meas_time = min(1./freq * nperiods, max_meas_time)
                 S.log(f"Tickle with bg={bg}, freq={freq}")
