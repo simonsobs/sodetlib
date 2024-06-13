@@ -251,7 +251,7 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
             if i == 0:
                 ds._Ibias_dc[bg] = np.mean(seg.biases[bg])
                 ds._Ibias[bg] = 0.5 * np.ptp(seg.biases[bg])
-                ds._res_freqs[chmap] = seg.ch_info.frequency
+                ds._res_freqs[chmap] = seg.ch_info.res_frequency
 
             ds._Ites[chmap, i] = seg.Ites
             pb.update()
