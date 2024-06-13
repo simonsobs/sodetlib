@@ -635,9 +635,12 @@ def take_iv(S, cfg, **kwargs):
             )
 
         S.log(f"Starting TES Bias Ramp on bg {bgs}")
+        S.log(
+            f"Sweeping through {len(ivcfg.biases)} biases between "
+            f"{ivcfg.biases[0]} V and {ivcfg.biases[-1]} V"
+        )
         for i, bias in enumerate(ivcfg.biases):
             sdl.stop_point(S)
-            S.log(f"Setting bias to {bias:4.3f}")
             _bias_arr[bgs] = bias
             S.set_tes_bias_bipolar_array(_bias_arr)
             start_times[bgs, i] = time.time()
