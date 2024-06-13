@@ -25,7 +25,7 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         IndexAxis('steps', count=nsteps),
         IndexAxis('biaslines', count=NBGS),
     )
-    ds.wrap('meta', sdl.dict_to_am(sdl.get_metadata(S, cfg)))
+    ds.wrap('meta', sdl.dict_to_am(sdl.get_metadata(S, cfg), skip_bad_types=True))
     ds.meta.wrap('g3_dir', cfg.sys['g3_dir'])
     if run_kwargs is not None:
         ds.wrap('run_kwargs', sdl.dict_to_am(run_kwargs))
