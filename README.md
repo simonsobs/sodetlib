@@ -19,9 +19,9 @@ pip3 install .
 
 ## Documentation
 
-Sodetlib documentation is currently hosted on [simons1].
+Sodetlib documentation is hosted on [ReadTheDocs].
 
-[simons1]: https://simons1.princeton.edu/docs/sodetlib/
+[ReadTheDocs]: https://sodetlib.readthedocs.io/en/latest/
 
 ## Contributing
 
