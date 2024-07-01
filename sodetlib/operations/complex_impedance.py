@@ -525,6 +525,8 @@ def take_complex_impedance(
         Maximum amount of time to wait at any given frequency
     tickle_voltage : float
         Tickle amplitude in low-current-mode volts.
+    run_analysis : bool
+        Perform the full CI analysis and save the results.
     """
     if state not in ['ob', 'sc', 'transition']:
         raise ValueError("State must be 'ob', 'sc', or 'transition'")
@@ -596,7 +598,7 @@ def take_complex_impedance(
 
 def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
                                  tes_bias=15.0, overbias_wait=5.0,
-                                 cool_wait=30., **ci_kwargs):
+                                 cool_wait=30., run_analysis=True, **ci_kwargs):
     """
     Takes overbiased and superconducting complex impedance sweeps. These are
     required to analyze any in-transition sweeps.
@@ -617,6 +619,8 @@ def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
         Time to wait at the overbias_voltage
     cool_wait : float
         Time to wait at the tes_bias after overbiasing
+    run_analysis : bool
+        Perform the full CI analysis and save the results.
     **ci_kwargs : 
         Any additional kwargs will be passed directly to the
         ``take_complex_impedance`` function.
@@ -626,12 +630,14 @@ def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
     # Takes SC sweep
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, 0)
-    sc = take_complex_impedance(S, cfg, bgs, state='sc', **ci_kwargs)
+    sc = take_complex_impedance(S, cfg, bgs, state='sc',
+                                run_analysis=run_analysis, **ci_kwargs)
 
     S.overbias_tes_all(bias_groups=bgs, overbias_voltage=overbias_voltage,
                        tes_bias=tes_bias, overbias_wait=overbias_wait,
                        cool_wait=cool_wait)
-    ob = take_complex_impedance(S, cfg, bgs, state='ob', **ci_kwargs)
+    ob = take_complex_impedance(S, cfg, bgs, state='ob',
+                                run_analysis=run_analysis, **ci_kwargs)
 
     cfg.dev.update_experiment({
         'complex_impedance_sc_path': sc.filepath,
