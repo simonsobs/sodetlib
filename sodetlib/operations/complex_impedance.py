@@ -25,7 +25,7 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         IndexAxis('steps', count=nsteps),
         IndexAxis('biaslines', count=NBGS),
     )
-    ds.wrap('meta', sdl.dict_to_am(sdl.get_metadata(S, cfg)))
+    ds.wrap('meta', sdl.dict_to_am(sdl.get_metadata(S, cfg), skip_bad_types=True))
     ds.meta.wrap('g3_dir', cfg.sys['g3_dir'])
     if run_kwargs is not None:
         ds.wrap('run_kwargs', sdl.dict_to_am(run_kwargs))
@@ -251,7 +251,7 @@ def analyze_tods(ds, bgs=None, tod=None, arc=None, show_pb=True):
             if i == 0:
                 ds._Ibias_dc[bg] = np.mean(seg.biases[bg])
                 ds._Ibias[bg] = 0.5 * np.ptp(seg.biases[bg])
-                ds._res_freqs[chmap] = seg.ch_info.frequency
+                ds._res_freqs[chmap] = seg.ch_info.res_frequency
 
             ds._Ites[chmap, i] = seg.Ites
             pb.update()
@@ -525,6 +525,8 @@ def take_complex_impedance(
         Maximum amount of time to wait at any given frequency
     tickle_voltage : float
         Tickle amplitude in low-current-mode volts.
+    run_analysis : bool
+        Perform the full CI analysis and save the results.
     """
     if state not in ['ob', 'sc', 'transition']:
         raise ValueError("State must be 'ob', 'sc', or 'transition'")
@@ -549,8 +551,6 @@ def take_complex_impedance(
 
     pb = tqdm(total=len(freqs)*len(bgs), disable=False)
     try:
-        S.set_downsample_factor(1)
-        S.set_filter_disable(1)
         sdl.set_current_mode(S, bgs, 1)
         tickle_voltage /= S.high_low_current_ratio
 
@@ -560,7 +560,9 @@ def take_complex_impedance(
             channel_mask = ds.bands[m] * S.get_number_channels() + ds.channels[m]
 
             ds.sids[bg] = sdl.stream_g3_on(
-                S, channel_mask=channel_mask, subtype='complex_impedance')
+                S, channel_mask=channel_mask, subtype='complex_impedance',
+                downsample_factor=1, filter_disable=True
+            )
             for j, freq in enumerate(freqs):
                 meas_time = min(1./freq * nperiods, max_meas_time)
                 S.log(f"Tickle with bg={bg}, freq={freq}")
@@ -596,7 +598,7 @@ def take_complex_impedance(
 
 def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
                                  tes_bias=15.0, overbias_wait=5.0,
-                                 cool_wait=30., **ci_kwargs):
+                                 cool_wait=30., run_analysis=True, **ci_kwargs):
     """
     Takes overbiased and superconducting complex impedance sweeps. These are
     required to analyze any in-transition sweeps.
@@ -617,6 +619,8 @@ def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
         Time to wait at the overbias_voltage
     cool_wait : float
         Time to wait at the tes_bias after overbiasing
+    run_analysis : bool
+        Perform the full CI analysis and save the results.
     **ci_kwargs : 
         Any additional kwargs will be passed directly to the
         ``take_complex_impedance`` function.
@@ -626,12 +630,14 @@ def take_complex_impedance_ob_sc(S, cfg, bgs, overbias_voltage=19.9,
     # Takes SC sweep
     for bg in bgs:
         S.set_tes_bias_bipolar(bg, 0)
-    sc = take_complex_impedance(S, cfg, bgs, state='sc', **ci_kwargs)
+    sc = take_complex_impedance(S, cfg, bgs, state='sc',
+                                run_analysis=run_analysis, **ci_kwargs)
 
     S.overbias_tes_all(bias_groups=bgs, overbias_voltage=overbias_voltage,
                        tes_bias=tes_bias, overbias_wait=overbias_wait,
                        cool_wait=cool_wait)
-    ob = take_complex_impedance(S, cfg, bgs, state='ob', **ci_kwargs)
+    ob = take_complex_impedance(S, cfg, bgs, state='ob',
+                                run_analysis=run_analysis, **ci_kwargs)
 
     cfg.dev.update_experiment({
         'complex_impedance_sc_path': sc.filepath,
