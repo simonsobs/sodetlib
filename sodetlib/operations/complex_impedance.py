@@ -52,7 +52,7 @@ def new_ci_dset(S, cfg, bands, chans, freqs, run_kwargs=None, ob_path=None,
         if ob_path is None:
             raise ValueError("No ob CI path found in the device cfg")
         if sc_path is None:
-            raise ValueError("No ob CI path found in the device cfg")
+            raise ValueError("No sc CI path found in the device cfg")
 
         ob = sdl.remap_dets(AxisManager.load(ob_path), ds, load_axes=False)
         ds.wrap('ob', ob)
@@ -404,11 +404,11 @@ def fit_det_params(ds, pb=False, fmax=None):
 
     return True
 
-def analyze_full(ds):
+def analyze_full(ds, bgs=None):
     """
     Performs the full CI analysis on a dataset.
     """
-    analyze_tods(ds)
+    analyze_tods(ds, bgs=bgs)
     if ds.run_kwargs.state == 'transition':
         get_ztes(ds)
         fit_det_params(ds)
@@ -433,8 +433,11 @@ def plot_transfers(d, rc):
         axes[0].plot(s.freqs, mag, '.', label=labels[i])
         axes[1].plot(s.freqs, phase, '.', label=labels[i])
     axes[0].set(xscale='log', yscale='log')
-    axes[0].legend()
-    axes[1].legend()
+    for ax in axes:
+        ax.legend()
+        ax.set_xlabel('Freq (Hz)', fontsize=16)
+    axes[0].set_ylabel(r'$I_\mathrm{TES}$ / $I_\mathrm{bias}$', fontsize=16)
+    axes[1].set_ylabel(r'$\phi_{I_\mathrm{TES}}$', fontsize=16)
     return fig, axes
 
 def plot_ztes(ds, rc, x=None, write_text=True):
@@ -478,18 +481,19 @@ def plot_ztes(ds, rc, x=None, write_text=True):
         # r'$r^2$ = ' + f'{ds.ztes_rsquared[rc]:.2f}',
     ])
     if write_text:
-        ax.text(0.05, 0.05, txt, transform=ax.transAxes, fontsize=12,
+        ax.text(0.35, 0.35, txt, transform=ax.transAxes, fontsize=12,
                 bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
 
     # Im / Re plot
     ax = axes[1]
-    ax.plot(ds.freqs, np.real(ztes), '.', color='C0')
-    ax.plot(ds.freqs, np.imag(ztes), '.', color='C1')
+    ax.plot(ds.freqs, np.real(ztes), '.', color='C0', label='Re')
+    ax.plot(ds.freqs, np.imag(ztes), '.', color='C1', label='Im')
     ax.plot(fs, np.real(zfit), color='C0', alpha=0.8, ls='--')
     ax.plot(fs, np.imag(zfit), color='C1', alpha=0.8, ls='--')
     ax.set(xscale='log')
     ax.set_xlabel("Freq (Hz)", fontsize=16)
     ax.set_ylabel(r"$Z_\mathrm{TES}$ (m$\Omega$)", fontsize=16)
+    ax.legend(fontsize=12)
 
     return fig, ax
 
@@ -587,7 +591,7 @@ def take_complex_impedance(
     S.log(f"Saved unanalyzed datafile to {fname}")
 
     if run_analysis:
-        analyze_full(ds)
+        analyze_full(ds, bgs=bgs)
         fname = sdl.make_filename(S, f'ci_sweep_{state}.h5')
         ds.filepath = fname
         ds.save(fname)
