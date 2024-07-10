@@ -396,7 +396,7 @@ def fit_det_params(ds, pb=False, fmax=None):
     # Compute tau_eff
     RL = ds.meta.R_sh
     ds._Rfit, ds._beta_I, ds._L_I, ds._tau_I = ds._fit_x.T
-    ds.tau_eff = ds._tau_I * (1 - ds._L_I) * (1 + ds._beta_I + RL / ds._Rfit) \
+    ds._tau_eff = ds._tau_I * (1 - ds._L_I) * (1 + ds._beta_I + RL / ds._Rfit) \
         / (1 + ds._beta_I + RL / ds._Rfit + ds._L_I * (1 - RL / ds._Rfit))
 
     for f in fields:
