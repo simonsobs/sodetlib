@@ -538,7 +538,7 @@ def take_complex_impedance(
     bgs = np.atleast_1d(bgs)
 
     if freqs is None:
-        freqs = np.logspace(0, np.log10(4e3), 20)
+        freqs = np.logspace(0, np.log10(2e3), 20)
     freqs = np.atleast_1d(freqs)
 
     run_kwargs = {k: v for k, v in locals().items() if k not in ['S', 'cfg']}
