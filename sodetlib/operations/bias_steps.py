@@ -349,6 +349,13 @@ class BiasStepAnalysis:
             )
 
     @classmethod
+    def from_dict(cls, data):
+        self = cls()
+        for k, v in data.items():
+            setattr(self, k, v)
+        return self
+
+    @classmethod
     def load(cls, filepath):
         self = cls()
         data = np.load(filepath, allow_pickle=True).item()

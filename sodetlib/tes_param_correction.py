@@ -35,28 +35,31 @@ class AnalysisCfg:
     """
     Class for configuring behavior of the parameter estimation functions
     """
-    
-    "Default number of processes to use when running correction in parallel."
     default_nprocs: int = 10
+    "Default number of processes to use when running correction in parallel."
 
-    "If true, will raise exceptions thrown in the run_correction function."
     raise_exceptions: bool = False
+    "If true, will raise exceptions thrown in the run_correction function."
 
-    "rfrac for which psat is defined."
     psat_level=0.9
+    "rfrac for which psat is defined."
 
+    rpfit_min_rfrac: float = 0.05
     "Min rfrac used for RP fits and estimation."
-    rpfit_min_rfrac: float = 0.1
 
+    rpfit_max_rfrac: float = 0.95
     "Max rfrac used for RP fits and estiamtion."
-    rpfit_max_rfrac: float = 0.9
 
-    "Number of samples to use in the RP fit and integral."
     rpfit_intg_nsamps: int = 500
+    "Number of samples to use in the RP fit and integral."
 
+    sc_rfrac_thresh: float = 0.02
     "Bias step rfrac threshold below which TES should be considered "
     "superconducting, and the correction skipped."
-    sc_rfrac_thresh: float = 0.02
+
+    show_pb: bool = True
+    "If true, will show a pb when running on all channels together"
+
 
     def __post_init__(self):
         if self.rpfit_min_rfrac < 0.0001:
@@ -74,7 +77,11 @@ class RpFitChanData:
     bg: int
     Rsh: float
 
+    band: int
+    channel: int
+
     iv_idx_sc: int
+    iv_resp: np.ndarray
     iv_R: np.ndarray        # Ohm
     iv_p_tes: np.ndarray    # pW
     iv_Rn: float             
@@ -106,9 +113,10 @@ class RpFitChanData:
         bg = iva['bgmap'][iv_idx]
 
         return cls(
-            bg=bg,
+            bg=bg, band=band, channel=channel,
             Rsh=iva['meta']['R_sh'],
             iv_idx_sc = iva['idxs'][iv_idx, 0],
+            iv_resp = iva['resp'][iv_idx],
             iv_R=iva['R'][iv_idx],
             iv_Rn=iva['R_n'][iv_idx],
             iv_p_tes=iva['p_tes'][iv_idx] * 1e12,
@@ -136,21 +144,20 @@ class CorrectionResults:
 
     "Log(alpha') fit popts"
     logalpha_popts: Optional[np.ndarray] = None
-    "Log(alpha') fit results object"
-    logalpha_fit_results: Optional[OptimizeResult] = None
+    pbias_model_offset: Optional[float] = None
     "delta Popt between IV and bias steps"
     delta_Popt: Optional[float] = None
 
-    "TES Current"
+    "TES Current  [uA]"
     corrected_I0: Optional[float] = None
-    "TES resistance"
+    "TES resistance [Ohm]"
     corrected_R0: Optional[float] = None
-    "Bias power"
+    "Bias power [aW]"
     corrected_Pj: Optional[float] = None
-    "Responsivity"
+    "Responsivity [1/uV]"
     corrected_Si: Optional[float] = None
     "Loopgain at bias current"
-    L0: Optional[float] = None
+    loopgain: Optional[float] = None
 
 
 def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.ndarray, float]:
@@ -170,7 +177,7 @@ def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.nda
 
     rfrac = chdata.iv_R / chdata.iv_Rn
     mask = np.ones_like(rfrac, dtype=bool)
-    mask[:chdata.iv_idx_sc] = False
+    mask[:chdata.iv_idx_sc + w_len + 2] = False # Try to cut out SC branch + smoothing
     mask &= (rfrac > cfg.rpfit_min_rfrac) * (rfrac < cfg.rpfit_max_rfrac) 
     rfrac = np.convolve(rfrac, w, mode='same')
     pbias = np.convolve(chdata.iv_p_tes, w, mode='same')
@@ -218,14 +225,16 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
 
         if np.abs(chdata.bs_Rtes / chdata.iv_Rn) < cfg.sc_rfrac_thresh: 
             # Cannot perform correction, since detectors are SC
-            res.corrected_R0 = 0
-            res.corrected_Si = 0
-            res.corrected_Pj = 0
+            res.corrected_R0 = np.float(0)
+            res.corrected_Si = np.float(0)
+            res.corrected_Pj = np.float(0)
             res.success = True
             return res
 
         # Find logalpha popts
         logalpha_popts, pbias_model_offset = find_logalpha_popts(chdata, cfg)
+        res.logalpha_popts = logalpha_popts
+        res.pbias_model_offset = pbias_model_offset
 
         # compute dPopt by minimizing (dIrat_IV - dIrat_BS) at chosen bias voltage with respect to delta_popt
         dIrat_meas = chdata.bs_meas_dIrat
@@ -247,9 +256,14 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
             return np.interp(Ibias_setpoint, i_bias_, irat)
 
         def fit_func(dPopt):
-            return (dIrat_IV(dPopt) - dIrat_meas)**2
+            diff = (dIrat_IV(dPopt) - dIrat_meas)**2
+            return diff if not np.isnan(diff) else np.inf
         
-        dPopt = minimize(fit_func,  [0]).x[0]
+        dPopt_fitres = minimize(fit_func, [0])
+        if not dPopt_fitres.success:
+            raise RuntimeError("dPopt fit failed")
+
+        dPopt = dPopt_fitres.x[0]
         res.delta_Popt = dPopt
 
         # Adjust IV parameter curves with delta_Popt, and find params at Ibias setpoint
@@ -267,7 +281,7 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         res.corrected_R0 = np.interp(Ibias_setpoint, Ibias, R)
         res.corrected_Pj = np.interp(Ibias_setpoint, Ibias, pbias)
         res.corrected_Si = np.interp(Ibias_setpoint, Ibias, Si)
-        res.L0 = np.interp(Ibias_setpoint, Ibias, L0)
+        res.loopgain = np.interp(Ibias_setpoint, Ibias, L0)
         res.success = True
 
     except Exception:
@@ -286,7 +300,7 @@ def run_corrections_parallel(
     """
 
     nchans = iva['nchans']
-    pb = trange(nchans)
+    pb = trange(nchans, disable=(not cfg.show_pb))
     results = []
 
     if nprocs is None:
@@ -320,8 +334,9 @@ def run_corrections_parallel(
         pb.close()
     finally:
         if close_pool:
-            pool.close()
+            pool.terminate()
             pool.join()
+            pool.close()
 
     return results
 
