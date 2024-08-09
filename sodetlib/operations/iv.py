@@ -209,7 +209,7 @@ def compute_psats(iva, psat_level=0.9):
         Array of length (nchan) with the p-sat computed for each channel (W)
     """
     # calculates P_sat as P_TES when Rfrac = psat_level
-    # if the TES is at 90% R_n more than once, just take the first crossing
+    # if the TES is at 90% R_n more than once, just take the last crossing
     for i in range(iva.nchans):
         if np.isnan(iva.R_n[i]):
             continue
@@ -218,14 +218,14 @@ def compute_psats(iva, psat_level=0.9):
         R = iva.R[i]
         R_n = iva.R_n[i]
         p_tes = iva.p_tes[i]
-        cross_idx = np.where(R/R_n > level)[0]
+        cross_idx = np.where(R/R_n < level)[0]
 
         if len(cross_idx) == 0:
             iva.p_sat[i] = np.nan
             continue
 
-        # Takes cross-index to be the first time Rfrac crosses psat_level
-        cross_idx = cross_idx[0]
+        # Takes cross-index to be the last time Rfrac crosses psat_level
+        cross_idx = cross_idx[-1]
         if cross_idx == 0:
             iva.p_sat[i] = np.nan
             continue
@@ -233,8 +233,8 @@ def compute_psats(iva, psat_level=0.9):
         iva.idxs[i, 2] = cross_idx
         try:
             iva.p_sat[i] = interp1d(
-                R[cross_idx-1:cross_idx+1]/R_n,
-                p_tes[cross_idx-1:cross_idx+1]
+                R[cross_idx:cross_idx+2]/R_n,
+                p_tes[cross_idx:cross_idx+2]
             )(level)
         except ValueError:
             iva.p_sat[i] = np.nan
