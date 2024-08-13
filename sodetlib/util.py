@@ -7,6 +7,7 @@ from scipy import signal
 import time
 import os
 from collections import namedtuple
+import sodetlib
 from sodetlib import det_config
 from sodetlib.constants import *
 from sotodlib.tod_ops.fft_ops import calc_psd
@@ -209,6 +210,7 @@ def get_metadata(S, cfg):
         'pysmurf_client_version': pysmurf.__version__,
         'rogue_version': S._caget(f'{S.epics_root}:AMCc:RogueVersion'),
         'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
+        'sodetlib_version': sodetlib.__version__,
         'fpga_git_hash': S.get_fpga_git_hash_short(),
         'cryocard_fw_version': S.C.get_fw_version(),
         'crate_id': cfg.sys['crate_id'],
