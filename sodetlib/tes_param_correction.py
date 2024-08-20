@@ -73,6 +73,39 @@ class RpFitChanData:
     """
     Channel data needed to perform RP correction, pulled from bias step and IV
     calibration functions.
+
+    Args
+    -------
+    bg: int
+        Bias Line
+    Rsh: float
+        Shunt Resistance [Ohms]
+    band: int
+        Readout band
+    channel :int
+        Readout channel
+    iv_idx_sc: int
+        Index in IV data for SC transition
+    iv_resp: np.ndarray
+        TES current response relative from IV.
+    iv_R: np.ndarray
+        TES resistance [Ohms] through IV.
+    iv_p_tes: np.ndarray
+        TES Bias power [pW] through IV.
+    iv_Rn: float
+        TES normal resistance, measured from IV.
+    iv_ibias: np.ndarray
+        TES bias current [uA] throughout IV.
+    iv_si: np.ndarray
+        TES responsivity [1/uV] throughout IV.
+    bs_meas_dIrat: float
+        TES measured dIdrat from bias steps.
+    bs_Rtes: float
+        TES resistance [Ohm] measured from bias steps.
+    bs_Ibias: float
+        TES bias current [uA] measured from bias steps.
+    bs_Si: float
+        TES responsivity [1/uV] measured from bias steps.
     """
     bg: int
     Rsh: float
@@ -84,17 +117,17 @@ class RpFitChanData:
     iv_resp: np.ndarray
     iv_R: np.ndarray        # Ohm
     iv_p_tes: np.ndarray    # pW
-    iv_Rn: float             
+    iv_Rn: float
     iv_ibias: np.ndarray    # uA
     iv_si: np.ndarray       # 1/uV
 
-    bs_meas_dIrat: float    
+    bs_meas_dIrat: float
     bs_Rtes: float = np.nan  # Ohm
     bs_Ibias: float = np.nan # uA
     bs_Si: float = np.nan    # 1/uV
 
     @classmethod
-    def from_data(cls, iva, bsa, band, channel):
+    def from_data(cls, iva, bsa, band, channel) -> 'RpFitChanData':
         """Create class from IV and BSA dicts"""
         iv_idx = np.where(
             (iva['channels'] == channel) & (iva['bands'] == band)
@@ -102,7 +135,7 @@ class RpFitChanData:
         if len(iv_idx) == 0:
             raise ValueError(f"Could not find band={band} channel={channel} in IVAnalysis")
         iv_idx = iv_idx[0]
-        
+
         bs_idx = np.where(
             (bsa['channels'] == channel) & (bsa['bands'] == band)
         )[0]
@@ -163,7 +196,7 @@ class CorrectionResults:
 def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.ndarray, float]:
     """
     Fit Log(alpha') to IV data.
-    
+
     Returns
     ---------
     popts: np.ndarray
@@ -178,7 +211,7 @@ def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.nda
     rfrac = chdata.iv_R / chdata.iv_Rn
     mask = np.ones_like(rfrac, dtype=bool)
     mask[:chdata.iv_idx_sc + w_len + 2] = False # Try to cut out SC branch + smoothing
-    mask &= (rfrac > cfg.rpfit_min_rfrac) * (rfrac < cfg.rpfit_max_rfrac) 
+    mask &= (rfrac > cfg.rpfit_min_rfrac) * (rfrac < cfg.rpfit_max_rfrac)
     rfrac = np.convolve(rfrac, w, mode='same')
     pbias = np.convolve(chdata.iv_p_tes, w, mode='same')
 
@@ -197,8 +230,8 @@ def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.nda
     fitres = minimize(fit_func, [4, 10, 1, 1])
     logalpha_popts = fitres.x
 
-    # Find pBias offset
     logalpha_model = model_logalpha(rfrac, *fitres.x)
+
     pbias_model = np.nancumsum(drfrac / (rfrac * np.exp(logalpha_model)))
     def fit_func(pbias_offset):
         return np.sum((pbias_model + pbias_offset - pbias)**2)
@@ -223,11 +256,11 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         if np.isnan(chdata.iv_Rn):
             raise ValueError("IV Rn is NaN")
 
-        if np.abs(chdata.bs_Rtes / chdata.iv_Rn) < cfg.sc_rfrac_thresh: 
+        if np.abs(chdata.bs_Rtes / chdata.iv_Rn) < cfg.sc_rfrac_thresh:
             # Cannot perform correction, since detectors are SC
-            res.corrected_R0 = np.float(0)
-            res.corrected_Si = np.float(0)
-            res.corrected_Pj = np.float(0)
+            res.corrected_R0 = 0.0
+            res.corrected_Si = 0.0
+            res.corrected_Pj = 0.0
             res.success = True
             return res
 
@@ -258,7 +291,7 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         def fit_func(dPopt):
             diff = (dIrat_IV(dPopt) - dIrat_meas)**2
             return diff if not np.isnan(diff) else np.inf
-        
+
         dPopt_fitres = minimize(fit_func, [0])
         if not dPopt_fitres.success:
             raise RuntimeError("dPopt fit failed")
@@ -277,11 +310,11 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         Ibias = Ites * (R + Rsh) / Rsh
         Si = -1 / (Ites * (R - Rsh)) * (L / (L + 1))
 
-        res.corrected_I0 = np.interp(Ibias_setpoint, Ibias, Ites)
-        res.corrected_R0 = np.interp(Ibias_setpoint, Ibias, R)
-        res.corrected_Pj = np.interp(Ibias_setpoint, Ibias, pbias)
-        res.corrected_Si = np.interp(Ibias_setpoint, Ibias, Si)
-        res.loopgain = np.interp(Ibias_setpoint, Ibias, L0)
+        res.corrected_I0 = np.interp(Ibias_setpoint, Ibias, Ites).item()
+        res.corrected_R0 = np.interp(Ibias_setpoint, Ibias, R).item()
+        res.corrected_Pj = np.interp(Ibias_setpoint, Ibias, pbias).item()
+        res.corrected_Si = np.interp(Ibias_setpoint, Ibias, Si).item()
+        res.loopgain = np.interp(Ibias_setpoint, Ibias, L0).item()
         res.success = True
 
     except Exception:
@@ -350,7 +383,7 @@ def plot_corrected_Rfrac_comparison(results: List[CorrectionResults]):
             iv_r.append(res.chdata.iv_R[idx]/res.chdata.iv_Rn)
             bs_r.append(res.chdata.bs_Rtes/res.chdata.iv_Rn)
             corrected_bs_r.append(res.corrected_R0/res.chdata.iv_Rn)
-    
+
     plt.plot([0, 2], [0, 2], 'k--', alpha=0.5)
     plt.plot(iv_r, bs_r, '.', alpha=0.2, label="Bias Step Estimation")
     plt.plot(iv_r, corrected_bs_r, '.', alpha=0.2, label='Corrected Rfrac')
