@@ -13,17 +13,22 @@ Authors: Remy Gerras, Satoru Takakura, Jack Lashner
 
 import numpy as np
 from scipy.interpolate import interp1d
-from scipy.optimize import minimize, OptimizeResult
+from scipy.optimize import minimize
 from tqdm.auto import trange
 import multiprocessing
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, TypeVar
 from dataclasses import dataclass
 import traceback
-import matplotlib.pyplot as plt
+from copy import deepcopy
+from numpy.typing import NDArray
 
-from sodetlib.operations import bias_steps, iv
+from sodetlib.operations.iv import IVAnalysis
+from sodetlib.operations.bias_steps import BiasStepAnalysis
 
-def model_logalpha(r, logp0=0.0, p1=7.0, p2=1.0, logp3=0.0):
+D = TypeVar("D", float, np.ndarray)
+
+
+def model_logalpha(r: D, logp0=0.0, p1=7.0, p2=1.0, logp3=0.0) -> D:
     """
     Fits Alpha' parameter, or alpha / GT. P0 has units of [uW]^-1.
     """
@@ -35,13 +40,14 @@ class AnalysisCfg:
     """
     Class for configuring behavior of the parameter estimation functions
     """
+
     default_nprocs: int = 10
     "Default number of processes to use when running correction in parallel."
 
     raise_exceptions: bool = False
     "If true, will raise exceptions thrown in the run_correction function."
 
-    psat_level=0.9
+    psat_level: float = 0.9
     "rfrac for which psat is defined."
 
     rpfit_min_rfrac: float = 0.05
@@ -59,7 +65,6 @@ class AnalysisCfg:
 
     show_pb: bool = True
     "If true, will show a pb when running on all channels together"
-
 
     def __post_init__(self):
         if self.rpfit_min_rfrac < 0.0001:
@@ -107,6 +112,7 @@ class RpFitChanData:
     bs_Si: float
         TES responsivity [1/uV] measured from bias steps.
     """
+
     bg: int
     Rsh: float
 
@@ -115,51 +121,77 @@ class RpFitChanData:
 
     iv_idx_sc: int
     iv_resp: np.ndarray
-    iv_R: np.ndarray        # Ohm
-    iv_p_tes: np.ndarray    # pW
+    iv_R: np.ndarray  # Ohm
+    iv_p_tes: np.ndarray  # pW
     iv_Rn: float
-    iv_ibias: np.ndarray    # uA
-    iv_si: np.ndarray       # 1/uV
+    iv_ibias: np.ndarray  # uA
+    iv_si: np.ndarray  # 1/uV
 
     bs_meas_dIrat: float
     bs_Rtes: float = np.nan  # Ohm
-    bs_Ibias: float = np.nan # uA
-    bs_Si: float = np.nan    # 1/uV
+    bs_Ibias: float = np.nan  # uA
+    bs_Si: float = np.nan  # 1/uV
 
     @classmethod
-    def from_data(cls, iva, bsa, band, channel) -> 'RpFitChanData':
+    def from_data(
+        cls, iva: IVAnalysis, bsa: BiasStepAnalysis, band: int, channel: int
+    ) -> "RpFitChanData":
         """Create class from IV and BSA dicts"""
-        iv_idx = np.where(
-            (iva['channels'] == channel) & (iva['bands'] == band)
-        )[0]
+        iv_idx = np.where((iva.channels == channel) & (iva.bands == band))[0]
         if len(iv_idx) == 0:
-            raise ValueError(f"Could not find band={band} channel={channel} in IVAnalysis")
+            raise ValueError(
+                f"Could not find band={band} channel={channel} in IVAnalysis"
+            )
         iv_idx = iv_idx[0]
 
-        bs_idx = np.where(
-            (bsa['channels'] == channel) & (bsa['bands'] == band)
-        )[0]
+        bs_idx = np.where((bsa.channels == channel) & (bsa.bands == band))[0]
         if len(bs_idx) == 0:
-            raise ValueError(f"Could not find band={band} channel={channel} in Bias Steps")
+            raise ValueError(
+                f"Could not find band={band} channel={channel} in Bias Steps"
+            )
         bs_idx = bs_idx[0]
 
-        bg = iva['bgmap'][iv_idx]
+        bg = iva.bgmap[iv_idx]
 
         return cls(
-            bg=bg, band=band, channel=channel,
-            Rsh=iva['meta']['R_sh'],
-            iv_idx_sc = iva['idxs'][iv_idx, 0],
-            iv_resp = iva['resp'][iv_idx],
-            iv_R=iva['R'][iv_idx],
-            iv_Rn=iva['R_n'][iv_idx],
-            iv_p_tes=iva['p_tes'][iv_idx] * 1e12,
-            iv_si = iva['si'][iv_idx] * 1e-6,
-            iv_ibias=iva['i_bias'] * 1e6,
-            bs_meas_dIrat=bsa['dItes'][bs_idx] / bsa['dIbias'][bg],
-            bs_Rtes = bsa['R0'][bs_idx],
-            bs_Ibias = bsa['Ibias'][bg] * 1e6,
-            bs_Si = bsa['Si'][bs_idx] * 1e-6,
+            bg=bg,
+            band=band,
+            channel=channel,
+            Rsh=iva.meta["R_sh"],
+            iv_idx_sc=iva.idxs[iv_idx, 0],
+            iv_resp=iva.resp[iv_idx],
+            iv_R=iva.R[iv_idx],
+            iv_Rn=iva.R_n[iv_idx],
+            iv_p_tes=iva.p_tes[iv_idx] * 1e12,
+            iv_si=iva.si[iv_idx] * 1e-6,
+            iv_ibias=iva.i_bias * 1e6,
+            bs_meas_dIrat=bsa.dItes[bs_idx] / bsa.dIbias[bg],
+            bs_Rtes=bsa.R0[bs_idx],
+            bs_Ibias=bsa.Ibias[bg] * 1e6,
+            bs_Si=bsa.Si[bs_idx] * 1e-6,
         )
+
+
+@dataclass
+class CorrectedParams:
+    "Log(alpha') fit popts"
+
+    logalpha_popts: np.ndarray
+    "Log alpha fit parameters"
+    pbias_model_offset: float
+    "delta Popt between IV and bias steps"
+    delta_Popt: float
+    "TES Current  [uA]"
+    corrected_I0: float
+    "TES resistance [Ohm]"
+    corrected_R0: float
+    "Bias power [aW]"
+    corrected_Pj: float
+    "Responsivity [1/uV]"
+    corrected_Si: float
+    "Loopgain at bias current"
+    loopgain: float
+
 
 @dataclass
 class CorrectionResults:
@@ -167,33 +199,22 @@ class CorrectionResults:
     Results from the parameter correction procedure
     """
 
-    "Channel data used for correction"
     chdata: RpFitChanData
+    "Channel data used for correction"
 
-    "If correction finished successfully"
     success: bool = False
-    "Traceback on failure"
+    "If correction finished successfully"
+
     traceback: Optional[str] = None
+    "Traceback on failure"
 
-    "Log(alpha') fit popts"
-    logalpha_popts: Optional[np.ndarray] = None
-    pbias_model_offset: Optional[float] = None
-    "delta Popt between IV and bias steps"
-    delta_Popt: Optional[float] = None
-
-    "TES Current  [uA]"
-    corrected_I0: Optional[float] = None
-    "TES resistance [Ohm]"
-    corrected_R0: Optional[float] = None
-    "Bias power [aW]"
-    corrected_Pj: Optional[float] = None
-    "Responsivity [1/uV]"
-    corrected_Si: Optional[float] = None
-    "Loopgain at bias current"
-    loopgain: Optional[float] = None
+    corrected_params: Optional[CorrectedParams] = None
+    "Model popts and corrected TES parameters"
 
 
-def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.ndarray, float]:
+def find_logalpha_popts(
+    chdata: RpFitChanData, cfg: AnalysisCfg
+) -> Tuple[np.ndarray, float]:
     """
     Fit Log(alpha') to IV data.
 
@@ -206,14 +227,14 @@ def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.nda
     """
     smooth_dist = 5
     w_len = 2 * smooth_dist + 1
-    w = (1./float(w_len))*np.ones(w_len)  # window
+    w = (1.0 / float(w_len)) * np.ones(w_len)  # window
 
     rfrac = chdata.iv_R / chdata.iv_Rn
     mask = np.ones_like(rfrac, dtype=bool)
-    mask[:chdata.iv_idx_sc + w_len + 2] = False # Try to cut out SC branch + smoothing
+    mask[: chdata.iv_idx_sc + w_len + 2] = False  # Try to cut out SC branch + smoothing
     mask &= (rfrac > cfg.rpfit_min_rfrac) * (rfrac < cfg.rpfit_max_rfrac)
-    rfrac = np.convolve(rfrac, w, mode='same')
-    pbias = np.convolve(chdata.iv_p_tes, w, mode='same')
+    rfrac = np.convolve(rfrac, w, mode="same")
+    pbias = np.convolve(chdata.iv_p_tes, w, mode="same")
 
     rfrac = rfrac[mask]
     pbias = pbias[mask]
@@ -222,20 +243,22 @@ def find_logalpha_popts(chdata: RpFitChanData, cfg: AnalysisCfg) -> Tuple[np.nda
     logalpha = np.log(1 / rfrac * drfrac / dpbias)
     logalpha_mask = np.isfinite(logalpha)
 
-    def fit_func(logalpha_pars):
+    def logalpha_fit_func(logalpha_pars):
         model = model_logalpha(rfrac, *logalpha_pars)
-        chi2 = np.sum((logalpha[logalpha_mask] - model[logalpha_mask])**2)
+        chi2 = np.sum((logalpha[logalpha_mask] - model[logalpha_mask]) ** 2)
         return chi2
 
-    fitres = minimize(fit_func, [4, 10, 1, 1])
+    fitres = minimize(logalpha_fit_func, [4, 10, 1, 1])
     logalpha_popts = fitres.x
 
     logalpha_model = model_logalpha(rfrac, *fitres.x)
 
     pbias_model = np.nancumsum(drfrac / (rfrac * np.exp(logalpha_model)))
-    def fit_func(pbias_offset):
-        return np.sum((pbias_model + pbias_offset - pbias)**2)
-    pbias_model_offset = minimize(fit_func, pbias[0]).x[0]
+
+    def pbias_offset_fit_func(pbias_offset):
+        return np.sum((pbias_model + pbias_offset - pbias) ** 2)
+
+    pbias_model_offset = minimize(pbias_offset_fit_func, pbias[0]).x[0]
 
     return logalpha_popts, pbias_model_offset
 
@@ -256,24 +279,31 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         if np.isnan(chdata.iv_Rn):
             raise ValueError("IV Rn is NaN")
 
-        if np.abs(chdata.bs_Rtes / chdata.iv_Rn) < cfg.sc_rfrac_thresh:
-            # Cannot perform correction, since detectors are SC
-            res.corrected_R0 = 0.0
-            res.corrected_Si = 0.0
-            res.corrected_Pj = 0.0
-            res.success = True
-            return res
-
         # Find logalpha popts
         logalpha_popts, pbias_model_offset = find_logalpha_popts(chdata, cfg)
-        res.logalpha_popts = logalpha_popts
-        res.pbias_model_offset = pbias_model_offset
+
+        if np.abs(chdata.bs_Rtes / chdata.iv_Rn) < cfg.sc_rfrac_thresh:
+            # Cannot perform correction, since detectors are SC
+            res.corrected_params = CorrectedParams(
+                logalpha_popts=logalpha_popts,
+                pbias_model_offset=pbias_model_offset,
+                delta_Popt=np.nan,
+                corrected_I0=0.0,
+                corrected_R0=0.0,
+                corrected_Pj=0.0,
+                corrected_Si=0.0,
+                loopgain=np.nan,
+            )
+            res.success = True
+            return res
 
         # compute dPopt by minimizing (dIrat_IV - dIrat_BS) at chosen bias voltage with respect to delta_popt
         dIrat_meas = chdata.bs_meas_dIrat
         Rsh = chdata.Rsh
         Ibias_setpoint = chdata.bs_Ibias
-        rfrac = np.linspace(cfg.rpfit_min_rfrac, cfg.rpfit_max_rfrac, cfg.rpfit_intg_nsamps)
+        rfrac = np.linspace(
+            cfg.rpfit_min_rfrac, cfg.rpfit_max_rfrac, cfg.rpfit_intg_nsamps
+        )
         dr = rfrac[1] - rfrac[0]
         logalpha_model = model_logalpha(rfrac, *logalpha_popts)
         alpha = np.exp(logalpha_model)
@@ -289,7 +319,7 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
             return np.interp(Ibias_setpoint, i_bias_, irat)
 
         def fit_func(dPopt):
-            diff = (dIrat_IV(dPopt) - dIrat_meas)**2
+            diff = (dIrat_IV(dPopt) - dIrat_meas) ** 2
             return diff if not np.isnan(diff) else np.inf
 
         dPopt_fitres = minimize(fit_func, [0])
@@ -297,7 +327,6 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
             raise RuntimeError("dPopt fit failed")
 
         dPopt = dPopt_fitres.x[0]
-        res.delta_Popt = dPopt
 
         # Adjust IV parameter curves with delta_Popt, and find params at Ibias setpoint
         pbias -= dPopt
@@ -310,13 +339,17 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
         Ibias = Ites * (R + Rsh) / Rsh
         Si = -1 / (Ites * (R - Rsh)) * (L / (L + 1))
 
-        res.corrected_I0 = np.interp(Ibias_setpoint, Ibias, Ites).item()
-        res.corrected_R0 = np.interp(Ibias_setpoint, Ibias, R).item()
-        res.corrected_Pj = np.interp(Ibias_setpoint, Ibias, pbias).item()
-        res.corrected_Si = np.interp(Ibias_setpoint, Ibias, Si).item()
-        res.loopgain = np.interp(Ibias_setpoint, Ibias, L0).item()
+        res.corrected_params = CorrectedParams(
+            logalpha_popts=logalpha_popts,
+            pbias_model_offset=pbias_model_offset,
+            delta_Popt=dPopt,
+            corrected_I0=np.interp(Ibias_setpoint, Ibias, Ites).item(),
+            corrected_R0=np.interp(Ibias_setpoint, Ibias, R).item(),
+            corrected_Pj=np.interp(Ibias_setpoint, Ibias, pbias).item(),
+            corrected_Si=np.interp(Ibias_setpoint, Ibias, Si).item(),
+            loopgain=np.interp(Ibias_setpoint, Ibias, L0).item(),
+        )
         res.success = True
-
     except Exception:
         if cfg.raise_exceptions:
             raise
@@ -326,13 +359,15 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
 
     return res
 
+
 def run_corrections_parallel(
-        iva, bsa, cfg: AnalysisCfg, nprocs=None, pool=None) -> List[CorrectionResults]:
+    iva, bsa, cfg: AnalysisCfg, nprocs=None, pool=None
+) -> List[CorrectionResults]:
     """
     Runs correction procedure in parallel for all channels in IV and BSA object
     """
 
-    nchans = iva['nchans']
+    nchans = iva["nchans"]
     pb = trange(nchans, disable=(not cfg.show_pb))
     results = []
 
@@ -342,12 +377,12 @@ def run_corrections_parallel(
     def callback(res: CorrectionResults):
         pb.update(1)
         results.append(res)
-    
+
     def errback(e):
         raise e
-    
+
     if pool is None:
-        pool = multiprocessing.get_context('spawn').Pool(nprocs)
+        pool = multiprocessing.get_context("spawn").Pool(nprocs)
         close_pool = True
     else:
         close_pool = False
@@ -356,10 +391,13 @@ def run_corrections_parallel(
         async_results = []
         for idx in range(nchans):
             chdata = RpFitChanData.from_data(
-                iva, bsa, iva['bands'][idx], iva['channels'][idx]
+                iva, bsa, iva["bands"][idx], iva["channels"][idx]
             )
             r = pool.apply_async(
-                run_correction, args=(chdata, cfg), callback=callback, error_callback=errback
+                run_correction,
+                args=(chdata, cfg),
+                callback=callback,
+                error_callback=errback,
             )
             async_results.append(r)
         for r in async_results:
@@ -373,57 +411,12 @@ def run_corrections_parallel(
 
     return results
 
-def plot_corrected_Rfrac_comparison(results: List[CorrectionResults]):
-    iv_r = []
-    bs_r = []
-    corrected_bs_r = []
-    for res in results:
-        if res.success:
-            idx = np.argmin(np.abs(res.chdata.iv_ibias - res.chdata.bs_Ibias))
-            iv_r.append(res.chdata.iv_R[idx]/res.chdata.iv_Rn)
-            bs_r.append(res.chdata.bs_Rtes/res.chdata.iv_Rn)
-            corrected_bs_r.append(res.corrected_R0/res.chdata.iv_Rn)
 
-    plt.plot([0, 2], [0, 2], 'k--', alpha=0.5)
-    plt.plot(iv_r, bs_r, '.', alpha=0.2, label="Bias Step Estimation")
-    plt.plot(iv_r, corrected_bs_r, '.', alpha=0.2, label='Corrected Rfrac')
-    plt.legend()
-    plt.xlim(0, 1.1)
-    plt.ylim(0, 1.1)
-    plt.xlabel("IV Rfrac")
-    plt.ylabel("Bias Step Rfrac")
-
-def plot_corrected_Si_comparison(results: List[CorrectionResults]):
-    rfrac = np.full(len(results), np.nan)
-    bs_si = np.full(len(results), np.nan)
-    corrected_bs_si = np.full(len(results), np.nan)
-    bg = np.full(len(results), -1, dtype=int)
-    for i, res in enumerate(results):
-        if res.success:
-            idx = np.argmin(np.abs(res.chdata.iv_ibias - res.chdata.bs_Ibias))
-            rfrac[i] = res.chdata.iv_R[idx]/res.chdata.iv_Rn
-            rfrac[i] = res.corrected_R0/res.chdata.iv_Rn
-            bs_si[i] = res.chdata.bs_Si
-            corrected_bs_si[i] = res.corrected_Si
-            bg[i] = res.chdata.bg
-
-    m = rfrac > 0.2
-    m &= bg != -1
-    m &= bs_si < 0
-    m &= np.abs(bs_si) < 60
-    m &= np.abs(corrected_bs_si) < 60
-    # m &= bg == 2
-    plt.plot(rfrac[m], bs_si[m], '.', alpha=0.2, label="Bias Step Estimation")
-    plt.plot(rfrac[m], corrected_bs_si[m], '.', alpha=0.2, color='C1', label="Corrected Responsivity")
-    plt.legend()
-    plt.xlabel("Corrected Rfrac")
-    plt.ylabel("Si (1/uV)")
-
-
-def recompute_psats(iva2, cfg: AnalysisCfg):
+def compute_psats(iva: IVAnalysis, cfg: AnalysisCfg) -> Tuple[np.ndarray, np.ndarray]:
     """
     Re-computes Psat for an IVAnalysis object. Will save results to iva.p_sat.
-    This assumes i_tes, v_tes, and r_tes have already been calculated.
+    This assumes i_tes, v_tes, and r_tes have already been calculated. This will
+    not modify the original IVAnalysis object.
 
     Args
     ----
@@ -437,83 +430,82 @@ def recompute_psats(iva2, cfg: AnalysisCfg):
     -------
     p_sat : np.ndarray
         Array of length (nchan) with the p-sat computed for each channel (W)
+    psat_cross_idx : np.ndarray
+        Array of indices at which the psat level is crossed for each channel
     """
     # calculates P_sat as P_TES when Rfrac = psat_level
     # if the TES is at 90% R_n more than once, just take the first crossing
-    iva2["p_sat"] = np.full(iva2["p_sat"].shape, np.nan)
+    psats = np.full(iva.nchans, np.nan)
+    psat_cross_idx = np.full(iva.nchans, -1)
 
-    for i in range(iva2["nchans"]):
-        if np.isnan(iva2["R_n"][i]):
+    for i in range(iva.nchans):
+        R = iva.R[i]
+        R_n = iva.R_n[i]
+        p_tes = iva.p_tes[i]
+
+        if np.isnan(R_n):
             continue
 
-        level = cfg.psat_level
-        R = iva2["R"][i]
-        R_n = iva2["R_n"][i]
-        p_tes = iva2["p_tes"][i]
-        cross_idx = np.where(R / R_n > level)[0]
-
+        cross_idx = np.where(R / R_n > cfg.psat_level)[0]
         if len(cross_idx) == 0:
-            iva2["p_sat"][i] = np.nan
             continue
 
         # Takes cross-index to be the first time Rfrac crosses psat_level
         cross_idx = cross_idx[0]
         if cross_idx == 0:
-            iva2["p_sat"][i] = np.nan
             continue
 
-        iva2["idxs"][i, 2] = cross_idx
+        psat_cross_idx[i] = cross_idx
         try:
-            iva2["p_sat"][i] = interp1d(
+            psat = interp1d(
                 R[cross_idx - 1 : cross_idx + 1] / R_n,
                 p_tes[cross_idx - 1 : cross_idx + 1],
-            )(level)
+            )(cfg.psat_level)
         except ValueError:
-            iva2["p_sat"][i] = np.nan
+            continue
+        psats[i] = psat
 
-    return iva2["p_sat"]
+    return psats, psat_cross_idx
 
 
-def recompute_si(iva2):
+def compute_si(iva: IVAnalysis) -> np.ndarray:
     """
-    Recalculates responsivity using the thevenin equivalent voltage.
+    Recalculates responsivity using the thevenin equivalent voltage. This will
+    not modify the original IVAnalysis object.
 
-        Args
+    Args
     ----
-    iva2 : Dictionary
-        Dictionary built from original IVAnalysis object (un-analyzed)
+    iva : IVAnalysis
+        IVAnalysis object for which you want to compute Si. This should already
+        have items like R, R_n, R_L, i_tes, v_tes, computed.
 
     Returns
     -------
     si : np.ndarray
         Array of length (nchan, nbiases) with  the responsivity as a fn of
         thevenin equivalent voltage for each channel (V^-1).
-
     """
-    iva2["si"] = np.full(iva2["si"].shape, np.nan)
+    si_all = np.full(iva.si.shape, np.nan)
+
     smooth_dist = 5
     w_len = 2 * smooth_dist + 1
     w = (1.0 / float(w_len)) * np.ones(w_len)  # window
 
-    v_thev_smooth = np.convolve(iva2["v_thevenin"], w, mode="same")
+    v_thev_smooth = np.convolve(iva.v_thevenin, w, mode="same")
     dv_thev = np.diff(v_thev_smooth)
 
-    R_bl = iva2["meta"]["bias_line_resistance"]
-    R_sh = iva2["meta"]["R_sh"]
+    for i in range(iva.nchans):
+        sc_idx = iva.idxs[i, 0]
 
-    for i in range(iva2["nchans"]):
-        sc_idx = iva2["idxs"][i, 0]
-
-        if np.isnan(iva2["R_n"][i]) or sc_idx == -1:
-            # iva2['si'][i] = np.nan
+        if np.isnan(iva.R_n[i]) or sc_idx == -1:
             continue
 
         # Running average
-        i_tes_smooth = np.convolve(iva2["i_tes"][i], w, mode="same")
-        v_tes_smooth = np.convolve(iva2["v_tes"][i], w, mode="same")
+        i_tes_smooth = np.convolve(iva.i_tes[i], w, mode="same")
+        v_tes_smooth = np.convolve(iva.v_tes[i], w, mode="same")
         r_tes_smooth = v_tes_smooth / i_tes_smooth
 
-        R_L = iva2["R_L"][i]
+        R_L = iva.R_L[i]
 
         # Take derivatives
         di_tes = np.diff(i_tes_smooth)
@@ -538,40 +530,48 @@ def recompute_si(iva2):
             1 - ((r0 * (1 + beta) + rL) / (dv_thev / di_tes))
         )
         si[:sc_idx] = np.nan
-        iva2["si"][i, :-1] = si
+        si_all[i] = si
 
-    return iva2["si"]
+    return si_all
 
 
-def recompute_ivpars(iva2, cfg: AnalysisCfg):
-    R_sh = iva2["meta"]["R_sh"]
-    R_bl = iva2["meta"]["bias_line_resistance"]
-    iva2["i_bias"] = iva2["v_bias"] / R_bl
-    iva2["v_tes"] = np.full(iva2["v_tes"].shape, np.nan)
-    iva2["i_tes"] = np.full(iva2["i_tes"].shape, np.nan)
-    iva2["p_tes"] = np.full(iva2["p_tes"].shape, np.nan)
-    iva2["R"] = np.full(iva2["R"].shape, np.nan)
-    iva2["R_n"] = np.full(iva2["R_n"].shape, np.nan)
-    iva2["R_L"] = np.full(iva2["R_L"].shape, np.nan)
+def recompute_ivpars(iva: IVAnalysis, cfg: AnalysisCfg) -> IVAnalysis:
+    """
+    Takes in an IV Analysis object and analysis cfg params, and recomputes
+    TES voltage, current, bias power, resistance, responsivity, and saturation
+    powers using the corrected TES formulas for R_L and V_thevenin.
+    """
+    iva_new = IVAnalysis.from_dict(deepcopy(iva.to_dict()))
+    R_sh = iva.meta["R_sh"]
+    R_bl = iva.meta["bias_line_resistance"]
+    iva_new.i_bias = iva_new.v_bias / R_bl
+    iva_new.v_thevenin = iva_new.i_bias * R_sh
+    iva_new.v_tes = np.full(iva.v_tes.shape, np.nan)
+    iva_new.i_tes = np.full(iva.i_tes.shape, np.nan)
+    iva_new.p_tes = np.full(iva.p_tes.shape, np.nan)
+    iva_new.R = np.full(iva.R.shape, np.nan)
+    iva_new.R_n = np.full(iva.R_n.shape, np.nan)
+    iva_new.R_L = np.full(iva.R_L.shape, np.nan)
 
-    for i in range(iva2["nchans"]):
-        sc_idx = iva2["idxs"][i, 0]
-        nb_idx = iva2["idxs"][i, 1]
+    iva_new.resp
+    for i in range(iva.nchans):
+        sc_idx = iva.idxs[i, 0]
+        nb_idx = iva.idxs[i, 1]
 
-        R = R_sh * (iva2["i_bias"] / (iva2["resp"][i]) - 1)
-        R_par = np.nanmean(R[1:sc_idx])
-        R_n = np.nanmean(R[nb_idx:]) - R_par
-        R_L = R_sh + R_par
-        R_tes = R - R_par
+        R: NDArray[np.float] = R_sh * (iva.i_bias / iva.resp[i] - 1)
+        R_par: float = np.nanmean(R[1:sc_idx])
+        R_n: float = np.nanmean(R[nb_idx:]) - R_par
+        R_L: float = R_sh + R_par
+        R_tes: NDArray[np.float] = R - R_par
 
-        iva2["v_thevenin"] = iva2["i_bias"] * R_sh
-        iva2["v_tes"][i] = iva2["v_thevenin"] * (R_tes / (R_tes + R_L))
-        iva2["i_tes"][i] = iva2["v_tes"][i] / R_tes
-        iva2["p_tes"][i] = iva2["v_tes"][i] ** 2 / R_tes
+        iva_new.v_tes[i] = iva_new.v_thevenin * (R_tes / (R_tes + R_L))
+        iva_new.i_tes[i] = iva_new.v_tes[i] / R_tes
+        iva_new.p_tes[i] = iva_new.v_tes[i] ** 2 / R_tes
+        iva_new.R[i] = R_tes
+        iva_new.R_n[i] = R_n
+        iva_new.R_L[i] = R_L
 
-        iva2["R"][i] = R_tes
-        iva2["R_n"][i] = R_n
-        iva2["R_L"][i] = R_L
+    iva_new.p_sat, iva_new.idxs[:, 2] = compute_psats(iva_new, cfg)
+    iva_new.si = compute_si(iva_new)
 
-    recompute_psats(iva2, cfg)
-    recompute_si(iva2)
+    return iva_new
