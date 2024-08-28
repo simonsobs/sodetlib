@@ -291,7 +291,7 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
                 corrected_I0=0.0,
                 corrected_R0=0.0,
                 corrected_Pj=0.0,
-                corrected_Si=0.0,
+                corrected_Si=np.nan,
                 loopgain=np.nan,
             )
             res.success = True
@@ -361,13 +361,13 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
 
 
 def run_corrections_parallel(
-    iva, bsa, cfg: AnalysisCfg, nprocs=None, pool=None
+    iva: IVAnalysis, bsa: BiasStepAnalysis, cfg: AnalysisCfg, nprocs=None, pool=None
 ) -> List[CorrectionResults]:
     """
     Runs correction procedure in parallel for all channels in IV and BSA object
     """
 
-    nchans = iva["nchans"]
+    nchans = iva.nchans
     pb = trange(nchans, disable=(not cfg.show_pb))
     results = []
 
@@ -391,7 +391,7 @@ def run_corrections_parallel(
         async_results = []
         for idx in range(nchans):
             chdata = RpFitChanData.from_data(
-                iva, bsa, iva["bands"][idx], iva["channels"][idx]
+                iva, bsa, iva.bands[idx], iva.channels[idx]
             )
             r = pool.apply_async(
                 run_correction,
@@ -530,7 +530,7 @@ def compute_si(iva: IVAnalysis) -> np.ndarray:
             1 - ((r0 * (1 + beta) + rL) / (dv_thev / di_tes))
         )
         si[:sc_idx] = np.nan
-        si_all[i] = si
+        si_all[i, :-1] = si
 
     return si_all
 
