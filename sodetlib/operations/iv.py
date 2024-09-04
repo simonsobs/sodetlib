@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import os
 from copy import deepcopy
 from tqdm.auto import trange
-from typing import Optional
+from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 
 import warnings
@@ -106,7 +106,7 @@ class IVAnalysis:
         current.
     """
     def __init__(self, S=None, cfg=None, run_kwargs=None, sid=None,
-                 start_times=None, stop_times=None):
+                 start_times=None, stop_times=None) -> None:
 
         self._S = S
         self._cfg = cfg
@@ -130,6 +130,7 @@ class IVAnalysis:
             self.channels = am.ch_info.channel
             self.v_bias = np.full((self.nbiases, ), np.nan)
             self.i_bias = np.full((self.nbiases, ), np.nan)
+            self.v_thevenin = np.full((self.nbiases, ), np.nan)
             self.resp = np.full((self.nchans, self.nbiases), np.nan)
             self.R = np.full((self.nchans, self.nbiases), np.nan)
             self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
@@ -145,16 +146,19 @@ class IVAnalysis:
                 self.bands, self.channels, self.meta['bgmap_file']
             )
 
-    def save(self, path=None, update_cfg=False):
+    def to_dict(self):
         saved_fields = [
             'meta', 'bands', 'channels', 'sid', 'start_times', 'stop_times',
             'run_kwargs', 'biases_cmd', 'bias_groups', 'nbiases', 'nchans',
             'bgmap', 'polarity', 'resp', 'v_bias', 'i_bias', 'R', 'R_n', 'R_L',
-            'idxs', 'p_tes', 'v_tes', 'i_tes', 'p_sat', 'si',
+            'idxs', 'p_tes', 'v_tes', 'i_tes', 'p_sat', 'si', 'v_thevenin'
         ]
-        data = {
+        return {
             field: getattr(self, field, None) for field in saved_fields
         }
+
+    def save(self, path=None, update_cfg=False):
+        data = self.to_dict()
         if path is not None:
             np.save(path, data, allow_pickle=True)
         else:
@@ -166,9 +170,9 @@ class IVAnalysis:
                                                 update_file=True)
 
     @classmethod
-    def load(cls, path):
+    def from_dict(cls, data: Dict[str, Any]) -> 'IVAnalysis':
         iva = cls()
-        for key, val in np.load(path, allow_pickle=True).item().items():
+        for key, val in data.items():
             setattr(iva, key, val)
 
         if len(iva.start_times) == 1:
@@ -179,6 +183,11 @@ class IVAnalysis:
             iva.stop_times = np.vstack([iva.stop_times for _ in range(15)])
 
         return iva
+
+    @classmethod
+    def load(cls, path) -> 'IVAnalysis':
+        return cls.from_dict(np.load(path, allow_pickle=True).item())
+
 
     def _load_am(self, arc=None):
         if self.am is None:

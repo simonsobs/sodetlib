@@ -6,6 +6,7 @@ import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
 from sodetlib.operations import iv
+from typing import Dict, Any
 
 np.seterr(all='ignore')
 
@@ -275,9 +276,9 @@ class BiasStepAnalysis:
         I0 (array (float) shape (nchans)):
             Computed TES currents for each channel (amps)
         Pj (array (float) shape (nchans)):
-            Bias power computed for each channel
+            Bias power computed for each channel (W)
         Si (array (float) shape (nchans)):
-            Responsivity computed for each channel
+            Responsivity computed for each channel (1/V)
         step_fit_tmin (float):
             Time after bias step to start fitting exponential (sec)
         step_fit_popts (array (float) of shape (nchans, 3)):
@@ -313,7 +314,15 @@ class BiasStepAnalysis:
             self.run_kwargs = run_kwargs
             self.high_current_mode = run_kwargs.get("high_current_mode", True)
 
-    def save(self, path=None):
+
+    @classmethod
+    def from_dict(cls, data) -> 'BiasStepAnalysis':
+        self = cls()
+        for k, v in data.items():
+            setattr(self, k, v)
+        return self
+
+    def to_dict(self) -> Dict[str, Any]:
         data = {}
         saved_fields = [
             # Run data and metadata
@@ -338,7 +347,10 @@ class BiasStepAnalysis:
                 print(f"WARNING: field {f} does not exist... "
                       "defaulting to None")
             data[f] = getattr(self, f, None)
+        return data
 
+    def save(self, path=None) -> None:
+        data = self.to_dict()
         if path is not None:
             np.save(path, data, allow_pickle=True)
             self.filepath = path
@@ -349,11 +361,8 @@ class BiasStepAnalysis:
             )
 
     @classmethod
-    def load(cls, filepath):
-        self = cls()
-        data = np.load(filepath, allow_pickle=True).item()
-        for k, v in data.items():
-            setattr(self, k, v)
+    def load(cls, filepath) -> 'BiasStepAnalysis':
+        self = cls.from_dict(np.load(filepath, allow_pickle=True).item())
         self.filepath = filepath
         return self
 
