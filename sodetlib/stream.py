@@ -73,7 +73,7 @@ def load_session(stream_id, session_id, idx=None,
     """
     Loads a stream-session into an axis manager. Any additional keyword
     arguments will be passed to the ``load_smurf.load_file`` function.
- 
+
     Args
     ----
     stream_id : str
@@ -182,14 +182,14 @@ def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
             stream_type = 'obs'
         else:
             stream_type = 'oper'
-    
+
     if enable_compression is None:
         enable_compression = cfg.dev.exp.get('enable_compression', True)
 
     tags = f'{stream_type},{subtype}'
     if tag is not None:
         tags += ',' + tag
-    
+
     reg = Registers(S)
 
     reg.pysmurf_action.set(S.pub._action)
