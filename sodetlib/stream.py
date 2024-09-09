@@ -1,5 +1,6 @@
 from sotodlib.io import load_smurf
 from sodetlib.util import Registers
+from sodetlib.operations import uxm_setup
 import os
 import time
 
@@ -206,6 +207,11 @@ def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
     S.set_downsample_mode(downsample_mode)
     S.set_downsample_factor(downsample_factor)
     S.set_filter_disable(int(filter_disable))
+
+    # ensure fixed tones are on
+    for band in S.bands:
+        if "fixed_tones" in cfg.dev.bands[band]:
+            uxm_setup.turn_on_fixed_tones(S, cfg, band)
 
     S.stream_data_on(make_freq_mask=make_freq_mask, channel_mask=channel_mask,
                      filter_wait_time=filter_wait_time, make_datafile=make_datfile)
