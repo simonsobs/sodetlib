@@ -363,6 +363,190 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     return True, summary
 
 
+def _find_fixed_tone_freq(S, band, ntone, min_spacing, band_start=-250, band_end=250):
+    """
+    Place fixed tones in the largest gaps between resonators.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    band : int
+        The band to populate with fixed tones.
+    ntone : int
+        The number of fixed tones to attempt to place in this band.
+    min_spacing : float
+        The minimum spacing in MHz between resonators to place a fixed tone in.
+    band_start : float
+        The lower edge of the band in MHz relative to band center.
+    band_end : float
+        The upper edge of the band in MHz relative to band center.
+    """
+
+    # get resonator and channel frequencies
+    res_freq = np.sort([res["freq"] for res in S.freq_resp[band]["resonances"].values()])
+
+    # only consider central part of the band
+    band_center = S.get_band_center_mhz(band)
+    freq_low = band_center + band_start
+    freq_high = band_center + band_end
+    res_freq = res_freq[(res_freq > freq_low) & (res_freq < freq_high)]
+
+    # gaps between resonators
+    gaps = np.diff(res_freq)
+
+    # check there are enough for the number of tones
+    num_gaps = (gaps >= min_spacing).sum()
+    if num_gaps < ntone:
+        S.log(
+            f"Only {num_gaps} gaps greater than {min_spacing} MHz were found in band {band}. "
+            "That number of fixed tones will be set."
+        )
+        ntone = num_gaps
+
+    # return the central frequencies in selected gaps
+    gap_ind = np.argsort(gaps)[:-(ntone + 1):-1]  # ntone largest gaps
+    return 0.5 * (res_freq[gap_ind + 1] + res_freq[gap_ind])
+
+
+@sdl.set_action()
+def setup_fixed_tones(
+    S, cfg, bands=None, fixed_tones_per_band=8, min_gap=10, tone_power=10, update_cfg=True
+    ):
+    """
+    Identify gaps between resonators and attempt to place a number of fixed tones there.
+    These will be saved for every band in the device config. A tune should be available
+    before running this action.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    bands : list of int
+        The bands to set fixed tones in. Get from config by default.
+    fixed_tones_per_band : int
+        The number of tones to place in each band. Defaults to 8.
+    min_gap : float
+        The minimum gap size in order to place a fixed tone, in MHz. Defaults to 10.
+    tone_power : int
+        The tone power to use for the fixed tones. Defaults to 10.
+    update_cfg : bool
+        Whether to save the fixed tone configuration to the device config. Defaults to True.
+
+    Returns
+    -------
+    fixed_tones : dict
+        Fixed tones configuration, as saved to device config.
+    """
+
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
+
+    # ensure we have a tune available
+    try:
+        _ = S.freq_resp[bands[0]]["resonances"]
+    except KeyError as e:
+        raise ValueError("No tune is available to set fixed tones from.") from e
+
+    # identify available frequencies
+    ft_freq = []
+    for b in bands:
+        ft_freq += list(_find_fixed_tone_freq(S, b, fixed_tones_per_band, min_gap))
+
+        # turn off any existing fixed tones
+        try:
+            channels = cfg.dev.bands[b]["fixed_tones"]["channels"]
+            amp = S.get_amplitude_scale_array(b)
+            amp[channels] = 0.0
+            S.set_amplitude_scale_array(b, amp)
+            S.log(f"Turned off current fixed tones on band {b}.") 
+        except KeyError:
+            pass
+
+    # set the fixed tones
+    fixed_tones = {
+        b: {"enabled": False, "freq_offsets": [], "channels": [], "tone_power": tone_power}
+        for b in bands
+    }
+    for fr in ft_freq:
+        # this function sets the tone power and disables feedback
+        try:
+            band, channel = S.set_fixed_tone(fr, tone_power=tone_power)
+        except AssertionError as e:
+            S.log(f"Failed to assign a fixed tone on frequency {fr} MHz.\n{e}.")
+            continue
+        # read back the assigned frequency offset
+        foff = S.get_center_frequency_mhz_channel(band, channel)
+        fixed_tones[band]["freq_offsets"].append(float(foff))
+        fixed_tones[band]["channels"].append(int(channel))
+        fixed_tones[band]["enabled"] = True
+
+    # update config
+    if update_cfg:
+        for band, data in fixed_tones.items():
+            cfg.dev.update_band(band, {"fixed_tones": data}, update_file=True)
+
+    S.log("Done setting fixed tones.")
+
+    return fixed_tones
+
+
+@sdl.set_action()
+def turn_on_fixed_tones(S, cfg, bands=None):
+    """
+    Read fixed tones from the device config and ensure the corresponding channels
+    are set to the specified amplitude and have feedback disabled.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    bands : list of int
+        The bands to operate on. Get from config by default.
+    """
+
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
+
+    for band in bands:
+        # try to read from config
+        try:
+            if not cfg.dev.bands[band]["fixed_tones"].get("enabled", False):
+                S.log(f"Fixed tones are not enabled on band {band}.")
+                continue
+            foff = cfg.dev.bands[band]["fixed_tones"]["freq_offsets"]
+            channels = cfg.dev.bands[band]["fixed_tones"]["channels"]
+            tone_power = cfg.dev.bands[band]["fixed_tones"].get("tone_power", None)
+        except KeyError as e:
+            raise ValueError(
+                "No fixed tones present in device config. Use `setup_fixed_tones` to add some."
+            ) from e
+        if len(foff) != len(channels):
+            raise ValueError(
+                "Number of fixed tone channels in device config is different from number of "
+                f"frequency offsets for band {band} ({len(channels)} != {len(foff)})."
+            )
+        S.log(f"Enabling {len(channels)} fixed tones on band {band}.")
+
+        # set the channel center frequency for each tone
+        for df, chan in zip(foff, channels):
+            S.set_center_frequency_mhz_channel(band, chan, df)
+
+        # set amplitude and feedback
+        amp = S.get_amplitude_scale_array(band)
+        feedback = S.get_feedback_enable_array(band)
+
+        amp[channels] = tone_power
+        feedback[channels] = 0
+
+        S.set_amplitude_scale_array(band, amp)
+        S.set_feedback_enable_array(band, feedback)
+
+
 @sdl.set_action()
 def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
               modify_attens=True, skip_phase_delay=False,
