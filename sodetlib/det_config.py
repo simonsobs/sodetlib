@@ -102,7 +102,10 @@ band_defaults = {
     "gradientDescentConvergeHz": 500,
     "gradientDescentStepHz": 5000,
     "gradientDescentMomentum": 1,
-    "gradientDescentBeta": 0.1
+    "gradientDescentBeta": 0.1,
+
+    # Fixed tones
+    "fixed_tones": {"enabled": False, "freq_offsets": [], "channels": [], "tone_power": 0},
 }
 bg_defaults = {
     'overbias_voltage': 19.9,
