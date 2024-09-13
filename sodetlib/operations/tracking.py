@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
+from . import uxm_setup
+
 
 def compute_tracking_quality(S, f, df, sync):
     """
@@ -553,6 +555,10 @@ def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
 
     res.find_bad_chans()
     res.save()
+
+    # if fixed tones are configured, ensure they haven't been turned off
+    for band in bands:
+        uxm_setup.turn_on_fixed_tones(S, cfg, band)
 
     is_interactive = plt.isinteractive()
     try:
