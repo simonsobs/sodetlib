@@ -1,3 +1,17 @@
+"""
+Script for deleting old data on the smurf-server.
+
+Configuration parameters can be set via a config file:
+```
+python3 clear_old_data.py --config-file clear_data_cfg.yaml
+```
+where the entries in the config file map onto the Config class below.
+
+Specific configuration settings can be set directly from the command line, such as:
+```
+python3 clear_old_data.py --dry
+```
+"""
 from dataclasses import dataclass
 import os
 import datetime
@@ -10,28 +24,59 @@ import argparse
 
 @dataclass
 class Config:
-    dry: bool = True
+    """
+    Configuration object to control the behavior of the data deletion script.
+
+    Args
+    -----
+    dry: bool
+        If true, will do a dry-run of the data-deletion without deleting any
+        files. Logs will be printed for all of the files that would be deleted.
+    verbose: bool
+        If true, logs will be more verbose.
+    delete_smurf_data_after_days: int
+        Days after which smurf data will be deleted.
+    delete_timestream_data_after_days: int
+        Days after which timestream data will be deleted.
+    delete_core_dumps_after_days: int
+        Days after which core-dumps will be deleted.
+    delete_logs_after_days: int
+        Days after which log directories will be deleted.
+    """
+    dry: bool = False
+    verbose: bool = False
     delete_smurf_data_after_days: int = 31
     delete_timestream_data_after_days: int = 365 // 2
     delete_core_dumps_after_days: int = 365
-    delete_logs_after_days: int = 365
-    verbose: bool = True
+    delete_logs_after_days: int = 365 * 5
 
     @classmethod
     def from_yaml(cls, path) -> "Config":
+        """
+        Creates a Config object based on a yaml file. Key names in the file must
+        match config dataclass fields.
+        """
         with open(path, 'r') as f:
             return cls(**yaml.safe_load(f))
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]]=None) -> "Config":
         parser = argparse.ArgumentParser()
+        parser.add_argument('--config-file', type=str, default=None)
         parser.add_argument('--dry', action='store_true')
         parser.add_argument('--verbose', action='store_true')
         args = parser.parse_args(args_list)
-        return cls(
-            verbose=args.verbose,
-            dry=args.dry
-        )
+
+        if args.config_file:
+            cfg = cls.from_yaml(args.config_file)
+        else:
+            cfg = cls()
+
+        if args.dry:
+            cfg.dry = args.dry
+        if args.verbose:
+            cfg.verbose = args.verbose
+        return cfg
 
 
 class FileType(Enum):
