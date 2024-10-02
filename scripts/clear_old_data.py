@@ -15,12 +15,24 @@ python3 clear_old_data.py --dry
 from dataclasses import dataclass
 import os
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from enum import Enum, auto
 import yaml
 import shutil
 import argparse
+import logging
+from copy import deepcopy
 
+logger = logging.getLogger()
+
+_nameToLogLevel = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARN': logging.WARNING,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL,
+}
 
 @dataclass
 class Config:
@@ -44,11 +56,21 @@ class Config:
         Days after which log directories will be deleted.
     """
     dry: bool = False
-    verbose: bool = False
     delete_smurf_data_after_days: int = 31
     delete_timestream_data_after_days: int = 365 // 2
     delete_core_dumps_after_days: int = 365
     delete_logs_after_days: int = 365 * 5
+    log_level: int = logging.INFO
+    log_file: Optional[str] = '/data/logs/clear_data.log'
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Config":
+        _data = deepcopy(data)
+        if 'log_level' in data:
+            if isinstance(data['log_level'], str):
+                _data['log_level'] = _nameToLogLevel[data['log_level'].upper()]
+        return cls(**_data)
+
 
     @classmethod
     def from_yaml(cls, path) -> "Config":
@@ -57,14 +79,13 @@ class Config:
         match config dataclass fields.
         """
         with open(path, 'r') as f:
-            return cls(**yaml.safe_load(f))
+            return cls.from_dict(yaml.safe_load(f))
 
     @classmethod
     def from_args(cls, args_list: Optional[List[str]]=None) -> "Config":
         parser = argparse.ArgumentParser()
         parser.add_argument('--config-file', type=str, default=None)
         parser.add_argument('--dry', action='store_true')
-        parser.add_argument('--verbose', action='store_true')
         args = parser.parse_args(args_list)
 
         if args.config_file:
@@ -74,9 +95,27 @@ class Config:
 
         if args.dry:
             cfg.dry = args.dry
-        if args.verbose:
-            cfg.verbose = args.verbose
         return cfg
+
+def setup_logger(cfg: Config) -> None:
+    logger.setLevel(cfg.log_level)
+    if len(logger.handlers) > 0:
+        logger.error("Logger has already been configured! Doing nothing")
+        return
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s:  %(message)s')
+
+    # create console handler and set level to debug
+    ch = logging.StreamHandler()
+    ch.setLevel(cfg.log_level)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    if cfg.log_file is not None:
+        file_handler = logging.FileHandler(cfg.log_file)
+        file_handler.setLevel(cfg.log_level)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
 
 class FileType(Enum):
@@ -100,8 +139,7 @@ def create_smurf_date_dir(cfg: Config, path: str) -> Optional[FileInfo]:
         day = int(dirname[6:])
         dt = datetime.datetime(year=year, month=month, day=day)
     except Exception:
-        if cfg.verbose:
-            print(f"Could not parse datetime: {dirname}")
+        logger.debug(f"Could not parse datetime: {dirname}")
         return None
     return FileInfo(path=path, dt=dt, file_type=FileType.SmurfData)
 
@@ -132,8 +170,7 @@ def scan_timestream_dirs(cfg: Config) -> List[FileInfo]:
             timestamp = (int(d) + 1)* 1e5
             dt = datetime.datetime.fromtimestamp(timestamp)
         except ValueError:
-            if cfg.verbose:
-                print(f"Could not parse datetime: {path}")
+            logger.debug(f"Could not parse datetime: {path}")
             continue
         file = FileInfo(
             path=path,
@@ -182,9 +219,9 @@ def scan_log_dirs(cfg: Config) -> List[FileInfo]:
 def remove_file(cfg: Config, file: FileInfo):
     if cfg.dry:
         if os.path.isdir(file.path):
-            print(f"dry mode: rm -rf {file.path}")
+            logger.info(f"dry mode: rm -rf {file.path}")
         else:
-            print(f"rm {file.path}")
+            logger.info(f"rm {file.path}")
     else:
         if os.path.isdir(file.path):
             shutil.rmtree(file.path)
@@ -193,6 +230,10 @@ def remove_file(cfg: Config, file: FileInfo):
 
 
 def main(cfg: Config) -> None:
+    setup_logger(cfg)
+    logger.info('-'*80)
+
+    logger.info(cfg)
     now = datetime.datetime.now()
     files_to_delete: List[FileInfo] = []
     files_to_delete += scan_smurf_data(cfg)
@@ -200,21 +241,21 @@ def main(cfg: Config) -> None:
     files_to_delete += scan_core_dumps(cfg)
     files_to_delete += scan_log_dirs(cfg)
 
-    print(f"{len(files_to_delete)} files to delete:")
+    logger.info(f"{len(files_to_delete)} files to delete:")
     for f in files_to_delete:
         days_old = (now - f.dt).days
-        print(f' - {f.path} ({days_old} days old)')
+        logger.info(f' - {f.path} ({days_old} days old)')
 
     if len(files_to_delete) == 0:
-        print("No files to delete")
+        logger.info("No files to delete")
         return
 
-    resp = input("Proceed with deletion? [y/n]  ")
+    resp = input(f"Proceed with deletion (dry={cfg.dry})? [y/n]  ")
     if resp.strip().lower() != 'y':
-        print("Not proceed with deletion")
+        logger.info("Not proceed with deletion")
         return
 
-    print("Deleting files")
+    logger.info("Deleting files")
     for f in files_to_delete:
         remove_file(cfg, f)
 
