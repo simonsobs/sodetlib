@@ -239,7 +239,7 @@ def fit_tune(tunefile):
     scan_freqs = []
     res_freqs = []
     
-    for band in list(data.keys()):
+    for band in sorted(list(data.keys())):
         if 'resonances' in list(data[band].keys()):
             for idx in list(data[band]['resonances'].keys()):
                 scan=data[band]['resonances'][idx]
@@ -421,7 +421,7 @@ def plot_channel_fit(fit_dict, idx):
 def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     '''
     Function for plotting full wafer eta_scan data from a tunefile.
-        Plots distributions of Qi, dip depth, bandwidth, and frequencies
+        Plots distributions of Qi, dip depth, bandwidth, and frequency spacing
         for all resonators within specified quantile.
 
     Args
@@ -438,6 +438,7 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
     depths = fit_dict['derived_params']['depth']
     bws = fit_dict['derived_params']['br']
     frs = fit_dict['model_params']['f_0']
+    seps = np.diff(frs)
 
     Qi_quant = Qis[(Qis>=np.nanquantile(Qis, 1-quantile)) \
                    & (Qis<=np.nanquantile(Qis, quantile))]
@@ -445,8 +446,8 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
                    & (depths<=np.nanquantile(depths, quantile))]
     bw_quant = bws[(bws>=np.nanquantile(bws, 1-quantile)) \
                    & (bws<=np.nanquantile(bws, quantile))]
-    fr_quant = frs[(frs>=np.nanquantile(frs, 1-quantile)) \
-                   & (frs<=np.nanquantile(frs, quantile))]
+    seps_quant = seps[(seps>=np.nanquantile(seps, 1-quantile)) \
+                   & (seps<=np.nanquantile(seps, quantile))]
     
     fig, axes = plt.subplots(2, 2, figsize=(16, 8))
 
@@ -488,18 +489,17 @@ def plot_fit_summary(fit_dict, plot_style=None, quantile=0.98):
 
     #Frequency Separation plot
     ax = axes[1, 1]
-    seps = np.diff(np.sort(fr_quant))
-    mean, std = np.nanmean(seps), np.std(seps)
+    mean, std = np.nanmean(seps_quant), np.std(seps_quant)
     nstd = 2
     rng = (
-        max(np.min(seps), mean - nstd * std),
-        min(np.max(seps), mean + nstd * std),
+        max(np.min(seps_quant), mean - nstd * std),
+        min(np.max(seps_quant), mean + nstd * std),
     )
 
     ax.hist(seps, range=rng, **plot_style)
-    fsep_med = np.median(np.diff(np.sort(fr_quant)))
-    ax.axvline(fsep_med,color = 'purple',
-                label = f'Median: {np.round(fsep_med,2)} MHz')
+    sep_med = np.median(seps_quant)
+    ax.axvline(sep_med,color = 'purple',
+                label = f'Median: {np.round(sep_med,2)} MHz')
     ax.legend(loc = 'upper right')
     ax.set_xlabel('Resonator Separation [Mhz]')
     ax.set_ylabel('Counts')
