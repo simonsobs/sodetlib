@@ -36,6 +36,16 @@ sys_config_file = os.path.join(os.environ['OCS_CONFIG_DIR'], 'sys_config.yml')
 with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
+
+def get_pysmurf_controller_docker_service(slot: int) -> str:
+    """
+    Returns the pysmurf-controller docker service name to use for a given slot.
+    Defaults to "ocs-pysmurf-s<slot>" if not specified in the sys_config.
+    """
+    slot_cfg = sys_config['slots'][f'SLOT[{slot}]']
+    return slot_cfg.get("pysmurf_controller_docker_service", f"ocs-pysmurf-s{slot}")
+
+
 def get_slot_ip(slot):
     if 'switch_ip' not in sys_config:
         return f"10.0.{sys_config['crate_id']}.{slot + 100}"
@@ -166,6 +176,7 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
         bad_names.append(f'ocs-pysmurf-s{slot}')
+        bad_names.append(get_pysmurf_controller_docker_service(slot))
 
     if kill_monitor:
         bad_names.append('ocs-pysmurf-monitor')
@@ -388,7 +399,7 @@ def hammer_func(args):
 
     for slot in slots:
         services.append(f'smurf-streamer-s{slot}')
-        services.append(f'ocs-pysmurf-s{slot}')
+        services.append(get_pysmurf_controller_docker_service(slot))
 
     start_services(services)
     start_sync_dockers()
