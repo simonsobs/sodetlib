@@ -8,6 +8,7 @@ import sys
 import time
 import os
 import threading
+from typing import List, Literal
 
 
 class TermColors:
@@ -302,6 +303,48 @@ def start_services(services, write_env=False):
 
     subprocess.run(cmd, cwd=cwd)
 
+def controller_cmd(
+    slots: List[int],
+    action: Literal['up', 'down', 'logs']
+) -> None:
+    """
+    Brings pysmurf-controllers up or down for specified slots.
+    """
+    print(f"Bringing controllers {action} for slots {slots}...")
+    services = []
+    for slot in slots:
+        services.append(get_pysmurf_controller_docker_service(slot))
+    
+    if action == 'up':
+        cmd = 'docker-compose up -d'.split()
+    elif action == 'down':
+        cmd = 'docker-compose stop'.split()
+    elif action == 'logs':
+        cmd = 'docker logs -f'.split()
+    else:
+        raise ValueError(f"action {action} not recognized. Must be up or down.")
+
+    cmd.extend(services)
+    subprocess.run(cmd, cwd=cwd)
+
+
+def controller_cmd_func(args) -> None:
+    """
+    Entrypoint for the `jackhammer controller` command
+    """
+    available_slots = sys_config['slot_order']
+    if args.slots is None or not args.slots:
+        slots = available_slots
+    else:
+        for slot in args.slots:
+            if slot not in available_slots:
+                raise ValueError(
+                    f"Slot {slot} is not listed in the available slots: "
+                    f"{available_slots}."
+                )
+        slots = args.slots
+    controller_cmd(slots, args.action)
+
 
 ########################################################################
 # jackhammer subcommand entrypoints
@@ -399,10 +442,10 @@ def hammer_func(args):
 
     for slot in slots:
         services.append(f'smurf-streamer-s{slot}')
-        services.append(get_pysmurf_controller_docker_service(slot))
 
     start_services(services)
     start_sync_dockers()
+    controller_cmd(slots, 'up')
 
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
@@ -667,6 +710,16 @@ if __name__ == '__main__':
         help="Sets fan speeds and policy on crate based on sys-config"
     )
     start_sync_parser.set_defaults(func=setup_fans_func)
+
+    ########### Jackhammer setup-fans parser ###########
+    controller_cmd_parser = subparsers.add_parser(
+        'controller', 
+        help="Sets fan speeds and policy on crate based on sys-config"
+    )
+    controller_cmd_parser.add_argument('action', choices=['up', 'down', 'logs'])
+    controller_cmd_parser.add_argument('slots', type=int, nargs='*', default=None)
+    controller_cmd_parser.set_defaults(func=controller_cmd_func)
+
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
