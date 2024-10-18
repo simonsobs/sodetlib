@@ -449,6 +449,53 @@ def setup_tracking_params(S, cfg, bands, update_cfg=True, show_plots=False):
     return res
 
 
+def _get_fixed_tone_channels(S, cfg, bands=None):
+    """
+    Identify channels assigned to fixed tones by checking state of amplitude and
+    feedback arrays.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        Det config instance
+    bands : list of int
+        Bands to operate on. Get from config by default.
+    """
+
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
+
+    # infer from amplitude and feedback state
+    ft_ind = {}
+    for band in bands:
+        amp = S.get_amplitude_scale_array(band)
+        feedback = S.get_feedback_enable_array(band)
+        ft_ind[band] = np.where((amp != 0) & (feedback == 0))[0]
+
+    return ft_ind
+
+
+def _restore_fixed_tone_channels(S, chan_per_band: dict):
+    """
+    Ensure feedback is disabled on channels that are assigned fixed tones.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    chan_per_band : dict
+        List of channels to disable feedback on, given as a dictionary indexed by band number.
+    """
+
+    # infer from amplitude and feedback state
+    for band, chan in chan_per_band.items():
+        feedback = S.get_feedback_enable_array(band)
+        feedback[chan] = 0
+        S.set_feedback_enable_array(band, feedback)
+
+
 @sdl.set_action()
 def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
                           feedback_gain=None, lms_gain=None, show_plots=False,
@@ -491,6 +538,9 @@ def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
 
     nbands = len(bands)
     exp = cfg.dev.exp
+
+    # check if any channels are assigned fixed tones
+    fixed_tones = _get_fixed_tone_channels(S, cfg, bands)
 
     # Arrays containing the optimized tracking parameters for each band
     frac_pp0 = np.zeros(nbands)
@@ -553,6 +603,9 @@ def relock_tracking_setup(S, cfg, bands=None, reset_rate_khz=None, nphi0=None,
 
     res.find_bad_chans()
     res.save()
+
+    # ensure channels with assigned fixed tones have feedback disabled
+    _restore_fixed_tone_channels(S, fixed_tones)
 
     is_interactive = plt.isinteractive()
     try:
