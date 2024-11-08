@@ -57,14 +57,15 @@ class IVAnalysis:
         at each step (Amps)
     resp : np.ndarray
         Array of shape (nchans, nbiases) containing the squid response 
-        at each bias point, with the sc_off and contextless c_norm corrections
+        at each bias point, multiplied  with the sc_off and contextless 
+        c_norm corrections
         applied to (hopefully accurately) convert it to actual [Amps]. 
         That is, it's the original squid response phase data -contextless
         c_norm everywhere and -sc_off in [:sc_idx]. 
-    c_norm : np.ndarray
+    i_tes_offset : np.ndarray
         Array of shape (nchans) containing the (contextless) determination of
         the proper phase offset correction
-    sc_off : np.ndarray
+    sc_offset : np.ndarray
         Array of shape (nchans) containing the superconducting branch offset. 
     R : np.ndarray
         Array of shape (nchans, nbiases) containing the TES Resistance of each
@@ -111,40 +112,39 @@ class IVAnalysis:
     def __init__(self, S=None, cfg=None, run_kwargs=None, sid=None,
                  start_times=None, stop_times=None):
 
-        self._S          = S
-        self._cfg        = cfg
-        self.run_kwargs  = run_kwargs
-        self.sid         = sid
+        self._S = S
+        self._cfg = cfg
+        self.run_kwargs = run_kwargs
+        self.sid = sid
         self.start_times = start_times
-        self.stop_times  = stop_times
-        self.am          = None
+        self.stop_times = stop_times
+        self.am = None
 
         if self._S is not None:
             # Initialization stuff on initial creation with a smurf instance
-            self.meta        = sdl.get_metadata(S, cfg)
-            self.biases_cmd  = np.sort(self.run_kwargs['biases'])
-            self.nbiases     = len(self.biases_cmd)
+            self.meta = sdl.get_metadata(S, cfg)
+            self.biases_cmd = np.sort(self.run_kwargs['biases'])
+            self.nbiases = len(self.biases_cmd)
             self.bias_groups = self.run_kwargs['bias_groups']
+            am = self._load_am()
+            self.nchans = len(am.signal)
 
-            am               = self._load_am()
-            self.nchans      = len(am.signal)
-
-            self.bands       = am.ch_info.band
-            self.channels    = am.ch_info.channel
-            self.v_bias      = np.full((self.nbiases, ), np.nan)
-            self.i_bias      = np.full((self.nbiases, ), np.nan)
-            self.resp        = np.full((self.nchans, self.nbiases), np.nan)
-            self.c_norm      = np.full((self.nchans, ), np.nan)
-            self.sc_off      = np.full((self.nchans, ), np.nan)
-            self.R           = np.full((self.nchans, self.nbiases), np.nan)
-            self.p_tes       = np.full((self.nchans, self.nbiases), np.nan)
-            self.v_tes       = np.full((self.nchans, self.nbiases), np.nan)
-            self.i_tes       = np.full((self.nchans, self.nbiases), np.nan)
-            self.R_n         = np.full((self.nchans, ), np.nan)
-            self.R_L         = np.full((self.nchans, ), np.nan)
-            self.p_sat       = np.full((self.nchans, ), np.nan)
-            self.si          = np.full((self.nchans, self.nbiases), np.nan)
-            self.idxs        = np.full((self.nchans, 3), -1, dtype=int)
+            self.bands = am.ch_info.band
+            self.channels = am.ch_info.channel
+            self.v_bias = np.full((self.nbiases, ), np.nan)
+            self.i_bias = np.full((self.nbiases, ), np.nan)
+            self.resp = np.full((self.nchans, self.nbiases), np.nan)
+            self.c_norm = np.full((self.nchans, ), np.nan)
+            self.sc_off = np.full((self.nchans, ), np.nan)
+            self.R = np.full((self.nchans, self.nbiases), np.nan)
+            self.p_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.v_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.i_tes = np.full((self.nchans, self.nbiases), np.nan)
+            self.R_n = np.full((self.nchans, ), np.nan)
+            self.R_L = np.full((self.nchans, ), np.nan)
+            self.p_sat = np.full((self.nchans, ), np.nan)
+            self.si = np.full((self.nchans, self.nbiases), np.nan)
+            self.idxs = np.full((self.nchans, 3), -1, dtype=int)
 
             self.bgmap, self.polarity = sdl.load_bgmap(
                 self.bands, self.channels, self.meta['bgmap_file']
@@ -323,22 +323,17 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
     """
     am = iva._load_am()
     R_sh = iva.meta['R_sh']
-
     # Calculate phase response and bias_voltages / currents
     for i in range(iva.nbiases):
         # Start from back because analysis is easier low->high voltages
         t0, t1 = iva.start_times[-(i+1)], iva.stop_times[-(i+1)]
-
         m = (t0 < am.timestamps) & (am.timestamps < t1)
         iva.resp[:, i] = np.mean(am.signal[:, m], axis=1)
-
         # Assume all bias groups have the same bias during IV
         bias_bits = np.median(am.biases[iva.bias_groups[0], m])
         iva.v_bias[i] = bias_bits * 2 * iva.meta['rtm_bit_to_volt']
-
     if iva.run_kwargs['high_current_mode']:
         iva.v_bias *= iva.meta['high_low_current_ratio']
-
     iva.i_bias = iva.v_bias / iva.meta['bias_line_resistance']
 
     # Convert phase to Amps
@@ -382,22 +377,24 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False):
         iva.resp[i, :sc_idx] -= sc_fit[1]
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
-        R   = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
+        R = R_sh * (iva.i_bias/(iva.resp[i]) - 1)
         R_n = np.mean(R[nb_fit_idx:])
         R_L = np.mean(R[1:sc_idx])
 
         iva.v_tes[i] = iva.i_bias * R_sh * R / (R + R_sh)
         iva.i_tes[i] = iva.v_tes[i] / R
         iva.p_tes[i] = (iva.v_tes[i]**2) / R
-        iva.R[i]     = R
-        iva.R_n[i]   = R_n
-        iva.R_L[i]   = R_L
+        iva.R[i] = R
+        iva.R_n[i] = R_n
+        iva.R_L[i] = R_L
 
     compute_psats(iva, psat_level)
     compute_si(iva)
 
     if save:
         iva.save(update_cfg=update_cfg)
+        
+
 
 def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3)):
     """
