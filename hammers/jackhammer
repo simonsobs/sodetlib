@@ -31,8 +31,20 @@ def cprint(msg, style=TermColors.OKBLUE):
 
 
 # This should be the same for every smurf-srv
-cwd=os.environ['OCS_CONFIG_DIR']
-sys_config_file = os.path.join(os.environ['OCS_CONFIG_DIR'], 'sys_config.yml')
+if 'SMURF_CONFIG_DIR' in os.environ:
+    cfg_dir = os.environ['SMURF_CONFIG_DIR']
+elif 'OCS_CONFIG_DIR' in os.environ:
+    cfg_dir = os.environ['OCS_CONFIG_DIR']
+    style = TermColors.WARNING
+    cprint("SMURF_CONFIG_DIR not found in environ...", style=TermColors.WARNING)
+    cprint( f"Using OCS_CONFIG_DIR instead: {cfg_dir}...", style=TermColors.WARNING )
+else:
+    raise ValueError(
+        "SMURF_CONFIG_DIR or OCS_CONFIG_DIR must be set in the environment"
+    )
+
+cwd=cfg_dir
+sys_config_file = os.path.join(cfg_dir, 'sys_config.yml')
 
 with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
@@ -273,7 +285,7 @@ def enter_pysmurf(slot, agg=False):
 
 def write_docker_env():
     docker_env = sys_config.get('docker_env')
-    with open(os.path.join(os.environ["OCS_CONFIG_DIR"], ".env"), "w") as env_file:
+    with open(os.path.join(cfg_dir, ".env"), "w") as env_file:
         for k,v in docker_env.items():
             env_file.write(f'{k}={v}\n')
 
@@ -285,13 +297,13 @@ def start_services(services, write_env=False):
             services (list or str): docker-compose services to restart
             write_env(bool):
                 If true, will write sys_config['docker-env'] to the
-                $OCS_CONFIG_DIR/.env file. This is so the most recent
+                $SMURF_CONFIG_DIR/.env file. This is so the most recent
                 environment variables can be used by standard docker-compose
                 commands.
     """
     docker_env = sys_config.get('docker_env')
 
-    # Writes docker_env to $OCS_CONFIG_DIR/.env so docker-compose still works
+    # Writes docker_env to $SMURF_CONFIG_DIR/.env so docker-compose still works
     if write_env and docker_env is not None:
         write_docker_env()
 
