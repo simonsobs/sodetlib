@@ -5,10 +5,17 @@ SMuRF is a complex system with many configuration parameters which vary
 depending on the cryostat, the experiment being conducted, and the network
 configuration of the smurf-server and data-acquisition nodes.
 
-These config parameters will be stored in various files in the
-``OCS_CONFIG_DIR``, where institutions will maintain and version-control the
-configuration of their systems. In the following sections we will go over what
-is contained in each file.  The hierarchy of configuration files is as follows:
+These config parameters will be stored in various files in the configuration
+directory, where institutions will maintain and version-control the
+configuration of their systems.
+
+The configuration directory may or may not be the same as the
+``OCS_CONFIG_DIR``, which contains the OCS site-config file. If it is different,
+the correct configuration path can be set separately using the
+``SMURF_CONFIG_DIR`` environment variable.
+
+In the following sections we will go over what is contained in each file.  The
+hierarchy of configuration files is as follows:
 
 sys_config
     The `sys_config` file is top-level system configuration. It contains
@@ -31,7 +38,7 @@ device config files
 
 Sys Config
 -----------
-The system configuration file is located in ``$OCS_CONFIG_DIR/sys_config.yml``
+The system configuration file is located in the ``sys_config.yml`` file
 and contains general system configuration, certain slot-specific configuration,
 and docker environment variables. See `here`_ for a template.
 
@@ -139,9 +146,10 @@ have its own entry ``SLOT[<slot>]``.
 
 Docker Environment
 ````````````````````
-Any keys in the ``docker_env`` section will be copied to ``$OCS_CONFIG_DIR/.env``
-whenever ``jackhmmer hammer`` is run, which will treat them as environment variables
-inside the docker-compose file. These are used to set the docker image tags which will be used.
+Any keys in the ``docker_env`` section will be copied to the ``.env`` file in
+the configuration directory.  Whenever ``jackhmmer hammer`` is run, which will
+treat them as environment variables inside the docker-compose file. These are
+used to set the docker image tags which will be used.
 
 Required variables are:
 
