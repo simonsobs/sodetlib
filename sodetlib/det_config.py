@@ -348,7 +348,7 @@ def make_parser(parser=None):
     parser.add_argument_group("DetConfig Options")
     parser.add_argument('--sys-file',
                         help="Path to sys-config file. "
-                             "Defaults to ``$OCS_CONFIG_DIR/sys_config.yml``")
+                             "Defaults to ``$SMURF_CONFIG_DIR/sys_config.yml``")
     parser.add_argument('--dev-file',
                         help="Path to device-config file. "
                              "Defaults to the path specified in the sys_config.")
@@ -447,7 +447,7 @@ class DetConfig:
                 and error.
             sys_file (path, optional):
                 Path to sys config file. If None, defaults to
-                $OCS_CONFIG_DIR/sys_config.yml
+                $SMURF_CONFIG_DIR/sys_config.yml
             dev_file (path, optional):
                 Path to the Device file. If None, defaults to the device file
                 specified in the sys-config file (device_configs[slot-2]).
@@ -457,8 +457,18 @@ class DetConfig:
             uxm_file (path, optional):
                 Path to uxm file
         """
+        # This should be the same for every smurf-srv
+        if 'SMURF_CONFIG_DIR' in os.environ:
+            cfg_dir = os.environ['SMURF_CONFIG_DIR']
+        elif 'OCS_CONFIG_DIR' in os.environ:
+            cfg_dir = os.environ['OCS_CONFIG_DIR']
+        else:
+            raise ValueError(
+                "SMURF_CONFIG_DIR or OCS_CONFIG_DIR must be set in the environment"
+            )
+
         if sys_file is None:
-            self.sys_file = os.path.expandvars('$OCS_CONFIG_DIR/sys_config.yml')
+            self.sys_file = os.path.join(cfg_dir, 'sys_config.yml')
         else:
             self.sys_file = sys_file
 

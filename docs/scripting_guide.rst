@@ -161,7 +161,7 @@ simple. The script should pretty much do the following:
 2. (optional) Add command line arguments through argparse
 3. Parse args and get the SmurfControl Object
 4. Call the function
-5. Dump the updated to the device file in $OCS_CONFIG_DIR.
+5. Dump the updated to the device file.
 
 For the ``find_band`` script, this can be done as follows::
 
