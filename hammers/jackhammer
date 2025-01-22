@@ -49,6 +49,7 @@ sys_config_file = os.path.join(cfg_dir, 'sys_config.yml')
 with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
+use_hostmanager: bool = sys_config.get('use_hostmanager', False)
 
 def get_pysmurf_controller_docker_service(slot: int) -> str:
     """
@@ -179,8 +180,6 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
     print(f"Killing bad dockers for slots {slots}")
     bad_names = names
 
-    kill_pysmurf_controllers = cfg.get('use_hostmanager', False)
-
     for slot in slots:
         # conflicting names created by jackhammer
         bad_names.append(f'smurf-streamer-s{slot}')
@@ -191,7 +190,7 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
 
-        if kill_pysmurf_controllers:
+        if not use_hostmanager:
             bad_names.append(f'ocs-pysmurf-s{slot}')
             bad_names.append(get_pysmurf_controller_docker_service(slot))
 
@@ -326,7 +325,7 @@ def controller_cmd(
     """
     Brings pysmurf-controllers up or down for specified slots.
     """
-    if cfg.get('use_hostmanager', False):
+    if use_hostmanager:
         raise RuntimeError(
             "jackhammer controller sub-command is not supported with "
             "cfg['use_hostmanager']=True. "
@@ -456,7 +455,10 @@ def hammer_func(args):
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
-        services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
+        services = ['smurf-jupyter', 'smurf-util']
+        if not use_hostmanager:
+            services.append('ocs-pysmurf-monitor')
+
         start_sync_dockers()
     else:
         services = []
@@ -512,6 +514,13 @@ def start_sync_dockers():
     Begins suprsync docker services (by choosing all docker services that have
     "sync" in their name).
     """
+    if use_hostmanager:
+        cprint(
+            "sys_config['use_hostmanager'] is set to True, leaving sync dockers alone.",
+            style=TermColors.WARNING
+        )
+        return
+
     services = get_docker_services()
     start_services([s for s in services if 'sync' in s])
 
