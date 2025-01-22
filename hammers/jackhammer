@@ -179,6 +179,8 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
     print(f"Killing bad dockers for slots {slots}")
     bad_names = names
 
+    kill_pysmurf_controllers = cfg.get('use_hostmanager', False)
+
     for slot in slots:
         # conflicting names created by jackhammer
         bad_names.append(f'smurf-streamer-s{slot}')
@@ -188,8 +190,10 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"pysmurf_s{slot}")
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
-        bad_names.append(f'ocs-pysmurf-s{slot}')
-        bad_names.append(get_pysmurf_controller_docker_service(slot))
+
+        if kill_pysmurf_controllers:
+            bad_names.append(f'ocs-pysmurf-s{slot}')
+            bad_names.append(get_pysmurf_controller_docker_service(slot))
 
     if kill_monitor:
         bad_names.append('ocs-pysmurf-monitor')
@@ -322,6 +326,11 @@ def controller_cmd(
     """
     Brings pysmurf-controllers up or down for specified slots.
     """
+    if cfg.get('use_hostmanager', False):
+        raise RuntimeError(
+            "jackhammer controller sub-command is not supported with "
+            "cfg['use_hostmanager']=True. "
+        )
     print(f"Bringing controllers {action} for slots {slots}...")
     services = []
     for slot in slots:
@@ -406,7 +415,7 @@ def hammer_func(args):
     cprint(f"Hammering for slots {slots}", True)
 
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
-    kill_bad_dockers(slots, kill_monitor=all_slots)
+    kill_bad_dockers(slots, kill_monitor=False)
 
     if all_slots:
         cprint("Restarting smurf-util", style=TermColors.HEADER)
