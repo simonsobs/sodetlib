@@ -127,7 +127,11 @@ def optimize_band_atten(S: SmurfControl, cfg, band, meas_time=30,
         wls_full[i] = res['noise_pars'][:, 0]
 
     fname = sdl.make_filename(S, f'atten_optimization_b{band}.npy')
-    wls_full = np.array(wls_full)
+    try:
+        wls_full = np.array(wls_full)
+    except:
+        print('Error: not all wls_full entries are of same shape. Could be due to different number of resonators on each step')
+        wls_full = None
     data = dict(
         band=band, total_att=total_att, ucs=ucs, sids=sids, wls=wls,
         wls_full=wls_full, path=fname, tunefiles=tunefiles, meta=sdl.get_metadata(S, cfg)
