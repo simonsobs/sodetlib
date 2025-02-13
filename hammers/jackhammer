@@ -76,7 +76,7 @@ def get_docker_services():
     Returns a list of docker services that are available from the docker-compose
     file in the ocs config directory.
     """
-    cmd = 'docker-compose config --services'
+    cmd = 'docker compose config --services'
     res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
@@ -100,7 +100,7 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
-    cmd  = f'docker-compose run --entrypoint={cmd} '
+    cmd  = f'docker compose run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
     if rm:
@@ -313,7 +313,7 @@ def start_services(services, write_env=False):
     if isinstance(services, str):
         services = [services]
 
-    cmd = 'docker-compose up -d'.split()
+    cmd = 'docker compose up -d'.split()
     cmd.extend(services)
 
     subprocess.run(cmd, cwd=cwd)
@@ -326,19 +326,21 @@ def controller_cmd(
     Brings pysmurf-controllers up or down for specified slots.
     """
     if use_hostmanager:
-        raise RuntimeError(
-            "jackhammer controller sub-command is not supported with "
-            "cfg['use_hostmanager']=True. "
+        cprint(
+            "sys_config['use_hostmanager'] is set to True, leaving controller dockers alone.",
+            style=TermColors.WARNING
         )
+        return
+
     print(f"Bringing controllers {action} for slots {slots}...")
     services = []
     for slot in slots:
         services.append(get_pysmurf_controller_docker_service(slot))
     
     if action == 'up':
-        cmd = 'docker-compose up -d'.split()
+        cmd = 'docker compose up -d'.split()
     elif action == 'down':
-        cmd = 'docker-compose stop'.split()
+        cmd = 'docker compose stop'.split()
     elif action == 'logs':
         cmd = 'docker logs -f'.split()
     else:
@@ -540,7 +542,7 @@ def setup_func(args):
 
 # Entrypoint for jackhammer logs
 def log_func(args):
-    cmd = shlex.split('docker-compose logs -f')
+    cmd = shlex.split('docker compose logs -f')
     cmd.extend(args.log_args)
     subprocess.run(cmd, cwd=cwd)
 
@@ -692,7 +694,7 @@ if __name__ == '__main__':
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
     log_parser.add_argument('log_args', nargs="*", type=str,
-                            help="args passed to docker-compose logs")
+                            help="args passed to docker compose logs")
     log_parser.set_defaults(func=log_func)
 
     ########### Jackhammer util parser ############
