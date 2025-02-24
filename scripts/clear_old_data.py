@@ -56,6 +56,7 @@ class Config:
         Days after which log directories will be deleted.
     """
     dry: bool = False
+    force_accept: bool = False
     delete_smurf_data_after_days: int = 31
     delete_timestream_data_after_days: int = 365 // 2
     delete_core_dumps_after_days: int = 365
@@ -86,6 +87,7 @@ class Config:
         parser = argparse.ArgumentParser()
         parser.add_argument('--config-file', type=str, default=None)
         parser.add_argument('--dry', action='store_true')
+        parser.add_argument('-f', '--force', action='store_true')
         args = parser.parse_args(args_list)
 
         if args.config_file:
@@ -95,6 +97,8 @@ class Config:
 
         if args.dry:
             cfg.dry = args.dry
+        if args.force:
+            cfg.force_accept = True
         return cfg
 
 def setup_logger(cfg: Config) -> None:
@@ -250,10 +254,11 @@ def main(cfg: Config) -> None:
         logger.info("No files to delete")
         return
 
-    resp = input(f"Proceed with deletion (dry={cfg.dry})? [y/n]  ")
-    if resp.strip().lower() != 'y':
-        logger.info("Not proceed with deletion")
-        return
+    if not cfg.force_accept:
+        resp = input(f"Proceed with deletion (dry={cfg.dry})? [y/n]  ")
+        if resp.strip().lower() != 'y':
+            logger.info("Not proceed with deletion")
+            return
 
     logger.info("Deleting files")
     for f in files_to_delete:
