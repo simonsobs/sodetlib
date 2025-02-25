@@ -50,6 +50,7 @@ with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
 use_hostmanager: bool = sys_config.get('use_hostmanager', False)
+docker_compose_cmd: str = sys_config.get('docker_compose_command', 'docker compose')
 
 def get_pysmurf_controller_docker_service(slot: int) -> str:
     """
@@ -100,7 +101,7 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
-    cmd  = f'docker compose run --entrypoint={cmd} '
+    cmd  = f'{docker_compose_cmd} run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
     if rm:
@@ -313,7 +314,7 @@ def start_services(services, write_env=False):
     if isinstance(services, str):
         services = [services]
 
-    cmd = 'docker compose up -d'.split()
+    cmd = f'{docker_compose_cmd} up -d'.split()
     cmd.extend(services)
 
     subprocess.run(cmd, cwd=cwd)
@@ -338,9 +339,9 @@ def controller_cmd(
         services.append(get_pysmurf_controller_docker_service(slot))
     
     if action == 'up':
-        cmd = 'docker compose up -d'.split()
+        cmd = f'{docker_compose_cmd} up -d'.split()
     elif action == 'down':
-        cmd = 'docker compose stop'.split()
+        cmd = f'{docker_compose_cmd} stop'.split()
     elif action == 'logs':
         cmd = 'docker logs -f'.split()
     else:
@@ -542,7 +543,7 @@ def setup_func(args):
 
 # Entrypoint for jackhammer logs
 def log_func(args):
-    cmd = shlex.split('docker compose logs -f')
+    cmd = shlex.split(f'{docker_compose_cmd} logs -f')
     cmd.extend(args.log_args)
     subprocess.run(cmd, cwd=cwd)
 
