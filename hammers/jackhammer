@@ -49,6 +49,8 @@ sys_config_file = os.path.join(cfg_dir, 'sys_config.yml')
 with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
+use_hostmanager: bool = sys_config.get('use_hostmanager', False)
+docker_compose_cmd: str = sys_config.get('docker_compose_command', 'docker compose')
 
 def get_pysmurf_controller_docker_service(slot: int) -> str:
     """
@@ -75,7 +77,7 @@ def get_docker_services():
     Returns a list of docker services that are available from the docker-compose
     file in the ocs config directory.
     """
-    cmd = 'docker-compose config --services'
+    cmd = 'docker compose config --services'
     res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
@@ -99,7 +101,7 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
-    cmd  = f'docker-compose run --entrypoint={cmd} '
+    cmd  = f'{docker_compose_cmd} run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
     if rm:
@@ -188,8 +190,10 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"pysmurf_s{slot}")
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
-        bad_names.append(f'ocs-pysmurf-s{slot}')
-        bad_names.append(get_pysmurf_controller_docker_service(slot))
+
+        if not use_hostmanager:
+            bad_names.append(f'ocs-pysmurf-s{slot}')
+            bad_names.append(get_pysmurf_controller_docker_service(slot))
 
     if kill_monitor:
         bad_names.append('ocs-pysmurf-monitor')
@@ -310,7 +314,7 @@ def start_services(services, write_env=False):
     if isinstance(services, str):
         services = [services]
 
-    cmd = 'docker-compose up -d'.split()
+    cmd = f'{docker_compose_cmd} up -d'.split()
     cmd.extend(services)
 
     subprocess.run(cmd, cwd=cwd)
@@ -322,15 +326,22 @@ def controller_cmd(
     """
     Brings pysmurf-controllers up or down for specified slots.
     """
+    if use_hostmanager:
+        cprint(
+            "sys_config['use_hostmanager'] is set to True, leaving controller dockers alone.",
+            style=TermColors.WARNING
+        )
+        return
+
     print(f"Bringing controllers {action} for slots {slots}...")
     services = []
     for slot in slots:
         services.append(get_pysmurf_controller_docker_service(slot))
     
     if action == 'up':
-        cmd = 'docker-compose up -d'.split()
+        cmd = f'{docker_compose_cmd} up -d'.split()
     elif action == 'down':
-        cmd = 'docker-compose stop'.split()
+        cmd = f'{docker_compose_cmd} stop'.split()
     elif action == 'logs':
         cmd = 'docker logs -f'.split()
     else:
@@ -406,7 +417,7 @@ def hammer_func(args):
     cprint(f"Hammering for slots {slots}", True)
 
     cprint("Killing conflicting dockers", style=TermColors.HEADER)
-    kill_bad_dockers(slots, kill_monitor=all_slots)
+    kill_bad_dockers(slots, kill_monitor=False)
 
     if all_slots:
         cprint("Restarting smurf-util", style=TermColors.HEADER)
@@ -447,7 +458,10 @@ def hammer_func(args):
     #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
-        services = ['smurf-jupyter', 'ocs-pysmurf-monitor', 'smurf-util']
+        services = ['smurf-jupyter', 'smurf-util']
+        if not use_hostmanager:
+            services.append('ocs-pysmurf-monitor')
+
         start_sync_dockers()
     else:
         services = []
@@ -503,6 +517,13 @@ def start_sync_dockers():
     Begins suprsync docker services (by choosing all docker services that have
     "sync" in their name).
     """
+    if use_hostmanager:
+        cprint(
+            "sys_config['use_hostmanager'] is set to True, leaving sync dockers alone.",
+            style=TermColors.WARNING
+        )
+        return
+
     services = get_docker_services()
     start_services([s for s in services if 'sync' in s])
 
@@ -522,7 +543,7 @@ def setup_func(args):
 
 # Entrypoint for jackhammer logs
 def log_func(args):
-    cmd = shlex.split('docker-compose logs -f')
+    cmd = shlex.split(f'{docker_compose_cmd} logs -f')
     cmd.extend(args.log_args)
     subprocess.run(cmd, cwd=cwd)
 
@@ -674,7 +695,7 @@ if __name__ == '__main__':
     ########### Jackhammer logs parser ############
     log_parser = subparsers.add_parser('logs')
     log_parser.add_argument('log_args', nargs="*", type=str,
-                            help="args passed to docker-compose logs")
+                            help="args passed to docker compose logs")
     log_parser.set_defaults(func=log_func)
 
     ########### Jackhammer util parser ############
