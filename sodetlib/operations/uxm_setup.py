@@ -78,12 +78,14 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
     return False
 
 @sdl.set_action()
-def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
+def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, optimize=True):
     """
     Initial setup for 50k and hemt amplifiers. For C04/C05 cryocards, will first
-    check if the drain voltages are set. Then checks if drain
-    currents are in range, and if not will scan gate voltage to find one that
-    hits the target current. Will update the device cfg if successful.
+    check if the drain voltages are set. If `optmize`=False, will then apply
+    the gate voltage values from the config file. If `optmize`=True,
+    then checks if drain currents are in range, and if not will scan gate
+    voltage to find one that hits the target current.
+    Will update the device cfg if successful.
 
     The following parameters can be modified in the device cfg, where {amp}
     is one of ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2']:
@@ -105,6 +107,9 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
         If true, will update the device cfg and save the file.
     enable_300K_LNA:
         If true, will turn on the 300K LNAs.
+    optimize : bool
+        If true, will search for optimal gate voltage values instead of simply
+        applying the values from the configuration file.
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
@@ -153,32 +158,38 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
             if Vd != exp[f"amp_{amp}_drain_volt"]:
                 S.set_amp_drain_voltage(amp, exp[f"amp_{amp}_drain_volt"]) 
 
-    # Check drain currents / scan gate voltages
-    delta_drain_currents = dict()
-    for amp in amp_list:
-        delta_Id = np.abs(amp_biases[f"{amp}_drain_current"] - exp[f"amp_{amp}_drain_current"])
-        if delta_Id > exp[f'amp_{amp}_drain_current_tolerance']:
-            S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
+    if optimize:
+        # Check drain currents / scan gate voltages
+        delta_drain_currents = dict()
+        for amp in amp_list:
+            delta_Id = np.abs(amp_biases[f"{amp}_drain_current"] - exp[f"amp_{amp}_drain_current"])
+            if delta_Id > exp[f'amp_{amp}_drain_current_tolerance']:
+                S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
+                S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'],override=True)
+                success = find_gate_voltage(
+                    S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
+                    id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
+                )
+                if not success:
+                    sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
+                    sdl.set_session_data(S, 'setup_amps_summary', summary)
+                    S.C.write_ps_en(0)
+                    return False, summary
+
+    else:
+        for amp in amp_list:
             S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'],override=True)
-            success = find_gate_voltage(
-                S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
-                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
-            )
-            if not success:
-                sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
-                sdl.set_session_data(S, 'setup_amps_summary', summary)
-                S.C.write_ps_en(0)
-                return False, summary
-    # Turn on 300K LNAs
-    if enable_300K_LNA:
-        S.C.write_optical(0b11)
-        
+
     # Update device cfg
     biases = S.get_amplifier_biases()
     if update_cfg:
         for amp in amp_list:
             cfg.dev.update_experiment({f'amp_{amp}_gate_volt': biases[f'{amp}_gate_volt']},
                                       update_file=True)
+
+    # Turn on 300K LNAs
+    if enable_300K_LNA:
+        S.C.write_optical(0b11)
 
     summary = {'success': True, **biases}
     sdl.set_session_data(S, 'setup_amps_summary', summary)
