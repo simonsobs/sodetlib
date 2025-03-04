@@ -131,8 +131,8 @@ def take_g3_data(S, dur, **stream_kw):
 def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
                  channel_mask=None, filter_wait_time=2, make_datfile=False,
                  downsample_factor=None, downsample_mode=None,
-                 filter_disable=False, stream_type=None, subtype='stream',
-                 enable_compression=None):
+                 filter_disable=False, filter_order=None, filter_cutoff=None,
+                 stream_type=None, subtype='stream', enable_compression=None):
     """
     Starts the G3 data-stream. Returns the session-id corresponding with the
     data stream.
@@ -163,6 +163,11 @@ def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
         this will be pulled from the device cfg.
     filter_disable : bool
         If true, will disable the downsample filter before streaming.
+    filter_order : int
+        Order of the downsample filter. Read from device config by default.
+    filter_cutoff : float
+        The cutoff frequency in Hz for the downsample filter.
+        Read from device config by default.
     stream_type : optional(string)
         Type of stream. This should either be "obs" or "oper". If None,
         it will be determined based off of the subtype. ('stream', 'cmb', and
@@ -203,9 +208,14 @@ def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
         downsample_mode = cfg.dev.exp['downsample_mode']
     if downsample_factor is None:
         downsample_factor = cfg.dev.exp['downsample_factor']
+    if filter_order is None:
+        filter_order = cfg.dev.exp["downsample_filter"]["order"]
+    if filter_cutoff is None:
+        filter_cutoff = cfg.dev.exp["downsample_filter"]["cutoff_freq"]
 
     S.set_downsample_mode(downsample_mode)
     S.set_downsample_factor(downsample_factor)
+    S.set_downsample_filter(filter_order, filter_cutoff)
     S.set_filter_disable(int(filter_disable))
 
     # ensure fixed tones are on
