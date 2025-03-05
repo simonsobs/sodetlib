@@ -42,6 +42,10 @@ exp_defaults = {
     'downsample_mode': 'internal',
     'enable_compression': True,
 
+    # Downsample filter parameters
+    # cutoff freq in Hz reverse engineered to produce pysmurf default filter
+    "downsample_filter": {"order": 4, "cutoff_freq": 63.0},
+
     # Dict of device-specific default params to use for take_iv
     'iv_defaults': {},
 
