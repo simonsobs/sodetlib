@@ -466,8 +466,15 @@ def setup_fixed_tones(
             pass
 
     # set the fixed tones
+    tunefile = cfg.dev.exp.get("tunefile", None)
     fixed_tones = {
-        b: {"enabled": False, "freq_offsets": [], "channels": [], "tone_power": tone_power}
+        b: {
+            "enabled": False,
+            "freq_offsets": [],
+            "channels": [],
+            "tone_power": tone_power,
+            "tunefile": tunefile,
+        }
         for b in bands
     }
     for fr in ft_freq:
@@ -521,6 +528,7 @@ def turn_on_fixed_tones(S, cfg, bands=None):
             foff = cfg.dev.bands[band]["fixed_tones"]["freq_offsets"]
             channels = cfg.dev.bands[band]["fixed_tones"]["channels"]
             tone_power = cfg.dev.bands[band]["fixed_tones"].get("tone_power", None)
+            tunefile = cfg.dev.bands[band]["fixed_tones"].get("tunefile", None)
         except KeyError as e:
             raise ValueError(
                 "No fixed tones present in device config. Use `setup_fixed_tones` to add some."
@@ -529,6 +537,18 @@ def turn_on_fixed_tones(S, cfg, bands=None):
             raise ValueError(
                 "Number of fixed tone channels in device config is different from number of "
                 f"frequency offsets for band {band} ({len(channels)} != {len(foff)})."
+            )
+        cfg_tunefile = cfg.dev.exp.get("tunefile", None)
+        if cfg_tunefile is None or tunefile is None:
+            # warn but do nothing
+            S.log(
+                "Turning on fixed tones with no associated tunefile could lead "
+                "to conflicts with resonator channels.", S.LOG_ERROR
+            )
+        elif tunefile != cfg_tunefile:
+            raise ValueError(
+                "The tunefile has changed since fixed tones were set up. Run `setup_fixed_tones "
+                "to find available channels."
             )
         S.log(f"Enabling {len(channels)} fixed tones on band {band}.")
 
