@@ -5,3 +5,4 @@ numpy
 scipy
 PyYAML
 matplotlib
+tqdm
