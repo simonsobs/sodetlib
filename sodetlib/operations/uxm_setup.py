@@ -501,6 +501,42 @@ def setup_fixed_tones(
 
 
 @sdl.set_action()
+def turn_off_fixed_tones(S, cfg, bands=None):
+    """
+    Read fixed tones from the device config and set their amplitude to 0.
+
+    Args
+    ----
+    S : SmurfControl
+        Pysmurf instance
+    cfg : DetConfig
+        DetConfig instance
+    bands : list of int
+        The bands to operate on. Get from config by default.
+    """
+
+    if bands is None:
+        bands = cfg.dev.exp['active_bands']
+
+    for band in bands:
+        # try to read from config
+        try:
+            if not cfg.dev.bands[band]["fixed_tones"].get("enabled", True):
+                S.log(f"Fixed tones are already disabled on band {band}.")
+                continue
+            channels = cfg.dev.bands[band]["fixed_tones"]["channels"]
+        except KeyError as e:
+            raise ValueError(
+                "No fixed tones present in device config."
+            ) from e
+
+        amp = S.get_amplitude_scale_array(band)
+        amp[channels] = 0
+        S.set_amplitude_scale_array(band, amp)
+        cfg.dev.bands[band]["fixed_tones"]["enabled"] = False
+
+
+@sdl.set_action()
 def turn_on_fixed_tones(S, cfg, bands=None):
     """
     Read fixed tones from the device config and ensure the corresponding channels
