@@ -35,7 +35,6 @@ if 'SMURF_CONFIG_DIR' in os.environ:
     CFG_DIR = os.environ['SMURF_CONFIG_DIR']
 elif 'OCS_CONFIG_DIR' in os.environ:
     CFG_DIR = os.environ['OCS_CONFIG_DIR']
-    style = TermColors.WARNING
     cprint("SMURF_CONFIG_DIR not found in environ...", style=TermColors.WARNING)
     cprint( f"Using OCS_CONFIG_DIR instead: {CFG_DIR}...", style=TermColors.WARNING )
 else:
