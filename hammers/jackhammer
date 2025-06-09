@@ -190,6 +190,7 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
 
+        #TODO: Add use of HM to stop controller containers
         if not USE_HOSTMANAGER:
             bad_names.append(f'ocs-pysmurf-s{slot}')
             bad_names.append(get_pysmurf_controller_docker_service(slot))
@@ -325,6 +326,8 @@ def controller_cmd(
     """
     Brings pysmurf-controllers up or down for specified slots.
     """
+    #TODO: Add interaction with hm to up/down
+    # could still get logs directly...
     if USE_HOSTMANAGER:
         cprint(
             "sys_config['use_hostmanager'] is set to True, leaving controller dockers alone.",
@@ -458,6 +461,7 @@ def hammer_func(args):
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
         services = ['smurf-jupyter', 'smurf-util']
+        #TODO: use hm to ensure pysmurf-monitor is up
         if not USE_HOSTMANAGER:
             services.append('ocs-pysmurf-monitor')
 
@@ -516,6 +520,7 @@ def start_sync_dockers():
     Begins suprsync docker services (by choosing all docker services that have
     "sync" in their name).
     """
+    #TODO: use hm to ensure agents are online
     if USE_HOSTMANAGER:
         cprint(
             "sys_config['use_hostmanager'] is set to True, leaving sync dockers alone.",
