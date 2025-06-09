@@ -32,25 +32,25 @@ def cprint(msg, style=TermColors.OKBLUE):
 
 # This should be the same for every smurf-srv
 if 'SMURF_CONFIG_DIR' in os.environ:
-    cfg_dir = os.environ['SMURF_CONFIG_DIR']
+    CFG_DIR = os.environ['SMURF_CONFIG_DIR']
 elif 'OCS_CONFIG_DIR' in os.environ:
-    cfg_dir = os.environ['OCS_CONFIG_DIR']
+    CFG_DIR = os.environ['OCS_CONFIG_DIR']
     style = TermColors.WARNING
     cprint("SMURF_CONFIG_DIR not found in environ...", style=TermColors.WARNING)
-    cprint( f"Using OCS_CONFIG_DIR instead: {cfg_dir}...", style=TermColors.WARNING )
+    cprint( f"Using OCS_CONFIG_DIR instead: {CFG_DIR}...", style=TermColors.WARNING )
 else:
     raise ValueError(
         "SMURF_CONFIG_DIR or OCS_CONFIG_DIR must be set in the environment"
     )
 
-cwd=cfg_dir
-sys_config_file = os.path.join(cfg_dir, 'sys_config.yml')
+CWD=CFG_DIR
+SYS_CONFIG_FILE = os.path.join(CFG_DIR, 'sys_config.yml')
 
-with open(sys_config_file, 'r') as stream:
+with open(SYS_CONFIG_FILE, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
-use_hostmanager: bool = sys_config.get('use_hostmanager', False)
-docker_compose_cmd: str = sys_config.get('docker_compose_command', 'docker compose')
+USE_HOSTMANAGER: bool = sys_config.get('use_hostmanager', False)
+DOCKER_COMPOSE_CMD: str = sys_config.get('docker_compose_command', 'docker compose')
 
 def get_pysmurf_controller_docker_service(slot: int) -> str:
     """
@@ -78,7 +78,7 @@ def get_docker_services():
     file in the ocs config directory.
     """
     cmd = 'docker compose config --services'
-    res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
+    res = subprocess.run(shlex.split(cmd), cwd=CWD, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
 def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
@@ -101,13 +101,13 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
-    cmd  = f'{docker_compose_cmd} run --entrypoint={cmd} '
+    cmd  = f'{DOCKER_COMPOSE_CMD} run --entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
     if rm:
         cmd += '--rm '
     cmd += f'smurf-util {" ".join(args)}'
-    return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
+    return subprocess.run(shlex.split(cmd), cwd=CWD, **run_kwargs)
 
 
 def check_epics_connection(epics_server, retry=False):
@@ -191,7 +191,7 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
         bad_names.append(f"smurf_server_s{slot}")
         bad_names.append(f"pysmurf-ipython-slot{slot}")
 
-        if not use_hostmanager:
+        if not USE_HOSTMANAGER:
             bad_names.append(f'ocs-pysmurf-s{slot}')
             bad_names.append(get_pysmurf_controller_docker_service(slot))
 
@@ -275,7 +275,7 @@ def enter_pysmurf(slot, agg=False):
     if name in active_container_names:
         print(f"Container {name} is already running... Attaching to it now")
         cmd = shlex.split(f'docker attach {name}')
-        subprocess.run(cmd, cwd=cwd)
+        subprocess.run(cmd, cwd=CWD)
     else:
         if name in container_names:
             print(f"Removing stopped docker {name}")
@@ -289,7 +289,7 @@ def enter_pysmurf(slot, agg=False):
 
 def write_docker_env():
     docker_env = sys_config.get('docker_env')
-    with open(os.path.join(cfg_dir, ".env"), "w") as env_file:
+    with open(os.path.join(CFG_DIR, ".env"), "w") as env_file:
         for k,v in docker_env.items():
             env_file.write(f'{k}={v}\n')
 
@@ -314,10 +314,10 @@ def start_services(services, write_env=False):
     if isinstance(services, str):
         services = [services]
 
-    cmd = f'{docker_compose_cmd} up -d'.split()
+    cmd = f'{DOCKER_COMPOSE_CMD} up -d'.split()
     cmd.extend(services)
 
-    subprocess.run(cmd, cwd=cwd)
+    subprocess.run(cmd, cwd=CWD)
 
 def controller_cmd(
     slots: List[int],
@@ -326,7 +326,7 @@ def controller_cmd(
     """
     Brings pysmurf-controllers up or down for specified slots.
     """
-    if use_hostmanager:
+    if USE_HOSTMANAGER:
         cprint(
             "sys_config['use_hostmanager'] is set to True, leaving controller dockers alone.",
             style=TermColors.WARNING
@@ -339,16 +339,16 @@ def controller_cmd(
         services.append(get_pysmurf_controller_docker_service(slot))
     
     if action == 'up':
-        cmd = f'{docker_compose_cmd} up -d'.split()
+        cmd = f'{DOCKER_COMPOSE_CMD} up -d'.split()
     elif action == 'down':
-        cmd = f'{docker_compose_cmd} stop'.split()
+        cmd = f'{DOCKER_COMPOSE_CMD} stop'.split()
     elif action == 'logs':
         cmd = 'docker logs -f'.split()
     else:
         raise ValueError(f"action {action} not recognized. Must be up or down.")
 
     cmd.extend(services)
-    subprocess.run(cmd, cwd=cwd)
+    subprocess.run(cmd, cwd=CWD)
 
 
 def controller_cmd_func(args) -> None:
@@ -379,7 +379,7 @@ def pysmurf_func(args):
 
     if args.slot is not None:
         if args.slot not in available_slots:
-            print(f"Slot {args.slot} is not listed in the available smurf_slots in {sys_config_file}")
+            print(f"Slot {args.slot} is not listed in the available smurf_slots in {SYS_CONFIG_FILE}")
             raise ValueError
         slot = args.slot
     else:
@@ -422,8 +422,8 @@ def hammer_func(args):
     if all_slots:
         cprint("Restarting smurf-util", style=TermColors.HEADER)
         # Restarts smurf-util to clean up any running processes
-        subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
-        subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
+        subprocess.run('docker stop smurf-util'.split(), cwd=CWD)
+        subprocess.run('docker rm smurf-util'.split(), cwd=CWD)
         start_services('smurf-util', write_env=True)
 
         # Sets fan levels on crate
@@ -459,7 +459,7 @@ def hammer_func(args):
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
         services = ['smurf-jupyter', 'smurf-util']
-        if not use_hostmanager:
+        if not USE_HOSTMANAGER:
             services.append('ocs-pysmurf-monitor')
 
         start_sync_dockers()
@@ -517,7 +517,7 @@ def start_sync_dockers():
     Begins suprsync docker services (by choosing all docker services that have
     "sync" in their name).
     """
-    if use_hostmanager:
+    if USE_HOSTMANAGER:
         cprint(
             "sys_config['use_hostmanager'] is set to True, leaving sync dockers alone.",
             style=TermColors.WARNING
@@ -543,9 +543,9 @@ def setup_func(args):
 
 # Entrypoint for jackhammer logs
 def log_func(args):
-    cmd = shlex.split(f'{docker_compose_cmd} logs -f')
+    cmd = shlex.split(f'{DOCKER_COMPOSE_CMD} logs -f')
     cmd.extend(args.log_args)
-    subprocess.run(cmd, cwd=cwd)
+    subprocess.run(cmd, cwd=CWD)
 
 
 # Entrypoint for jackhamer util
@@ -561,7 +561,7 @@ def gui_func(args):
         if args.slot is not None:
             if args.slot not in available_slots:
                 print(f"Slot {args.slot} is not listed in the available "
-                      f"smurf_slots in {sys_config_file}")
+                      f"smurf_slots in {SYS_CONFIG_FILE}")
                 raise ValueError
             slot = args.slot
         else:
