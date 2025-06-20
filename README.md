@@ -12,7 +12,8 @@ For offline analysis of sodetlib data files, you can also install sodetlib
 by cloning this repo and running:
 
 ```
-pip3 install .
+python -m pip install -r requirements.txt
+python -m pip install .
 ```
 
 [SO Wiki]: http://simonsobservatory.wikidot.com/smurf-software-setup
