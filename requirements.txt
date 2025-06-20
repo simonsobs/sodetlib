@@ -12,3 +12,4 @@ lmfit
 pyfftw
 pandas
 seaborn
+sotodlib @ git+https://github.com/simonsobs/sotodlib.git@master
