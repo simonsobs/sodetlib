@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import subprocess
 import shlex
@@ -646,7 +644,7 @@ def setup_fans():
 def setup_fans_func(args):
     setup_fans()
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
 
@@ -759,3 +757,6 @@ if __name__ == '__main__':
         args.func(args)
     else:
         parser.print_help()
+
+if __name__ == '__main__':
+    main()
