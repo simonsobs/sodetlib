@@ -15,7 +15,7 @@ by cloning this repo and running:
 pip3 install .
 ```
 
-[SO Wiki]: http://simonsobservatory.wikidot.com/smurf-software-setup
+[SO Wiki]: https://simonsobs.atlassian.net/wiki/spaces/PRO/pages/11041372/Smurf+Software+Setup
 
 ## Documentation
 
