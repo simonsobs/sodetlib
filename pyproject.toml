@@ -20,6 +20,9 @@ dependencies = [
     "tqdm",
 ]
 
+[project.scripts]
+jackhammer = "sodetlib.hammers.jackhammer:main"
+
 [tool.hatch.version]
 source = "vcs"
 
