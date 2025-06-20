@@ -1,6 +1,6 @@
 tqdm
-setuptools >= 56.2.0
 ipython
+setuptools-scm
 PyYAML
 numpy
 scipy
