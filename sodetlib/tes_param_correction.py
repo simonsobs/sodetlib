@@ -16,6 +16,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from tqdm.auto import trange
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 from typing import Optional, List, Tuple, TypeVar
 from dataclasses import dataclass
 import traceback
@@ -361,8 +362,8 @@ def run_correction(chdata: RpFitChanData, cfg: AnalysisCfg) -> CorrectionResults
 
 
 def run_corrections_parallel(
-    iva: IVAnalysis, bsa: BiasStepAnalysis, cfg: AnalysisCfg, nprocs=None, pool=None
-) -> List[CorrectionResults]:
+        iva: IVAnalysis, bsa: BiasStepAnalysis, cfg: AnalysisCfg, nprocs=None,
+        executor=None, as_completed_callable=None) -> List[CorrectionResults]:
     """
     Runs correction procedure in parallel for all channels in IV and BSA object
     """
@@ -374,43 +375,44 @@ def run_corrections_parallel(
     if nprocs is None:
         nprocs = cfg.default_nprocs
 
-    def callback(res: CorrectionResults):
-        pb.update(1)
-        results.append(res)
-
+    # Error handler
     def errback(e):
         raise e
 
-    if pool is None:
-        pool = multiprocessing.get_context("spawn").Pool(nprocs)
-        close_pool = True
+    # Create executor (optionally externally provided)
+    if executor is None:
+        executor = ProcessPoolExecutor(max_workers=nprocs)
+        as_completed_callable = as_completed
+        close_executor = True
     else:
-        close_pool = False
+        close_executor = False
 
     try:
-        async_results = []
+        futures = []
         for idx in range(nchans):
             chdata = RpFitChanData.from_data(
                 iva, bsa, iva.bands[idx], iva.channels[idx]
             )
-            r = pool.apply_async(
-                run_correction,
-                args=(chdata, cfg),
-                callback=callback,
-                error_callback=errback,
-            )
-            async_results.append(r)
-        for r in async_results:
-            r.wait()
+            future = executor.submit(run_correction, chdata, cfg)
+            futures.append(future)
+
+        for future in as_completed_callable(futures):
+            try:
+                res = future.result()
+                results.append(res)
+            except Exception as e:
+                errback(e)
+
+            futures.remove(future)
+            pb.update(1)
+
         pb.close()
+
     finally:
-        if close_pool:
-            pool.terminate()
-            pool.join()
-            pool.close()
+        if close_executor:
+            executor.shutdown(wait=True, cancel_futures=True)
 
     return results
-
 
 def compute_psats(iva: IVAnalysis, cfg: AnalysisCfg) -> Tuple[np.ndarray, np.ndarray]:
     """
