@@ -160,8 +160,6 @@ Required variables are:
      - Tag of the `smurf-streamer docker`_ image
    * - ``SOCS_TAG``
      - Tag of the `socs docker`_ image
-   * - ``SODETLIB_TAG``
-     - Tag of the `sodetlib docker`_ image
    * - ``CB_HOST``
      - Address of the crossbar host from the smurf-server
 
@@ -170,9 +168,6 @@ Required variables are:
 
 .. _`socs docker`: 
    https://hub.docker.com/r/simonsobs/socs/tags
-
-.. _`sodetlib docker`: 
-   https://hub.docker.com/r/simonsobs/sodetlib/tags
 
 Pysmurf Config
 ---------------
