@@ -737,6 +737,11 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
     #############################################################
     summary['timestamps'].append(('setup_tracking', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+
+    # Ensure feedback is enabled
+    for b in bands:
+        S.set_feedback_enable(b, 1)
+
     tracking_res = tracking.setup_tracking_params(
         S, cfg, bands, show_plots=show_plots, update_cfg=update_cfg
     )
