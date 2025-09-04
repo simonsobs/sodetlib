@@ -363,6 +363,10 @@ def uxm_relock(
     summary['timestamps'].append(('tracking_setup', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
 
+    # Ensure feedback is enabled
+    for b in bands:
+        S.set_feedback_enable(b, 1)
+
     tr = relock_tracking_setup(
         S, cfg, bands, show_plots=show_plots,
         reset_rate_khz=reset_rate_khz, nphi0=nphi0
