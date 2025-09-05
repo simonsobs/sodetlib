@@ -392,21 +392,42 @@ def _find_fixed_tone_freq(S, band, ntone, min_spacing, band_start=-250, band_end
     freq_high = band_center + band_end
     res_freq = res_freq[(res_freq > freq_low) & (res_freq < freq_high)]
 
+    # add the band edges
+    res_freq = np.concatenate(([freq_low], res_freq, [freq_high]))
+
     # gaps between resonators
     gaps = np.diff(res_freq)
 
     # check there are enough for the number of tones
-    num_gaps = (gaps >= min_spacing).sum()
+    ntone_per_gap = np.floor(gaps / min_spacing)
+    num_gaps = ntone_per_gap.sum()
     if num_gaps < ntone:
         S.log(
             f"Only {num_gaps} gaps greater than {min_spacing} MHz were found in band {band}. "
             "That number of fixed tones will be set."
         )
-        ntone = num_gaps
+        ntone = int(num_gaps)
+    if ntone == 0:
+        return np.array([])
+    gaps = gaps[ntone_per_gap > 0]
+    res_freq = res_freq[np.where(ntone_per_gap > 0)[0]]  # just the left edge now
 
-    # return the central frequencies in selected gaps
-    gap_ind = np.argsort(gaps)[:-(ntone + 1):-1]  # ntone largest gaps
-    return 0.5 * (res_freq[gap_ind + 1] + res_freq[gap_ind])
+    # distribute uniformly in available space, accounting for edge buffer
+    gaps_cum = np.cumsum(gaps - min_spacing)  # can place a tone anywhere in this space
+    tones = np.linspace(0, gaps_cum[-1], ntone, endpoint=True)
+    tone_freqs = np.zeros_like(tones)
+    last_edge = -1  # allow for tone on the leading 0 edge
+    for i in range(gaps.size):
+        # identify which gap they are in
+        tones_in_gap = (tones > last_edge) & (tones <= gaps_cum[i])
+        # shift back to real frequency
+        tone_freqs[tones_in_gap] = (
+            tones[tones_in_gap] - last_edge  # position relative to buffer
+            + res_freq[i] + min_spacing / 2  # real edge in band + buffer
+        )
+        last_edge = gaps_cum[i]
+
+    return tone_freqs
 
 
 @sdl.set_action()
