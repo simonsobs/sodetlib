@@ -392,11 +392,15 @@ def _find_fixed_tone_freq(S, band, ntone, min_spacing, band_start=-250, band_end
     freq_high = band_center + band_end
     res_freq = res_freq[(res_freq > freq_low) & (res_freq < freq_high)]
 
+    # add the band edges
+    res_freq = np.concatenate(([freq_low], res_freq, [freq_high]))
+
     # gaps between resonators
     gaps = np.diff(res_freq)
 
     # check there are enough for the number of tones
-    num_gaps = (gaps >= min_spacing).sum()
+    ntone_per_gap = np.floor(gaps / min_spacing)
+    num_gaps = ntone_per_gap.sum()
     if num_gaps < ntone:
         S.log(
             f"Only {num_gaps} gaps greater than {min_spacing} MHz were found in band {band}. "
@@ -404,9 +408,27 @@ def _find_fixed_tone_freq(S, band, ntone, min_spacing, band_start=-250, band_end
         )
         ntone = num_gaps
 
-    # return the central frequencies in selected gaps
-    gap_ind = np.argsort(gaps)[:-(ntone + 1):-1]  # ntone largest gaps
-    return 0.5 * (res_freq[gap_ind + 1] + res_freq[gap_ind])
+    # distribute tones among gaps, starting with widest
+    gap_sort = np.argsort(gaps)
+    tones = np.zeros(gaps.size, dtype=np.uint16)  # count of tones to add to each gap
+    n = 0  # counter for total number of tones assigned to gaps
+    while n < ntone:
+        for i in gap_sort:
+            # add a tone to this gap if it can support it
+            if tones[i] < ntone_per_gap[i]:
+                tones[i] += 1
+                n += 1
+            if n == ntone:
+                break
+
+    # identify frequency for each tone
+    tone_freq = np.zeros(ntone)
+    j = 0  # index of tone
+    for i, n in enumerate(tones):
+        tone_freq[j:j+n] = res_freq[i] + np.arange(1, n + 1) * gaps[i] / (n + 1)
+        j += n
+
+    return tone_freq
 
 
 @sdl.set_action()
