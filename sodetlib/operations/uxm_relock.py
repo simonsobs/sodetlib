@@ -2,7 +2,7 @@ import time
 import numpy as np
 import sodetlib as sdl
 from sodetlib.operations.tracking import relock_tracking_setup
-from sodetlib.operations import uxm_setup
+from sodetlib.operations import uxm_setup, bias_steps
 
 import matplotlib.pyplot as plt
 import os
@@ -387,6 +387,17 @@ def uxm_relock(
     sdl.set_session_data(S, 'noise', {
         'band_medians': summary['noise']['band_medians']
     })
+
+    #############################################################
+    # 6. Bias group mapping
+    #############################################################
+    sdl.stop_point(S)
+    summary['timestamps'].append(('bg_map', time.time()))
+    sdl.set_session_data(S, 'timestamps', summary['timestamps'])
+
+    bsa = bias_steps.take_bgmap(S, cfg,
+                                show_plots=show_plots)
+    summary['bg_map'] = bsa
 
     summary['timestamps'].append(('end', time.time()))
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
