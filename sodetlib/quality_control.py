@@ -80,7 +80,7 @@ def measure_bias_line_resistances(
     """
     Function to measure the bias line resistance and high-low-current-ratio for
     each bias group. This needs to be run with the smurf hooked up to the
-    cryostat and the detectors superconducting.
+    cryostat and the detectors superconducting, and a bgmap should exist.
 
     Args
     -------
@@ -98,6 +98,8 @@ def measure_bias_line_resistances(
     if bgs is None:
         bgs = cfg.dev.exp['active_bgs']
     bgs = np.atleast_1d(bgs)
+    bgmap = np.load(cfg.dev.exp['bgmap_file'], allow_pickle=True).item()
+    bg_m = np.asarray(sum([bgmap['bgmap'] == bg for bg in bgs]), dtype=bool)
 
     vbias = S.get_tes_bias_bipolar_array()
     vb_low = vbias.copy()
@@ -137,7 +139,7 @@ def measure_bias_line_resistances(
     sigs = []
     for (t0, t1) in segs:
         m = (t0 < ts) & (ts < t1)
-        sigs.append(np.mean(am.signal[:, m], axis=1) * S.pA_per_phi0 / (2*np.pi))
+        sigs.append(np.mean(am.signal[bg_m][:, m], axis=1) * S.pA_per_phi0 / (2*np.pi))
 
     Rbl_low = vstep / (np.abs(sigs[1] - sigs[0]) * 1e-12)
     Rbl_high = vstep / (np.abs(sigs[3] - sigs[2]) * 1e-12)
