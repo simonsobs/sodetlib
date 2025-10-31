@@ -397,7 +397,7 @@ def analyze_iv(iva, psat_level=0.9, save=False, update_cfg=False, show_pb=False)
         # subtract off unphysical y-offset in superconducting branch; this
         # is probably due to an undetected phase wrap at the kink between
         # the superconducting branch and the transition, so it is
-        # *probably* legitimate to remove it by hand. 
+        # *probably* legitimate to remove it by hand.
         iva.resp[i, :sc_idx] -= sc_fit[1]
         sc_fit[1] = 0  # now change s.c. fit offset to 0 for plotting
 
@@ -442,7 +442,7 @@ def plot_Rfracs(iva, Rn_range=(5e-3, 12e-3), bgs=None):
         ax.plot(iva.v_bias, rf, alpha=0.1, color=f'C{bg}')
     ax.set(ylim=(0, 1.1))
     ax.set_xlabel("Bias Voltage (V)", fontsize=14)
-    ax.set_ylabel("$R_\mathrm{frac}$", fontsize=14)
+    ax.set_ylabel("$R_\\mathrm{frac}$", fontsize=14)
     return fig, ax
 
 def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05), bbox_props=None):
@@ -467,14 +467,14 @@ def plot_Rn_hist(iva, range=(0, 10), text_loc=(0.05, 0.05), bbox_props=None):
     chans_pictured = int(np.sum(hist[0]))
     txt = f"{chans_pictured} / {iva.nchans} channels pictured"
     txt += '\n' + get_plot_text(iva)
-    txt += f'\nMedian: {np.nanmedian(iva.R_n)*1000:0.2f} mOhms'   
+    txt += f'\nMedian: {np.nanmedian(iva.R_n)*1000:0.2f} mOhms'
 
     bbox = dict(facecolor='wheat', alpha=0.8)
     if bbox_props is not None:
         bbox.update(bbox_props)
 
     ax.text(*text_loc, txt, bbox=bbox, transform=ax.transAxes)
-    ax.set_xlabel("$R_n$ (m$\Omega$)", fontsize=14)
+    ax.set_xlabel("$R_n$ (m$\\Omega$)", fontsize=14)
     return fig, ax
 
 
@@ -611,7 +611,7 @@ def take_iv(S, cfg, **kwargs):
     if not hasattr(S, 'tune_file'):
         raise AttributeError('No tunefile loaded in current '
                              'pysmurf session. Load active tunefile.')
-    
+
     kw = deepcopy(cfg.dev.exp['iv_defaults'])
     kw.update(kwargs)
     ivcfg = IVConfig(**kw)
