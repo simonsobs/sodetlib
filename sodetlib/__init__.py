@@ -5,7 +5,6 @@ del get_versions
 import os
 from functools import wraps
 try:
-    import epics
     from pysmurf.client.util.pub import set_action
 except Exception as e:
     # Just return base function regularly if can't import set_action

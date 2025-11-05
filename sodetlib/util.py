@@ -15,7 +15,6 @@ from sotodlib.core import AxisManager
 
 if not os.environ.get('NO_PYSMURF', False):
     try:
-        import epics
         import pysmurf
         from pysmurf.client.command.cryo_card import cmd_make
     except Exception:
@@ -208,8 +207,8 @@ def get_metadata(S, cfg):
         'iv_file': cfg.dev.exp.get('iv_file'),
         'v_bias': S.get_tes_bias_bipolar_array(),
         'pysmurf_client_version': pysmurf.__version__,
-        'rogue_version': S._caget(f'{S.epics_root}:AMCc:RogueVersion'),
-        'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
+        'rogue_version': S._caget('AMCc.RogueVersion'),
+        'smurf_core_version': S._caget('AMCc.SmurfApplication.SmurfVersion'),
         'sodetlib_version': sodetlib.__version__,
         'fpga_git_hash': S.get_fpga_git_hash_short(),
         'cryocard_fw_version': S.C.get_fw_version(),
@@ -541,7 +540,7 @@ def get_r2(sig, sig_hat):
 class _Register:
     def __init__(self, S, addr):
         self.S = S
-        self.addr = S.epics_root + ":" + addr
+        self.addr = addr
 
     def get(self, **kw):
         return self.S._caget(self.addr, **kw)
@@ -555,11 +554,11 @@ class Registers:
     they are not in the standard rogue tree, or settable by existing pysmurf
     get/set functions
     """
-    _root = 'AMCc:'
-    _processor = _root + "SmurfProcessor:"
-    _sostream = _processor + "SOStream:"
-    _sofilewriter = _sostream + 'SOFileWriter:'
-    _source_root = _root + 'StreamDataSource:'
+    _root = 'AMCc.'
+    _processor = _root + "SmurfProcessor."
+    _sostream = _processor + "SOStream."
+    _sofilewriter = _sostream + 'SOFileWriter.'
+    _source_root = _root + 'StreamDataSource.'
 
     _registers = {
         'pysmurf_action': _sostream + 'pysmurf_action',
