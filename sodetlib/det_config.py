@@ -625,7 +625,7 @@ class DetConfig:
 
         return outfiles
 
-    def get_smurf_control(self, offline=False,
+    def get_smurf_control(self, offline=False, server_port=None,
                           smurfpub_id=None, make_logfile=False, setup=False,
                           dump_configs=None, config_dir=None,
                           apply_dev_configs=False, load_device_tune=True,
@@ -638,6 +638,9 @@ class DetConfig:
         Args:
             offline (bool):
                 Whether to start pysmurf in offline mode. Defaults to False
+            server_port (int, optional):
+                The port for the SMuRF server to connect to. Will infer from
+                slot number if not provided.
             smurfpub_id (str, optional):
                 Pysmurf publisher ID. If None, will default to
                 crate<crate_id>_slot<slot>.
@@ -660,6 +663,8 @@ class DetConfig:
             smurfpub_id = self.stream_id
         if dump_configs is None:
             dump_configs = self.dump
+        if server_port is None:
+            server_port = 9000 + 2 * self.slot
 
         # Pysmurf publisher will check this to determine publisher id.
         os.environ['SMURFPUB_ID'] = smurfpub_id
@@ -670,7 +675,8 @@ class DetConfig:
             S = pysmurf.client.SmurfControl(
                 cfg_file=self.pysmurf_file, setup=setup,
                 make_logfile=make_logfile, data_path_id=smurfpub_id,
-                **pysmurf_kwargs)
+                server_port=server_port, **pysmurf_kwargs
+            )
         self.S = S
         # Lets just stash this in pysmurf...
         S._sodetlib_cfg = self
