@@ -9,6 +9,7 @@ import time
 import os
 import threading
 from typing import List, Literal
+import zmq
 
 
 class TermColors:
@@ -110,36 +111,47 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
     return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
 
 
-def check_epics_connection(epics_server, retry=False):
+def check_server_connection(server_port, retry=False, timeout=1):
     """
-        Checks if we can connect to a specific epics server. 
+        Checks if we can connect to a specific server.
 
         Args:
-            epics_server (string): 
-                epics server to connect to
+            server_port (int):
+                ZMQ server to connect to
             retry (bool):
                 If true, will continuously check until a connection has been 
                 established.
     """
+    # setup connection
+    c = zmq.Context()
+
+    # message to check if server is ready
+    msg = {'path': 'AMCc.Ready', 'attr': 'get', 'args': [], 'kwargs': {}}
+    def do_ping():
+        s = c.socket(zmq.REQ)
+        s.setsockopt(zmq.RCVTIMEO, timeout * 1000)
+        s.setsockopt(zmq.LINGER, 0)  # discard undelivered messages
+        s.connect(f"tcp://localhost:{server_port + 1}")
+        try:
+            s.send_pyobj(msg)
+            resp = s.recv_pyobj()
+            return bool(resp)
+        except zmq.error.Again:
+            return False
+        finally:
+            s.close()
+    
     if retry:
-        print(f"Waiting for epics connection to {epics_server}", end='', flush=True)
+        print(f"Waiting for connection to server on port {server_port}", end='', flush=True)
         while True:
-            x = util_run(
-                'caget', args=[f'{epics_server}:AMCc:enable'],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-            )
-            if "True" in x.stdout.decode():
+            if do_ping():
                 break
             print('.', end='', flush=True)
 
         print("\nConnected!")
         return True
     else:
-        x = util_run(
-            'caget', args=[f'{epics_server}:AMCc:enable'],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
-        return "True" in x.stdout.decode()
+        return do_ping()
 
 
 def get_running_dockers(get_all=True):
@@ -245,13 +257,13 @@ def dump_docker_logs(slots, dump_rogue_tree=False):
     if dump_rogue_tree:
         dump_script = '/sodetlib/scripts/dump_rogue_state.py'
         for slot in slots:
-            if check_epics_connection(f'smurf_server_s{slot}', retry=False):
+            if check_server_connection(9000 + 2 * slot, retry=False):
                 out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
                 cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
                 util_run('python3', args=[dump_script, str(slot), out_file],
                          name=f'rogue_dump_s{slot}')
             else:
-                print(f"Could not connect to epics for slot {slot}")
+                print(f"Could not connect to server for slot {slot}")
 
 def run_on_shelf_manager(cmd_str):
     """ Runs a command on the shelf manager. Takes in the command as a string"""
@@ -476,8 +488,7 @@ def hammer_func(args):
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
     for slot in slots:
-        epics_server = f'smurf_server_s{slot}'
-        check_epics_connection(epics_server, retry=True)
+        check_server_connection(9000 + 2 * slot, retry=True)
 
     if reboot and not args.skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)

@@ -11,3 +11,4 @@ lmfit
 pyfftw
 pandas
 seaborn
+zmq
