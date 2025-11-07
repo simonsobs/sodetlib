@@ -9,7 +9,7 @@ np.seterr(all="ignore")
 
 sdl.set_action()
 def bias_to_rfrac_range(
-        S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
+        S, cfg, rfrac_range=None, bias_groups=None, iva=None,
         overbias=True, Rn_range=(5e-3, 12e-3),
         math_only=False):
     """
@@ -55,6 +55,9 @@ def bias_to_rfrac_range(
 
     if iva is None:
         iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
+
+    if rfrac_range is None:
+        rfrac_range = cfg.dev.exp['rfrac_range']
 
     biases = S.get_tes_bias_bipolar_array()
 
@@ -127,7 +130,7 @@ def bias_to_volt_arr(S, cfg, biases, bias_groups=None, overbias=True):
 
 
 sdl.set_action()
-def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
+def bias_to_rfrac(S, cfg, rfrac=None, bias_groups=None, iva=None,
                   overbias=True, Rn_range=(5e-3, 12e-3), math_only=False):
     """
     Biases detectors to a specified Rfrac value
@@ -139,7 +142,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     cfg : DetConfig
         Detconfig instance
     rfrac : float
-        Target rfrac. Defaults to 0.5
+        Target rfrac
     bias_groups : list, optional
         Bias groups to bias. Defaults to all of them.
     iva : IVAnalysis, optional
@@ -170,6 +173,9 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
 
     if iva is None:
         iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
+
+    if rfrac is None:
+        rfrac = cfg.dev.exp['rfrac']
 
     biases = S.get_tes_bias_bipolar_array()
 
@@ -603,11 +609,3 @@ def biasstep_rebias(
 
 
     return bsa_final,vbias_estimate_final
-
-
-
-
-
-
-
-

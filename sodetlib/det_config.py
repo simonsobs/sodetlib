@@ -87,9 +87,11 @@ exp_defaults = {
 
     # Overbiasing
     'overbias_wait': 2.0,
+    'overbias_sleep_time_sec': 300,
 
-    # overbias wait time
-    'overbias_sleep_time_sec': 300
+    # Biasing stuff
+    'rfrac': 0.5,
+    'rfrac_range': [0.3, 0.6],
 }
 band_defaults = {
     # General
