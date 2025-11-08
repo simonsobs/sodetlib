@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import scipy.optimize
 from sodetlib.operations import iv
 from typing import Dict, Any
+from dataclasses import dataclass, asdict
+from copy import deepcopy
 
 np.seterr(all='ignore')
 
@@ -296,11 +298,11 @@ class BiasStepAnalysis:
             resistance.
     """
 
-    def __init__(self, S=None, cfg=None, bgs=None, run_kwargs=None):
+    def __init__(self, S=None, cfg=None, run_kwargs=None):
         self._S = S
         self._cfg = cfg
 
-        self.bgs = bgs
+        self.bgs = run_kwargs.get("bgs", None)
         self.am = None
         self.edge_idxs = None
         self.transition_range = None
@@ -977,111 +979,94 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
     return fig, ax
 
 
+@dataclass
+class BiasStepConfig:
+    bgs: Optional[list] = None
+    step_voltage: float = 0.05 # 0.01
+    #dc_voltage: float = 0.3
+    step_duration: float = 0.05
+    nsteps: int = 20
+    high_current_mode: bool = True
+    hcm_wait_time: float = 3. # 0
+    dacs: str = 'pos'
+    use_waveform: bool = True
+    plot_rfrac: bool = True
+    show_plots: bool = True # False
+    run_analysis: bool = True
+    channel_mask: Optional[np.ndarray] = None
+    g3_tag: Optional[str] = None
+    stream_subtype: str = 'bias_steps' # 'bgmap'
+    enable_compression: bool = False
+    analysis_kwargs: Optional[dict] = None
+
+    def __post_init__(self):
+        if self.analysis_kwargs is None:
+            self.analysis_kwargs = {}
+
+
+@dataclass
+class BGMapConfig:
+    bgs: Optional[list] = None
+    dc_voltage: float = 0.3
+    step_voltage: float = 0.01
+    step_duration: float = 0.05
+    nsteps: int = 20
+    high_current_mode: bool = True
+    hcm_wait_time: float = 0
+    dacs: str = 'pos'
+    use_waveform: bool = True
+    plot_rfrac: bool = False
+    show_plots: bool = True
+    run_analysis: bool = True
+    g3_tag: Optional[str] = None
+    stream_subtype: str = 'bgmap'
+    enable_compression: bool = False
+    analysis_kwargs: Optional[dict] = None
+
+    def __post_init__(self):
+        if self.analysis_kwargs is None:
+            self.analysis_kwargs = {}
+
+
 @sdl.set_action()
-def take_bgmap(S, cfg, bgs=None, dc_voltage=0.3, step_voltage=0.01,
-               step_duration=0.05, nsteps=20, high_current_mode=True,
-               hcm_wait_time=0, analysis_kwargs=None, dacs='pos',
-               use_waveform=True, show_plots=True, g3_tag=None,
-               enable_compression=False, plot_rfrac=False):
+def take_bgmap(S, cfg, **kwargs):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
     with default parameters optimal for creating a bgmap.
 
-    Args
-    -----
-        S (SmurfControl):
-            Pysmurf control instance
-        cfg (DetConfig):
-            Detconfig instance
-        bgs ( int, list, optional):
-            Bias groups to run steps on, defaulting to all 12. It is
-            recommended that this isn't modified unless necessary to create a
-            full bg-map.
-        dc_voltage : float
-            DC bias used at low end of bias step to avoid divide by zeros in
-            the analysis.
-        step_voltage (float):
-            Step voltage in Low-current-mode units. (i.e. this will be divided
-            by the high-low-ratio before running the steps in high-current
-            mode)
-        step_duration (float):
-            Duration in seconds of each step
-        nsteps (int):
-            Number of steps to run
-        high_current_mode (bool):
-            If true, switches to high-current-mode. If False, leaves in LCM
-            which runs through the bias-line filter, so make sure you
-            extend the step duration to be like >2 sec or something
-        hcm_wait_time (float):
-            Time to wait after switching to high-current-mode.
-        dacs : str
-            Which group of DACs to play bias-steps on. Can be 'pos',
-            'neg', or 'both'
-        use_waveform : bool
-            If True will use the waveform generator instead of stepping DAC's
-            manually.
-        analysis_kwargs (dict, optional):
-            Keyword arguments to be passed to the BiasStepAnalysis run_analysis
-            function.
-        g3_tag: string, optional
-            Tag to attach to g3 stream.
-        enable_compression: bool, optional
-            If True, will tell the smurf-streamer to compress G3Frames. Defaults
-            to False because this dominates frame-processing time for high
-            data-rate streams.
-        plot_rfrac : bool
-            Create rfrac plot, publish it, and save it. Default is False.
-        show_plots : bool
-            Show plot in addition to saving when running interactively. Default is False.
+    See also:
+    ---------
+    take_bias_steps
     """
-    if bgs is None:
-        bgs = cfg.dev.exp['active_bgs']
-    bgs = np.atleast_1d(bgs)
-
-    if analysis_kwargs is None:
-        analysis_kwargs = {}
-
-    for bg in bgs:
-        S.set_tes_bias_bipolar(bg, dc_voltage)
+    kw = deepcopy(cfg.dev.exp.get('bgmap_defaults',{}))
+    kw.update(**kwargs)
+    bgmcfg = BGMapConfig(**kw)
 
     _analysis_kwargs = {
-        'assignment_thresh': 0.3,
         'create_bg_map': True, 'save_bg_map': True
     }
-    _analysis_kwargs.update(analysis_kwargs)
-    bsa = take_bias_steps(
-        S, cfg, bgs, step_voltage=step_voltage, step_duration=step_duration,
-        nsteps=nsteps, high_current_mode=high_current_mode,
-        hcm_wait_time=hcm_wait_time, run_analysis=True, dacs=dacs,
-        use_waveform=use_waveform, g3_tag=g3_tag, stream_subtype='bgmap',
-        plot_rfrac=plot_rfrac, show_plots=show_plots,
-        enable_compression=enable_compression, analysis_kwargs=_analysis_kwargs
-    )
+    bgmcfg.analysis_kwargs.update(_analysis_kwargs)
+    bsa = take_bias_steps(S, cfg, **asdict(bgmcfg))
 
     if hasattr(bsa, 'bgmap'):
         fig, ax = plot_bg_assignment(bsa)
         sdl.save_fig(S, fig, 'bg_assignments.png')
-        if show_plots:
+        if bgmcfg.show_plots:
             plt.show()
         else:
             plt.close()
 
-    for bg in bgs:
+    for bg in bgmcfg.bgs:
         S.set_tes_bias_bipolar(bg, 0.)
 
     return bsa
 
 
 @sdl.set_action()
-def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
-                    nsteps=20, high_current_mode=True, hcm_wait_time=3,
-                    run_analysis=True, analysis_kwargs=None, dacs='pos',
-                    use_waveform=True, channel_mask=None, g3_tag=None,
-                    stream_subtype='bias_steps', enable_compression=False,
-                    plot_rfrac=True, show_plots=False):
+def take_bias_steps(S, cfg, **kwargs):
     """
-    Takes bias step data at the current DC voltage. Assumes bias lines
+    Takes bias step data at the specified DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
     not run correction). This function runs bias steps and returns a
     BiasStepAnalysis object, which can be used to easily view and re-analyze
@@ -1097,10 +1082,10 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         cfg (DetConfig):
             Detconfig instance
         bgs ( int, list, optional):
-            Bias groups to run steps on, defaulting to all 12. Note that the
-            bias-group mapping generated by the bias step analysis will be
-            restricted to the bgs set here so if you only run with a small
-            subset of bias groups, the map might not be correct.
+            Bias groups to run steps on.
+        dc_voltage : float, optional
+            DC bias used at low end of bias step to avoid divide by zeros in
+            the analysis. If unspecified, uses the current value.
         step_voltage (float):
             Step voltage in Low-current-mode units. (i.e. this will be divided
             by the high-low-ratio before running the steps in high-current
@@ -1115,9 +1100,8 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
             extend the step duration to be like >2 sec or something
         hcm_wait_time (float):
             Time to wait after switching to high-current-mode.
-        dacs : str
-            Which group of DACs to play bias-steps on. Can be 'pos',
-            'neg', or 'both'
+        dacs : {'pos', 'neg', 'both'}
+            Which group of DACs to play bias-steps on.
         run_analysis (bool):
             If True, will attempt to run the analysis to calculate DC params
             and tau_eff. If this fails, the analysis object will
@@ -1140,22 +1124,20 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         show_plots : bool
             Show plot in addition to saving when running interactively. Default is False.
     """
-    if bgs is None:
-        bgs = cfg.dev.exp['active_bgs']
-    bgs = np.atleast_1d(bgs)
+    kw = deepcopy(cfg.dev.exp.get('biasstep_defaults', {}))
+    kw.update(**kwargs)
+    bscfg = BiasStepConfig(**kw)
+
+    if bscfg.bgs is None:
+        bscfg.bgs = cfg.dev.exp['active_bgs']
+    bscfg.bgs = np.atleast_1d(bscfg.bgs).astype(int)
 
     # Adds to account for steps that may be cut in analysis
-    nsteps += 4
+    bscfg.nsteps += 4
 
-    # Dumb way to get all run kwargs, but we probably want to save these in
-    # data object
-    run_kwargs = {
-        'bgs': bgs, 'step_voltage': step_voltage,
-        'step_duration': step_duration, 'nsteps': nsteps,
-        'high_current_mode': high_current_mode,
-        'hcm_wait_time': hcm_wait_time, 'run_analysis': run_analysis,
-        'analysis_kwargs': analysis_kwargs, 'channel_mask': channel_mask,
-    }
+    if bscfg.dc_voltage is not None:
+        for bg in bscfg.bgs:
+            S.set_tes_bias_bipolar(bg, dc_voltage)
 
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
@@ -1164,32 +1146,33 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
 
     try:
         dc_biases = initial_dc_biases
-        if high_current_mode:
+        if bscfg.high_current_mode:
             dc_biases = dc_biases / S.high_low_current_ratio
-            step_voltage /= S.high_low_current_ratio
+            bscfg.step_voltage /= S.high_low_current_ratio
             sdl.set_current_mode(S, bgs, 1)
-            S.log(f"Waiting {hcm_wait_time} sec after switching to hcm")
-            time.sleep(hcm_wait_time)
+            S.log(f"Waiting {bscfg.hcm_wait_time} sec after switching to hcm")
+            time.sleep(bscfg.hcm_wait_time)
 
-        bsa = BiasStepAnalysis(S, cfg, bgs, run_kwargs=run_kwargs)
+        bsa = BiasStepAnalysis(S, cfg, run_kwargs=asdict(bscfg))
 
         bsa.sid = sdl.stream_g3_on(
-            S, tag=g3_tag, channel_mask=channel_mask, downsample_factor=1,
-            filter_disable=True, subtype=stream_subtype, enable_compression=enable_compression
+            S, tag=bscfg.g3_tag, channel_mask=bscfg.channel_mask, downsample_factor=1,
+            filter_disable=True, subtype=bscfg.stream_subtype,
+            enable_compression=bscfg.enable_compression
         )
 
         bsa.start = time.time()
 
-        for bg in bgs:
-            if use_waveform:
+        for bg in bscfg.bgs:
+            if bscfg.use_waveform:
                 play_bias_steps_waveform(
-                    S, cfg, bg, step_duration, step_voltage,
-                    num_steps=nsteps
+                    S, cfg, bg, bscfg.step_duration, bscfg.step_voltage,
+                    num_steps=bscfg.nsteps
                 )
             else:
                 play_bias_steps_dc(
-                    S, cfg, bg, step_duration, step_voltage,
-                    num_steps=nsteps, dacs=dacs,
+                    S, cfg, bg, bscfg.step_duration, bscfg.step_voltage,
+                    num_steps=bscfg.nsteps, dacs=bscfg.dacs,
                 )
         bsa.stop = time.time()
 
@@ -1203,18 +1186,16 @@ def take_bias_steps(S, cfg, bgs=None, step_voltage=0.05, step_duration=0.05,
         S.set_downsample_factor(initial_ds_factor)
         S.set_filter_disable(initial_filter_disable)
 
-    if run_analysis:
+    if bscfg.run_analysis:
         S.log("Running bias step analysis")
         try:
-            if analysis_kwargs is None:
-                analysis_kwargs = {}
-            bsa.run_analysis(save=True, **analysis_kwargs)
-            if plot_rfrac:
+            bsa.run_analysis(save=True, **bscfg.analysis_kwargs)
+            if bscfg.plot_rfrac:
                 fig, ax = plot_Rfrac(bsa)
                 path = sdl.make_filename(S, 'bs_rfrac_summary.png', plot=True)
                 fig.savefig(path)
                 S.pub.register_file(path, 'bs_rfrac_summary', plot=True, format='png')
-                if not show_plots:
+                if not bscfg.show_plots:
                     plt.close(fig)
         except Exception:
             print(f"Bias step analysis failed with exception:")
