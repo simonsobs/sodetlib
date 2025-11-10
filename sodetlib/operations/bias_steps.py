@@ -988,20 +988,19 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 @dataclass
 class BiasStepConfig:
     bgs: Optional[list] = None
-    step_voltage: float = 0.05 # 0.01
-    #dc_voltage: float = 0.3
+    step_voltage: float = 0.05
     step_duration: float = 0.05
     nsteps: int = 20
     high_current_mode: bool = True
-    hcm_wait_time: float = 3. # 0
+    hcm_wait_time: float = 3.
     dacs: str = 'pos'
     use_waveform: bool = True
     plot_rfrac: bool = True
-    show_plots: bool = True # False
+    show_plots: bool = True
     run_analysis: bool = True
     channel_mask: Optional[np.ndarray] = None
     g3_tag: Optional[str] = None
-    stream_subtype: str = 'bias_steps' # 'bgmap'
+    stream_subtype: str = 'bias_steps'
     enable_compression: bool = False
     analysis_kwargs: Optional[dict] = None
 
