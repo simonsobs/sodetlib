@@ -281,7 +281,7 @@ class BiasStepAnalysis:
             Bias power computed for each channel (W)
         Si (array (float) shape (nchans)):
             Responsivity computed for each channel (1/V)
-        step_fit_tmin (float):
+        step_fit_tmin (array (float) shape (nchans)):
             Time after bias step to start fitting exponential (sec)
         step_fit_popts (array (float) of shape (nchans, 3)):
             Optimal fit parameters (A, tau, b) for the exponential fit of each
@@ -394,7 +394,7 @@ class BiasStepAnalysis:
             step_window (float):
                 Time after the bias step (in seconds) to use for the analysis.
             fit_tmin (float):
-                tmin used for the fit
+                DEPRECATED!! do not use.
             transition: (tuple, bool, optional)
                 DEPRECATED!! do not use.
             R0_thresh (float):
@@ -459,7 +459,7 @@ class BiasStepAnalysis:
                                             update_file=True)
 
 
-        self._fit_tau_effs(tmin=fit_tmin)
+        self._fit_tau_effs()
 
         if save:
             self.save()
@@ -752,11 +752,11 @@ class BiasStepAnalysis:
 
         Args:
             tmin: float
-                Amount of time after the step at which to start the fit
+                DEPRECATED!! do not use.
 
         Saves:
-            step_fit_tmin: float
-                tmin used for the fit
+            step_fit_tmin: np.ndarray
+                Array of shape (nchans) containing tmin used for each chan.
             step_fit_popts: np.ndarray
                 Array of shape (nchans, 3) containing popt for each chan.
             step_fit_pcovs: np.ndarray
@@ -769,6 +769,7 @@ class BiasStepAnalysis:
         nchans = len(self.am.signal)
         step_fit_popts = np.full((nchans, 3), np.nan)
         step_fit_pcovs = np.full((nchans, 3, 3), np.nan)
+        step_fit_tmin = np.full(nchans, np.nan)
 
         for bg in range(nbgs):
             rcs = np.where(self.bgmap == bg)[0]
@@ -779,6 +780,7 @@ class BiasStepAnalysis:
                 continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
+                tmin = ts[np.argmax(np.abs(resp))]
                 m = (ts > tmin) & (~np.isnan(resp))
                 offset_guess = np.nanmean(resp[np.abs(ts - ts[-1]) < 0.01])
                 bounds = [
@@ -793,10 +795,11 @@ class BiasStepAnalysis:
                     )
                     step_fit_popts[rc] = popt
                     step_fit_pcovs[rc] = pcov
+                    step_fit_tmin[rc] = tmin
                 except RuntimeError:
                     pass
 
-        self.step_fit_tmin = tmin
+        self.step_fit_tmin = step_fit_tmin
         self.step_fit_popts = step_fit_popts
         self.step_fit_pcovs = step_fit_pcovs
         self.tau_eff = step_fit_popts[:, 1]
@@ -839,7 +842,10 @@ def plot_step_fit(bsa, rc, ax=None, plot_all_steps=True):
 
     bg = bsa.bgmap[rc]
     ts = bsa.resp_times[bg]
-    m = ts > bsa.step_fit_tmin
+    try:
+        m = ts > bsa.step_fit_tmin[rc]
+    except TypeError:
+        m = ts > bsa.step_fit_tmin
     if plot_all_steps:
         for sig in bsa.step_resp[rc]:
             ax.plot(ts*1000, sig, alpha=0.1, color='grey')
