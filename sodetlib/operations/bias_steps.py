@@ -6,7 +6,7 @@ import sodetlib as sdl
 import matplotlib.pyplot as plt
 import scipy.optimize
 from sodetlib.operations import iv
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
 from copy import deepcopy
 
@@ -302,7 +302,6 @@ class BiasStepAnalysis:
         self._S = S
         self._cfg = cfg
 
-        self.bgs = run_kwargs.get("bgs", None)
         self.am = None
         self.edge_idxs = None
         self.transition_range = None
@@ -371,7 +370,8 @@ class BiasStepAnalysis:
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
             arc=None, base_dir='/data/so/timestreams', step_window=0.03, fit_tmin=1.5e-3,
-            transition=None, R0_thresh=30e-3, save=False, bg_map_file=None):
+            transition=None, R0_thresh=30e-3, save=False, bg_map_file=None, fit_tau=True,
+    ):
         """
         Runs the bias step analysis.
 
@@ -406,6 +406,8 @@ class BiasStepAnalysis:
             bg_map_file (optional, path):
                 If create_bg_map is false and this file is not None, use this file
                 to load the bg_map.
+            fit_tau (bool):
+                If True, perform the time constant fit. If False, skip this.
         """
         self._load_am(arc=arc, base_dir=base_dir)
         self._find_bias_edges()
@@ -458,8 +460,8 @@ class BiasStepAnalysis:
             self._cfg.dev.update_experiment({'bgmap_file': path},
                                             update_file=True)
 
-
-        self._fit_tau_effs()
+        if fit_tau:
+            self._fit_tau_effs()
 
         if save:
             self.save()
@@ -780,7 +782,7 @@ class BiasStepAnalysis:
                 continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
-                tmin = ts[np.argmax(np.abs(resp))]
+                tmin = np.max((0, ts[np.abs(resp) > 0.9*np.max(np.abs(resp))][-1]))
                 m = (ts > tmin) & (~np.isnan(resp))
                 offset_guess = np.nanmean(resp[np.abs(ts - ts[-1]) < 0.01])
                 bounds = [
