@@ -989,7 +989,8 @@ def plot_Rfrac(bsa, text_loc=(0.6, 0.8)):
 
 @dataclass
 class BiasStepConfig:
-    bgs: Optional[list] = None
+    bgs: Optional[float] = None
+    dc_voltage: float = None
     step_voltage: float = 0.05
     step_duration: float = 0.05
     nsteps: int = 20
@@ -1010,33 +1011,37 @@ class BiasStepConfig:
         if self.analysis_kwargs is None:
             self.analysis_kwargs = {}
 
+        if self.dacs not in ['pos', 'neg', 'both']:
+            raise ValueError(f'dacs={self.dacs} not in ["pos", "neg", "both"]')
 
 @dataclass
-class BGMapConfig:
-    bgs: Optional[list] = None
+class BgMapConfig(BiasStepConfig):
     dc_voltage: float = 0.3
     step_voltage: float = 0.01
-    step_duration: float = 0.05
-    nsteps: int = 20
-    high_current_mode: bool = True
     hcm_wait_time: float = 0
-    dacs: str = 'pos'
-    use_waveform: bool = True
     plot_rfrac: bool = False
-    show_plots: bool = True
-    run_analysis: bool = True
-    g3_tag: Optional[str] = None
     stream_subtype: str = 'bgmap'
-    enable_compression: bool = False
-    analysis_kwargs: Optional[dict] = None
 
     def __post_init__(self):
-        if self.analysis_kwargs is None:
-            self.analysis_kwargs = {}
+        super().__post_init__()
+
+        # Makes sure these kwargs are set by default unless otherwise
+        # specified
+        kw = {
+            'assignment_thresh': 0.3, 'create_bgmap': True,
+            'save_bg_map': True
+        }
+        kw.update(self.analysis_kwargs)
+        self.analysis_kwargs = kw
+
+    def get_bias_step_cfg(self):
+        return BiasStepConfig(
+            **{f.name: getattr(self, f.name) for f in fields(BiasStepConfig)}
+        )
 
 
 @sdl.set_action()
-def take_bgmap(S, cfg, **kwargs):
+def take_bgmap(S, cfg, **bgmap_pars):
     """
     Function to easily create a bgmap. This will set all bias group voltages
     to 0 (since this is best for generating the bg map), and run bias-steps
@@ -1046,32 +1051,32 @@ def take_bgmap(S, cfg, **kwargs):
     ---------
     take_bias_steps
     """
-    kw = deepcopy(cfg.dev.exp.get('bgmap_defaults',{}))
-    kw.update(**kwargs)
-    bgmcfg = BGMapConfig(**kw)
+    kw = deepcopy(cfg.dev.exp.get('bgmap_defaults', {}))
+    kw.update(bgmap_pars)
+    bgmap_cfg = BgMapConfig(**kw)
 
-    _analysis_kwargs = {
-        'create_bg_map': True, 'save_bg_map': True
-    }
-    bgmcfg.analysis_kwargs.update(_analysis_kwargs)
-    bsa = take_bias_steps(S, cfg, **asdict(bgmcfg))
+    if bgmap_cfg.bgs is None:
+        bgmap_cfg.bgs = cfg.dev..exp['active_bgs']
+    bgmap_cfg.bgs = np.atleast_1d(bgmap_cfg.bgs)
+
+    bsa = take_bias_steps(S, cfg, **asdict(bgmap_cfg))
 
     if hasattr(bsa, 'bgmap'):
         fig, ax = plot_bg_assignment(bsa)
         sdl.save_fig(S, fig, 'bg_assignments.png')
-        if bgmcfg.show_plots:
+        if bgmap_cfg.show_plots:
             plt.show()
         else:
             plt.close()
 
-    for bg in bgmcfg.bgs:
+    for bg in bgmap_cfg.bgs:
         S.set_tes_bias_bipolar(bg, 0.)
 
     return bsa
 
 
 @sdl.set_action()
-def take_bias_steps(S, cfg, **kwargs):
+def take_bias_steps(S, cfg, **bscfg_pars):
     """
     Takes bias step data at the specified DC voltage. Assumes bias lines
     are already in low-current mode (if they are in high-current this will
@@ -1132,12 +1137,12 @@ def take_bias_steps(S, cfg, **kwargs):
             Show plot in addition to saving when running interactively. Default is False.
     """
     kw = deepcopy(cfg.dev.exp.get('biasstep_defaults', {}))
-    kw.update(**kwargs)
+    kw.update(bscfg_pars)
     bscfg = BiasStepConfig(**kw)
 
     if bscfg.bgs is None:
         bscfg.bgs = cfg.dev.exp['active_bgs']
-    bscfg.bgs = np.atleast_1d(bscfg.bgs).astype(int)
+    bscfg.bgs = np.atleast_1d(bscfg.bgs)
 
     # Adds to account for steps that may be cut in analysis
     bscfg.nsteps += 4
@@ -1156,7 +1161,7 @@ def take_bias_steps(S, cfg, **kwargs):
         if bscfg.high_current_mode:
             dc_biases = dc_biases / S.high_low_current_ratio
             bscfg.step_voltage /= S.high_low_current_ratio
-            sdl.set_current_mode(S, bgs, 1)
+            sdl.set_current_mode(S, bscfg.bgs, 1)
             S.log(f"Waiting {bscfg.hcm_wait_time} sec after switching to hcm")
             time.sleep(bscfg.hcm_wait_time)
 
