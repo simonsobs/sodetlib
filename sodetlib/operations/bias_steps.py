@@ -1056,7 +1056,7 @@ def take_bgmap(S, cfg, **bgmap_pars):
     bgmap_cfg = BgMapConfig(**kw)
 
     if bgmap_cfg.bgs is None:
-        bgmap_cfg.bgs = cfg.dev..exp['active_bgs']
+        bgmap_cfg.bgs = cfg.dev.exp['active_bgs']
     bgmap_cfg.bgs = np.atleast_1d(bgmap_cfg.bgs)
 
     bsa = take_bias_steps(S, cfg, **asdict(bgmap_cfg))
