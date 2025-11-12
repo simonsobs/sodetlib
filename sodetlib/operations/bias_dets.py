@@ -57,7 +57,7 @@ def bias_to_rfrac_range(
         iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
 
     if rfrac_range is None:
-        rfrac_range = cfg.dev.exp.get('rfrac_range', [0.3, 0.6])
+        rfrac_range = cfg.dev.exp['rfrac_range']
 
     biases = S.get_tes_bias_bipolar_array()
 
@@ -175,7 +175,7 @@ def bias_to_rfrac(S, cfg, rfrac=None, bias_groups=None, iva=None,
         iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
 
     if rfrac is None:
-        rfrac = cfg.dev.exp.get('rfrac', 0.5)
+        rfrac = cfg.dev.exp['rfrac']
 
     biases = S.get_tes_bias_bipolar_array()
 

@@ -1051,7 +1051,7 @@ def take_bgmap(S, cfg, **bgmap_pars):
     ---------
     take_bias_steps
     """
-    kw = deepcopy(cfg.dev.exp.get('bgmap_defaults', {}))
+    kw = deepcopy(cfg.dev.exp['bgmap_defaults'])
     kw.update(bgmap_pars)
     bgmap_cfg = BgMapConfig(**kw)
 
@@ -1136,7 +1136,7 @@ def take_bias_steps(S, cfg, **bscfg_pars):
         show_plots : bool
             Show plot in addition to saving when running interactively. Default is False.
     """
-    kw = deepcopy(cfg.dev.exp.get('biasstep_defaults', {}))
+    kw = deepcopy(cfg.dev.exp['biasstep_defaults'])
     kw.update(bscfg_pars)
     bscfg = BiasStepConfig(**kw)
 
