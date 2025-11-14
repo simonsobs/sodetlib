@@ -1028,7 +1028,7 @@ class BgMapConfig(BiasStepConfig):
         # Makes sure these kwargs are set by default unless otherwise
         # specified
         kw = {
-            'assignment_thresh': 0.3, 'create_bgmap': True,
+            'assignment_thresh': 0.3, 'create_bg_map': True,
             'save_bg_map': True
         }
         kw.update(self.analysis_kwargs)
@@ -1149,7 +1149,7 @@ def take_bias_steps(S, cfg, **bscfg_pars):
 
     if bscfg.dc_voltage is not None:
         for bg in bscfg.bgs:
-            S.set_tes_bias_bipolar(bg, dc_voltage)
+            S.set_tes_bias_bipolar(bg, bscfg.dc_voltage)
 
     initial_ds_factor = S.get_downsample_factor()
     initial_filter_disable = S.get_filter_disable()
