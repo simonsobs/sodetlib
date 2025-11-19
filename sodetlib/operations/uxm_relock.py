@@ -381,7 +381,8 @@ def uxm_relock(
     sdl.set_session_data(S, 'timestamps', summary['timestamps'])
     am, summary['noise'] = sdl.noise.take_noise(S, cfg, 30,
                                                 show_plot=show_plots,
-                                                save_plot=True)
+                                                save_plot=True,
+                                                g3_tag='post_relock')
     summary['noise']['am'] = am
 
     sdl.set_session_data(S, 'noise', {
