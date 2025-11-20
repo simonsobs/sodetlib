@@ -9,4 +9,3 @@ matplotlib
 lmfit
 pyfftw
 pandas
-seaborn
