@@ -102,11 +102,8 @@ band_defaults = {
     # Gradient Descent Parameters
     "gradientDescentMaxIters": 100,
     "gradientDescentAverages": 2, 
-    "gradientDescentGain": 0.001,
     "gradientDescentConvergeHz": 500,
     "gradientDescentStepHz": 5000,
-    "gradientDescentMomentum": 1,
-    "gradientDescentBeta": 0.1,
 
     # Fixed tones
     "fixed_tones": {"enabled": False, "freq_offsets": [], "channels": [], "tone_power": 0},
