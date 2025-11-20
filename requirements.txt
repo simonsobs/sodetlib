@@ -1,7 +1,6 @@
-jupyterlab
 tqdm
 setuptools >= 56.2.0
-ipykernel>=5.5.4
+ipython
 PyYAML
 numpy
 scipy
