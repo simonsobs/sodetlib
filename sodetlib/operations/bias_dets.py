@@ -7,84 +7,6 @@ from sodetlib.operations import bias_steps, iv
 np.seterr(all="ignore")
 
 
-sdl.set_action()
-def bias_to_rfrac_range(
-        S, cfg, rfrac_range=(0.3, 0.6), bias_groups=None, iva=None,
-        overbias=True, Rn_range=(5e-3, 12e-3),
-        math_only=False):
-    """
-    Biases detectors to transition given an rfrac range. This function will choose
-    TES bias voltages for each bias-group that maximize the number of channels
-    that will be placed in the allowable rfrac-range.
-
-    Args
-    ----
-    S : SmurfControl
-        Pysmurf instance
-    cfg : DetConfig
-        Detconfig instance
-    rfrac_range : tuple
-        Range of allowable rfracs
-    bias_groups : list, optional
-        Bias groups to bias. Defaults to all of them.
-    iva : IVAnalysis, optional
-        IVAnalysis object. If this is passed, will use it to determine
-        bias voltages. Defaults to using value in device cfg.
-    overbias_voltage : float
-        Voltage to use to overbias detectors
-    overbias_wait : float
-        Time (sec) to wait at overbiased voltage
-    Rn_range : tuple
-        A "reasonable" range for the TES normal resistance. This will
-        be cut on when determining which IV's should be used to determine
-        the optimal bias-voltage.
-    math_only : bool
-        If this is set, will not actually over-bias voltages, and will
-        just return the target biases.
-
-    Returns
-    ----------
-    biases : np.ndarray
-        Array of Smurf bias voltages. Note that this includes all smurf
-        bias lines (all 15 of them), but only voltages for the requested
-        bias-groups will have been modified.
-    """
-    if bias_groups is None:
-        bias_groups = cfg.dev.exp['active_bgs']
-    bias_groups = np.atleast_1d(bias_groups)
-
-    if iva is None:
-        iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
-
-    biases = S.get_tes_bias_bipolar_array()
-
-    Rfrac = (iva.R.T / iva.R_n).T
-    in_range = (rfrac_range[0] < Rfrac) & (Rfrac < rfrac_range[1])
-
-    for bg in bias_groups:
-        m = (iva.bgmap == bg)
-        m = m & (Rn_range[0] < iva.R_n) & (iva.R_n < Rn_range[1])
-
-        if not m.any():
-            continue
-
-        nchans_in_range = np.sum(in_range[m, :], axis=0)
-        target_idx = np.nanargmax(nchans_in_range)
-        biases[bg] = iva.v_bias[target_idx]
-
-    if math_only:
-        return biases
-
-    S.log(f"Target biases: ")
-    for bg in bias_groups:
-        S.log(f"BG {bg}: {biases[bg]:.2f}")
-
-    if overbias:
-        sdl.overbias_dets(S, cfg, bias_groups=bias_groups)
-    S.set_tes_bias_bipolar_array(biases)
-
-    return biases
-
 def bias_to_volt_arr(S, cfg, biases, bias_groups=None, overbias=True):
     """
     Biases detectors using an array of voltages.
@@ -127,10 +49,14 @@ def bias_to_volt_arr(S, cfg, biases, bias_groups=None, overbias=True):
 
 
 sdl.set_action()
-def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
+def bias_to_rfrac(S, cfg, rfrac=None, bias_groups=None, iva=None,
                   overbias=True, Rn_range=(5e-3, 12e-3), math_only=False):
     """
-    Biases detectors to a specified Rfrac value
+    Biases detectors in their superconducting transitions to a specified fraction
+    of their normal resistance ("rfrac"). This function will choose TES bias
+    voltages for each bias-group that either (a) are the median bias voltage
+    achieving the specified rfrac value, or (b) maximizes the number of channels
+    that will be placed in the allowable rfrac range.
 
     Args
     ----
@@ -138,10 +64,10 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         Pysmurf instance
     cfg : DetConfig
         Detconfig instance
-    rfrac : float
-        Target rfrac. Defaults to 0.5
+    rfrac : float or 2-tuple
+        If float, target rfrac value. If tuple, range of allowable rfracs.
     bias_groups : list, optional
-        Bias groups to bias. Defaults to all of them.
+        Bias groups to bias. Defaults to active bgs in device cfg.
     iva : IVAnalysis, optional
         IVAnalysis object. If this is passed, will use it to determine
         bias voltages. Defaults to using value in device cfg.
@@ -151,7 +77,7 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         Time (sec) to wait at overbiased voltage
     Rn_range : tuple
         A "reasonable" range for the TES normal resistance. This will
-        be cut on when determining which IV's should be used to determine
+        be cut on when determining which IVs should be used to determine
         the optimal bias-voltage.
     math_only : bool
         If this is set, will not actually over-bias voltages, and will
@@ -171,9 +97,19 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     if iva is None:
         iva = IVAnalysis.load(cfg.dev.exp['iv_file'])
 
+    if rfrac is None:
+        rfrac = cfg.dev.exp['rfrac']
+    rfrac = np.atleast_1d(rfrac)
+
+    if len(rfrac) not in [1,2]:
+        raise ValueError(
+            f"`rfrac` specified as {rfrac} but must be either float or 2-tuple")
     biases = S.get_tes_bias_bipolar_array()
 
     Rfrac = (iva.R.T / iva.R_n).T
+    if len(rfrac) == 2:
+        in_range = (rfrac[0] < Rfrac) & (Rfrac < rfrac[1])
+
     for bg in bias_groups:
         m = (iva.bgmap == bg)
         m = m & (Rn_range[0] < iva.R_n) & (iva.R_n < Rn_range[1])
@@ -181,11 +117,16 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
         if not m.any():
             continue
 
-        target_biases = []
-        for rc in np.where(m)[0]:
-            target_idx = np.nanargmin(np.abs(Rfrac[rc] - rfrac))
-            target_biases.append(iva.v_bias[target_idx])
-        biases[bg] = np.median(target_biases)
+        if len(rfrac) == 1:
+            target_biases = []
+            for rc in np.where(m)[0]:
+                target_idx = np.nanargmin(np.abs(Rfrac[rc] - rfrac[0]))
+                target_biases.append(iva.v_bias[target_idx])
+            biases[bg] = np.median(target_biases)
+        else:
+            nchans_in_range = np.sum(in_range[m, :], axis=0)
+            target_idx = np.nanargmax(nchans_in_range)
+            biases[bg] = iva.v_bias[target_idx]
 
     if math_only:
         return biases
@@ -200,6 +141,11 @@ def bias_to_rfrac(S, cfg, rfrac=0.5, bias_groups=None, iva=None,
     S.set_tes_bias_bipolar_array(biases)
 
     return biases
+
+
+bias_to_rfrac_range = bias_to_rfrac
+
+
 
 sdl.set_action()
 def biasstep_rebias(
@@ -603,11 +549,3 @@ def biasstep_rebias(
 
 
     return bsa_final,vbias_estimate_final
-
-
-
-
-
-
-
-

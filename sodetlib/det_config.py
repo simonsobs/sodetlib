@@ -49,6 +49,12 @@ exp_defaults = {
     # Dict of device-specific default params to use for take_iv
     'iv_defaults': {},
 
+    # Dict of device-specific default params to use for take_bgmap
+    'bgmap_defaults': {},
+
+    # Dict of device-specific default params to use for take_bias_steps
+    'biasstep_defaults': {},
+
     # Amp stuff
     "amps_to_bias": ['hemt', 'hemt1', 'hemt2', '50k', '50k1', '50k2'],
     "amp_enable_wait_time": 10.0, "amp_step_wait_time": 0.2,
@@ -87,9 +93,10 @@ exp_defaults = {
 
     # Overbiasing
     'overbias_wait': 2.0,
+    'overbias_sleep_time_sec': 300,
 
-    # overbias wait time
-    'overbias_sleep_time_sec': 300
+    # Biasing
+    'rfrac':[0.3, 0.6],
 }
 band_defaults = {
     # General
