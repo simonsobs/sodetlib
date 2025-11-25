@@ -44,8 +44,8 @@ class Config:
     dry: bool
         If true, will do a dry-run of the data-deletion without deleting any
         files. Logs will be printed for all of the files that would be deleted.
-    verbose: bool
-        If true, logs will be more verbose.
+    force_accept: bool
+        If True, will run data-deletion without prompting for user confirmation.
     delete_smurf_data_after_days: int
         Days after which smurf data will be deleted.
     delete_timestream_data_after_days: int
@@ -54,6 +54,10 @@ class Config:
         Days after which core-dumps will be deleted.
     delete_logs_after_days: int
         Days after which log directories will be deleted.
+    log_level: str, int
+        Log level to use when writing logs.
+    log_file: str
+        Path to log file.
     """
     dry: bool = False
     force_accept: bool = False
