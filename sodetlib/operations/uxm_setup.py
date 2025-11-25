@@ -697,7 +697,10 @@ def uxm_setup(S, cfg, bands=None, show_plots=True, update_cfg=True,
         S.set_mode_ac()
 
     for band in bands:
-        S.set_synthesis_scale(band, exp['synthesis_scale'])
+        scale = cfg.dev.bands.get('synthesis_scale')
+        if scale is None:
+            scale = exp['synthesis_scale']
+        S.set_synthesis_scale(band, scale)
 
     summary = {}
     summary['timestamps'] = []
