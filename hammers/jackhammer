@@ -257,7 +257,7 @@ def dump_docker_logs(slots, dump_rogue_tree=False):
     if dump_rogue_tree:
         dump_script = '/sodetlib/scripts/dump_rogue_state.py'
         for slot in slots:
-            if check_server_connection(9000 + 2 * slot, retry=False):
+            if check_server_connection(9000 + 3 * slot, retry=False):
                 out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
                 cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
                 util_run('python3', args=[dump_script, str(slot), out_file],
@@ -488,7 +488,7 @@ def hammer_func(args):
     # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
     for slot in slots:
-        check_server_connection(9000 + 2 * slot, retry=True)
+        check_server_connection(9000 + 3 * slot, retry=True)
 
     if reboot and not args.skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
@@ -577,7 +577,7 @@ def gui_func(args):
             slot = args.slot
         else:
             slot = available_slots[0]
-        server_port = 9000 + 2*slot
+        server_port = 9000 + 3*slot
 
     sodetlib_root = os.environ.get('SODETLIB_ROOT', '/home/cryo/sodetlib')
     script_path = os.path.join(sodetlib_root, 'hammers', 'run_gui.sh')

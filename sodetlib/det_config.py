@@ -661,7 +661,7 @@ class DetConfig:
         if dump_configs is None:
             dump_configs = self.dump
         if server_port is None:
-            server_port = 9000 + 2 * self.slot
+            server_port = 9000 + 3 * self.slot
 
         # Pysmurf publisher will check this to determine publisher id.
         os.environ['SMURFPUB_ID'] = smurfpub_id
