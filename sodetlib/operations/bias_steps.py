@@ -784,6 +784,8 @@ class BiasStepAnalysis:
                 resp = self.mean_resp[rc]
                 tmin = np.max((0, ts[np.abs(resp) > 0.9*np.max(np.abs(resp))][-1]))
                 m = (ts > tmin) & (~np.isnan(resp))
+                if not m.any():
+                  continue
                 offset_guess = np.nanmean(resp[np.abs(ts - ts[-1]) < 0.01])
                 bounds = [
                     (-np.inf, 0, -np.inf),
