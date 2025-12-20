@@ -782,7 +782,7 @@ class BiasStepAnalysis:
                 continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
-                tmin_m = np.abs(resp) > 0.9*np.max(np.abs(resp))
+                tmin_m = np.abs(resp) > 0.9*np.nanmax(np.abs(resp))
                 if not tmin_m.any():
                     continue
                 tmin = np.max((0, ts[tmin_m][-1]))
