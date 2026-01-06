@@ -78,7 +78,7 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
     return False
 
 @sdl.set_action()
-def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
+def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, opt_args={}):
     """
     Initial setup for 50k and hemt amplifiers. For C04/C05 cryocards, will first
     check if the drain voltages are set. Then checks if drain
@@ -105,6 +105,8 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
         If true, will update the device cfg and save the file.
     enable_300K_LNA:
         If true, will turn on the 300K LNAs.
+    opt_args : dict (optional)
+        Extra kwargs to pass to the `find_gate_voltage` calls.
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
@@ -153,6 +155,9 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
             if Vd != exp[f"amp_{amp}_drain_volt"]:
                 S.set_amp_drain_voltage(amp, exp[f"amp_{amp}_drain_volt"]) 
 
+    # extra args for optimisation
+    if "wait_time" not in opt_args:
+        opt_args["wait_time"] = exp['amp_step_wait_time']
     # Check drain currents / scan gate voltages
     delta_drain_currents = dict()
     for amp in amp_list:
@@ -161,8 +166,8 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
             S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
             S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'],override=True)
             success = find_gate_voltage(
-                S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
-                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
+                S, exp[f"amp_{amp}_drain_current"], amp,
+                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'], **opt_args
             )
             if not success:
                 sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
