@@ -65,10 +65,7 @@ def find_gate_voltage(S, target_Id, amp_name, vg_min=-2.0, vg_max=0,
                   f"Unable to change {amp_name}_drain_current to desired value", False)
             return False
 
-        if 'hemt' in amp_name:
-            S.set_amp_gate_voltage(amp_name, Vg_next, override=True)
-        else:
-            S.set_amp_gate_voltage(amp_name, Vg_next, override=True)
+        S.set_amp_gate_voltage(amp_name, Vg_next, override=True)
 
         time.sleep(wait_time)
 
@@ -94,6 +91,7 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
          - amp_{amp}_drain_current (float): Target drain current (mA)
          - amp_{amp}_drain_current_tolerance (float): Tolerance for drain current (mA)
          - amp_{amp}_drain_volt (float) : Drain voltage (V). C04/C05 cryocards only.
+         - amp_{amp}_gate_volt_{min, max} : Limits on gate voltage (V).
 
     Args
     -----
@@ -162,7 +160,8 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
             S.set_amp_gate_voltage(amp, exp[f'amp_{amp}_init_gate_volt'],override=True)
             success = find_gate_voltage(
                 S, exp[f"amp_{amp}_drain_current"], amp, wait_time=exp['amp_step_wait_time'],
-                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance']
+                id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'],
+                vg_min=exp[f'amp_{amp}_gate_volt_min'], vg_max=exp[f'amp_{amp}_gate_volt_max'],
             )
             if not success:
                 sdl.pub_ocs_log(S, f"Failed determining {amp} gate voltage")
