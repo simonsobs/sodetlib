@@ -5,8 +5,7 @@ system, and performing initial data analysis for detector characterization.
 
 ## Installation
 
-Instructions for setting up a SMuRF server can be found on the
-[SO Wiki].
+Instructions for setting up a SMuRF server can be found on [Confluence].
 
 For offline analysis of sodetlib data files, you can also install sodetlib
 by cloning this repo and running:
@@ -15,7 +14,7 @@ by cloning this repo and running:
 pip3 install .
 ```
 
-[SO Wiki]: http://simonsobservatory.wikidot.com/smurf-software-setup
+[Confluence]: https://simonsobs.atlassian.net/wiki/spaces/PRO/pages/11041372/Smurf+Software+Setup
 
 ## Documentation
 
