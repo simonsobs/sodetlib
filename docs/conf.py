@@ -15,6 +15,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
+from sodetlib import __version__ as sodetlib_version
 
 # Mock imports that we don't want to install for builds
 
@@ -33,8 +34,6 @@ from unittest import mock
 for m in autodoc_mock_imports:
     sys.modules[m] = mock.Mock()
 
-from sodetlib._version import get_versions
-
 # -- Project information -----------------------------------------------------
 
 project = 'SODETLIB'
@@ -42,9 +41,9 @@ copyright = '2018-2020, Simons Observatory DAQ Group'
 author = 'Simons Observatory DAQ Group'
 
 # The short X.Y version.
-version = get_versions()['version']
+version = sodetlib_version
 # The full version, including alpha/beta/rc tags.
-release = version
+release = sodetlib_version
 
 
 # -- General configuration ---------------------------------------------------
