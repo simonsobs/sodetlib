@@ -9,6 +9,7 @@ import time
 import os
 import threading
 from typing import List, Literal
+from ocs.ocs_client import OCSClient
 
 
 class TermColors:
@@ -50,6 +51,7 @@ with open(sys_config_file, 'r') as stream:
     sys_config = yaml.safe_load(stream)
 
 use_hostmanager: bool = sys_config.get('use_hostmanager', False)
+hm_instance_id: str = sys_config.get('hostmanager_instance_id')
 docker_compose_cmd: str = sys_config.get('docker_compose_command', 'docker compose')
 
 def get_pysmurf_controller_docker_service(slot: int) -> str:
@@ -404,6 +406,11 @@ def hammer_func(args):
     reboot = not (args.no_reboot)
     all_slots = len(slots) == len(sys_config['slot_order'])
 
+    if use_hostmanager:
+        cprint("Bringing down all agents via hostmanager", style=TermColors.HEADER)
+        hm = OCSClient(hm_instance_id)
+        hm.update(requests=[('all', 'down')])
+
     reboot_str = "hard" if reboot else "soft"
     cmd = input(f"You are {reboot_str}-resetting slots {slots}. "
                 "Are you sure (y/n)? ")
@@ -483,6 +490,10 @@ def hammer_func(args):
         cprint("Configuring pysmurf", style=TermColors.HEADER)
         setup_smurfs(slots)
         print("Finished configuring pysmurf!")
+
+    if use_hostmanager:
+        cprint("Bringing up all agents via hostmanager", style=TermColors.HEADER)
+        hm.update(requests=[('all', 'up')])
 
     # Enters into an ipython notebook for the first specified slot   
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
