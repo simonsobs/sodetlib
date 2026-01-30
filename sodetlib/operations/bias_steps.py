@@ -784,8 +784,8 @@ class BiasStepAnalysis:
             for rc in rcs:
                 resp = self.mean_resp[rc]
                 if tmin is None:
-                    resp *= self.polarity[rc] * -1
-                    tmin_m = resp > 0.9 * np.nanmax(resp)
+                    sgn = self.polarity[rc] * -1
+                    tmin_m = sgn*resp > 0.9 * np.nanmax(sgn*resp)
                     if not tmin_m.any():
                         continue
                     fit_tmin = np.max((0, ts[tmin_m][-1]))
