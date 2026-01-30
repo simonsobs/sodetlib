@@ -61,22 +61,30 @@ exp_defaults = {
 
     "amp_50k_init_gate_volt": -0.5, "amp_50k_drain_current": 15.0,
     "amp_50k_gate_volt": None, "amp_50k_drain_current_tolerance": 0.2,
+    "amp_50k_gate_volt_min": -1, "amp_50k_gate_volt_max": 1,
     "amp_hemt_init_gate_volt": -1.0, "amp_hemt_drain_current": 8.0,
     "amp_hemt_gate_volt": None, "amp_hemt_drain_current_tolerance": 0.2,
+    "amp_hemt_gate_volt_min": -2, "amp_hemt_gate_volt_max": 0,
 
     "amp_50k1_init_gate_volt": -0.5, "amp_50k1_drain_current": 15.0,
     "amp_50k1_gate_volt": None, "amp_50k1_drain_current_tolerance": 0.2,
     "amp_50k1_drain_volt": 4,
+    "amp_50k1_gate_volt_min": -1, "amp_50k1_gate_volt_max": 1,
+
     "amp_50k2_init_gate_volt": -0.5, "amp_50k2_drain_current": 15.0,
     "amp_50k2_gate_volt": None, "amp_50k2_drain_current_tolerance": 0.2,
     "amp_50k2_drain_volt": 4,
+    "amp_50k2_gate_volt_min": -1, "amp_50k2_gate_volt_max": 1,
 
     "amp_hemt1_init_gate_volt": -0.8, "amp_hemt1_drain_current": 8.0,
     "amp_hemt1_gate_volt": None, "amp_hemt1_drain_current_tolerance": 0.2,
     "amp_hemt1_drain_volt": 0.6,
+    "amp_hemt1_gate_volt_min": -2, "amp_hemt1_gate_volt_max": 0,
+
     "amp_hemt2_init_gate_volt": -0.8, "amp_hemt2_drain_current": 8.0,
     "amp_hemt2_gate_volt": None, "amp_hemt2_drain_current_tolerance": 0.2,
     "amp_hemt2_drain_volt": 0.6,
+    "amp_hemt2_gate_volt_min": -2, "amp_hemt2_gate_volt_max": 0,
 
     # Find freq
     'res_amp_cut': 0.01, 'res_grad_cut': 0.01,
