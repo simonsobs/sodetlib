@@ -768,8 +768,8 @@ class BiasStepAnalysis:
             tau_eff: np.ndarray
                 Array of shape (nchans) contianing tau_eff for each chan.
         """
-        nbgs = len(self.am.biases)
-        nchans = len(self.am.signal)
+        nbgs = len(self.resp_times)
+        nchans = len(self.channels)
         step_fit_popts = np.full((nchans, 3), np.nan)
         step_fit_pcovs = np.full((nchans, 3, 3), np.nan)
         step_fit_tmin = np.full(nchans, np.nan)
@@ -782,13 +782,16 @@ class BiasStepAnalysis:
             if not len(ts[~np.isnan(ts)]):
                 continue
             for rc in rcs:
-                resp = self.mean_resp[rc] * self.polarity[rc] * -1
+                resp = self.mean_resp[rc]
                 if tmin is None:
+                    resp *= self.polarity[rc] * -1
                     tmin_m = resp > 0.9 * np.nanmax(resp)
                     if not tmin_m.any():
                         continue
-                    tmin = np.max((0, ts[tmin_m][-1]))
-                m = (ts > tmin) & (~np.isnan(resp))
+                    fit_tmin = np.max((0, ts[tmin_m][-1]))
+                else:
+                    fit_tmin = tmin
+                m = (ts > fit_tmin) & (~np.isnan(resp))
                 if not m.any():
                   continue
                 offset_guess = np.nanmean(resp[np.abs(ts - ts[-1]) < 0.01])
@@ -804,7 +807,7 @@ class BiasStepAnalysis:
                     )
                     step_fit_popts[rc] = popt
                     step_fit_pcovs[rc] = pcov
-                    step_fit_tmin[rc] = tmin
+                    step_fit_tmin[rc] = fit_tmin
                 except RuntimeError:
                     pass
 
