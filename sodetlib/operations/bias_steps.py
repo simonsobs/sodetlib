@@ -582,8 +582,8 @@ class BiasStepAnalysis:
         bgmap[m] = -1
 
         # Calculate the sign of each channel
-        self.polarity = np.ones(self.nchans, dtype=int)
-        for i in range(self.nchans):
+        self.polarity = np.ones(nchans, dtype=int)
+        for i in range(nchans):
             self.polarity[i] = np.sign(bg_corr[i, bgmap[i]])
 
         self.bg_corr = normalized_bg_corr
