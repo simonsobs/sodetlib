@@ -2,6 +2,8 @@
 sodetlib
 ========
 
+| |pypi| |versions| |license| |docs|
+
 This repository contains tools for controlling the Simons Observatory readout
 system, and performing initial data analysis for detector characterization.
 
@@ -44,3 +46,19 @@ This project is licensed under the BSD 2-Clause License - see the `LICENSE`_
 file for details.
 
 .. _`LICENSE`: LICENSE
+
+
+.. |pypi| image:: https://img.shields.io/pypi/v/sodetlib
+    :target: https://pypi.org/project/sodetlib/
+    :alt: PyPI Package
+
+.. |versions| image:: https://img.shields.io/pypi/pyversions/sodetlib
+    :alt: PyPI - Python Version
+
+.. |license| image:: https://img.shields.io/pypi/l/sodetlib
+    :target: LICENSE
+    :alt: PyPI - License
+
+.. |docs| image:: https://readthedocs.org/projects/sodetlib/badge/?version=latest
+    :target: https://sodetlib.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
