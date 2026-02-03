@@ -1,4 +1,4 @@
-# SODETLIB
+# sodetlib
 
 This repository contains tools for controlling the Simons Observatory readout
 system, and performing initial data analysis for detector characterization.
@@ -11,23 +11,30 @@ For offline analysis of sodetlib data files, you can also install sodetlib
 by cloning this repo and running:
 
 ```
-python -m pip install -r requirements.txt
-python -m pip install .
+$ python -m pip install -r requirements.txt
+$ python -m pip install .
 ```
 
 [Confluence]: https://simonsobs.atlassian.net/wiki/spaces/PRO/pages/11041372/Smurf+Software+Setup
 
 ## Documentation
 
-Sodetlib documentation is hosted on [ReadTheDocs].
+The sodetlib documentation can be built using Sphinx. Once sodetlib and its
+dependencies are installed run:
 
-[ReadTheDocs]: https://sodetlib.readthedocs.io/en/latest/
+```
+$ cd docs/
+$ make html
+```
+
+The documentation is also hosted on [Read the Docs].
+
+[Read the Docs]: https://sodetlib.readthedocs.io/en/latest/
 
 ## Contributing
 
-Contributions to SODETLIB are very welcome!
-Pull requests must be approved by one member of the simonsobs team before being
-merged.
+Contributions are very welcome! Pull requests must be approved by one member
+of the simonsobs team before being merged.
 
 ## Licence
 
