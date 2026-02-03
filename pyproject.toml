@@ -8,8 +8,21 @@ build-backend = "hatchling.build"
 [project]
 name = "sodetlib"
 dynamic = ["version"]
-description = "SODETLIB"
+description = "Simons Observatory detector readout library."
 readme = "README.md"
+license = "BSD-2-Clause"
+requires-python = ">=3.8"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
 dependencies = [
     "lmfit",
     "matplotlib",
@@ -22,6 +35,12 @@ dependencies = [
 
 [project.scripts]
 jackhammer = "sodetlib.hammers.jackhammer:main"
+
+[project.urls]
+"Bug Tracker" = "https://github.com/simonsobs/sodetlib/issues"
+Documentation = "https://sodetlib.readthedocs.io"
+Homepage = "https://github.com/simonsobs/sodetlib"
+"Source Code" = "https://github.com/simonsobs/sodetlib"
 
 [tool.hatch.version]
 source = "vcs"
