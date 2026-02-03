@@ -369,7 +369,7 @@ class BiasStepAnalysis:
 
     def run_analysis(
             self, create_bg_map=False, assignment_thresh=0.3, save_bg_map=True,
-            arc=None, base_dir='/data/so/timestreams', step_window=0.03, fit_tmin=1.5e-3,
+            arc=None, base_dir='/data/so/timestreams', step_window=0.03, fit_tmin=None,
             transition=None, R0_thresh=30e-3, save=False, bg_map_file=None, fit_tau=True,
     ):
         """
@@ -394,7 +394,7 @@ class BiasStepAnalysis:
             step_window (float):
                 Time after the bias step (in seconds) to use for the analysis.
             fit_tmin (float):
-                DEPRECATED!! do not use.
+                tmin used for the fit. If left as None, will be computed dynamically.
             transition: (tuple, bool, optional)
                 DEPRECATED!! do not use.
             R0_thresh (float):
@@ -461,7 +461,7 @@ class BiasStepAnalysis:
                                             update_file=True)
 
         if fit_tau:
-            self._fit_tau_effs()
+            self._fit_tau_effs(tmin=fit_tmin)
 
         if save:
             self.save()
@@ -582,8 +582,8 @@ class BiasStepAnalysis:
         bgmap[m] = -1
 
         # Calculate the sign of each channel
-        self.polarity = np.ones(self.nchans, dtype=int)
-        for i in range(self.nchans):
+        self.polarity = np.ones(nchans, dtype=int)
+        for i in range(nchans):
             self.polarity[i] = np.sign(bg_corr[i, bgmap[i]])
 
         self.bg_corr = normalized_bg_corr
@@ -748,13 +748,14 @@ class BiasStepAnalysis:
 
         return R0, I0, Pj, Si
 
-    def _fit_tau_effs(self, tmin=1.5e-3, weight_exp=0.3):
+    def _fit_tau_effs(self, tmin=None, weight_exp=0.3):
         """
         Fits mean step responses to exponential
 
         Args:
             tmin: float
-                DEPRECATED!! do not use.
+                Amount of time after the step at which to start the fit.
+                If left as None, this will be computed dynamically.
 
         Saves:
             step_fit_tmin: np.ndarray
@@ -767,8 +768,8 @@ class BiasStepAnalysis:
             tau_eff: np.ndarray
                 Array of shape (nchans) contianing tau_eff for each chan.
         """
-        nbgs = len(self.am.biases)
-        nchans = len(self.am.signal)
+        nbgs = len(self.resp_times)
+        nchans = len(self.channels)
         step_fit_popts = np.full((nchans, 3), np.nan)
         step_fit_pcovs = np.full((nchans, 3, 3), np.nan)
         step_fit_tmin = np.full(nchans, np.nan)
@@ -782,11 +783,15 @@ class BiasStepAnalysis:
                 continue
             for rc in rcs:
                 resp = self.mean_resp[rc]
-                tmin_m = np.abs(resp) > 0.9*np.nanmax(np.abs(resp))
-                if not tmin_m.any():
-                    continue
-                tmin = np.max((0, ts[tmin_m][-1]))
-                m = (ts > tmin) & (~np.isnan(resp))
+                if tmin is None:
+                    sgn = self.polarity[rc] * -1
+                    tmin_m = sgn*resp > 0.9 * np.nanmax(sgn*resp)
+                    if not tmin_m.any():
+                        continue
+                    fit_tmin = np.max((0, ts[tmin_m][-1]))
+                else:
+                    fit_tmin = tmin
+                m = (ts > fit_tmin) & (~np.isnan(resp))
                 if not m.any():
                   continue
                 offset_guess = np.nanmean(resp[np.abs(ts - ts[-1]) < 0.01])
@@ -802,7 +807,7 @@ class BiasStepAnalysis:
                     )
                     step_fit_popts[rc] = popt
                     step_fit_pcovs[rc] = pcov
-                    step_fit_tmin[rc] = tmin
+                    step_fit_tmin[rc] = fit_tmin
                 except RuntimeError:
                     pass
 
