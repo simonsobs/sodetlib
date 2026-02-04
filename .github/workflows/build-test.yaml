@@ -3,7 +3,7 @@ name: Build and Test Wheel
 
 on:
   push:
-    #branches: [ main ]
+    branches: [ master ]
     paths-ignore:
       - 'docs/**'
       - '**.rst'
