@@ -30,7 +30,7 @@ jobs:
 
     - name: install build dependencies
       run: |
-        python3 -m pip install --upgrade build twine
+        python3 -m pip install --upgrade build
 
     - name: build wheel
       run: |
