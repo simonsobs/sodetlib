@@ -1,0 +1,48 @@
+name: Build and Test Wheel
+# Try to catch any issues before releases
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.rst'
+      - '**.md'
+      - '.readthedocs.yaml'
+
+jobs:
+  wheel:
+    name: build and test wheel
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: set up Python 3.8
+      uses: actions/setup-python@v6
+      with:
+        python-version: 3.8
+
+    - name: clone sodetlib
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # fetch all tags
+
+    - name: install build dependencies
+      run: |
+        python3 -m pip install --upgrade build
+
+    - name: build wheel
+      run: |
+        python3 -m build
+
+    - name: install wheel
+      run: |
+        python3 -m pip install dist/sodetlib*.whl
+
+    - name: install requirements
+      run: |
+        python3 -m pip install -r requirements.txt
+
+    - name: test import
+      working-directory: ./tests  # avoid direct usage of ./sodetlib/
+      run: |
+        python3 -c 'import sodetlib'

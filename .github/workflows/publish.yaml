@@ -1,0 +1,73 @@
+# Note: Renaming this file will break the PyPI trusted publisher.
+# https://docs.pypi.org/trusted-publishers/
+name: Publish to PyPI
+
+on:
+  release:
+    types: [ released ]
+  push:
+    tags:
+      # v0.X.Y pre-release tags
+      - 'v0.*.*a*'
+      - 'v0.*.*b*'
+      - 'v0.*.*rc*'
+
+jobs:
+  build:
+    name: build wheel
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: set up Python 3.8
+      uses: actions/setup-python@v6
+      with:
+        python-version: 3.8
+
+    - name: clone sodetlib
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # fetch all tags
+
+    - name: install build dependencies
+      run: |
+        python3 -m pip install --upgrade build
+
+    - name: build wheel
+      run: |
+        python3 -m build
+
+    - name: install wheel
+      run: |
+        python3 -m pip install dist/sodetlib*.whl
+
+    - name: install requirements
+      run: |
+        python3 -m pip install -r requirements.txt
+
+    - name: test import
+      working-directory: ./tests  # avoid direct usage of ./sodetlib/
+      run: |
+        python3 -c 'import sodetlib'
+
+    - name: upload dist
+      uses: actions/upload-artifact@v6
+      with:
+        path: ./dist/
+
+  pypi-publish:
+    name: upload release to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sodetlib
+    permissions:
+      id-token: write  # required for trusted publishing
+    steps:
+    - name: download dist
+      uses: actions/download-artifact@v5
+      with:
+        path: dist
+
+    - name: publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
