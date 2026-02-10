@@ -1,6 +1,4 @@
 tqdm
-ipython
-setuptools-scm
 PyYAML
 numpy
 scipy
@@ -15,3 +13,11 @@ sotodlib @ git+https://github.com/simonsobs/sotodlib.git@5d613d5915b1716c401abec
 # pysmurf can be installed from PyPI once [3] is merged and a new release is made
 # [3] - https://github.com/slaclab/pysmurf/pull/824
 pysmurf @ git+https://github.com/slaclab/pysmurf.git@main
+
+# scripts
+ipython
+traitlets
+
+# dev
+pytest
+setuptools-scm
