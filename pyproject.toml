@@ -33,6 +33,16 @@ dependencies = [
     "tqdm",
 ]
 
+[project.optional-dependencies]
+scripts = [
+    "ipython",
+    "traitlets",
+]
+dev = [
+    "pytest",
+    "setuptools-scm",
+]
+
 [project.scripts]
 jackhammer = "sodetlib.hammers.jackhammer:main"
 
