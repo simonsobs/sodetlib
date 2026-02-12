@@ -28,6 +28,7 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pandas",
+    "pysmurf-slac",
     "PyYAML",
     "scipy",
     "tqdm",

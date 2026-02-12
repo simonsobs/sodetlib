@@ -10,9 +10,7 @@ pandas
 # [1] - https://github.com/simonsobs/smurf_dockers/pull/6
 # [2] - https://github.com/simonsobs/socs/blob/main/docker/pysmurf_controller/Dockerfile
 sotodlib @ git+https://github.com/simonsobs/sotodlib.git@5d613d5915b1716c401abecb5446088bce5fc1a4
-# pysmurf can be installed from PyPI once [3] is merged and a new release is made
-# [3] - https://github.com/slaclab/pysmurf/pull/824
-pysmurf @ git+https://github.com/slaclab/pysmurf.git@main
+pysmurf-slac
 
 # scripts
 ipython
