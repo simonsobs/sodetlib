@@ -6,11 +6,7 @@ matplotlib
 lmfit
 pandas
 zmq
-# Can install sotodlib from PyPI once Python version in pysmurf-controller is >=3.10
-# i.e. when [1] is merged and propagated to [2].
-# [1] - https://github.com/simonsobs/smurf_dockers/pull/6
-# [2] - https://github.com/simonsobs/socs/blob/main/docker/pysmurf_controller/Dockerfile
-sotodlib @ git+https://github.com/simonsobs/sotodlib.git@5d613d5915b1716c401abecb5446088bce5fc1a4
+sotodlib
 pysmurf-slac
 
 # scripts
