@@ -233,6 +233,8 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, opt_args=None):
         opt_args["wait_time"] = exp['amp_step_wait_time']
     # Check drain currents / scan bias voltages
     for amp in amp_list:
+        # arguments to pass to optimization function
+        amp_opts = opt_args.copy()
         delta_Id = np.abs(amp_biases[f"{amp}_drain_current"] - exp[f"amp_{amp}_drain_current"])
         if delta_Id > exp[f'amp_{amp}_drain_current_tolerance']:
             # Only scan Vd if connected to an ASU hemt
@@ -244,14 +246,14 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, opt_args=None):
                 S.log(f"{amp} current not within tolerance, scanning for correct drain voltage")
                 success = find_drain_voltage(
                     S, exp[f"amp_{amp}_drain_current"], amp,
-                    id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'], **opt_args
+                    id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'], **amp_opts
                 )
             else:
                 S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
-                if "vg_min" not in opt_args:
-                    opt_args["vg_min"] = exp[f'amp_{amp}_gate_volt_min']
+                if "vg_min" not in amp_opts:
+                    amp_opts["vg_min"] = exp[f'amp_{amp}_gate_volt_min']
                 if "vg_max" not in opt_args:
-                    opt_args["vg_max"] = exp[f'amp_{amp}_gate_volt_max'],
+                    amp_opts["vg_max"] = exp[f'amp_{amp}_gate_volt_max'],
                 # If optimal value was found previously, use it first.
                 init_gate_volt = exp[f'amp_{amp}_gate_volt']
                 if init_gate_volt is None:
@@ -259,7 +261,7 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, opt_args=None):
                 S.set_amp_gate_voltage(amp, init_gate_volt,override=True)
                 success = find_gate_voltage(
                     S, exp[f"amp_{amp}_drain_current"], amp,
-                    id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'], **opt_args
+                    id_tolerance=exp[f'amp_{amp}_drain_current_tolerance'], **amp_opts
                 )
             if not success:
                 sdl.pub_ocs_log(S, f"Failed determining {amp} bias voltage")
