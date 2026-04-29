@@ -450,6 +450,8 @@ def hammer_func(args):
             # ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
             ip = get_slot_ip(slot)
             subprocess.run(['ping_carrier', ip])
+        print("Sleeping for 1s")
+        time.sleep(1)
     else:
         print("Skipping reboot process")
 
