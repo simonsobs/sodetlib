@@ -31,6 +31,7 @@ def compute_tracking_quality(S, f, df, sync):
         Array containing tracking sync flags, as returned by tracking_setup
     """
     sync_idxs = S.make_sync_flag(sync)
+    sync_idxs = sync_idxs[sync_idxs > 0]
     seg_size = np.min(np.diff(sync_idxs))
     nstacks = len(sync_idxs) - 1
     nchans = len(f[0])
