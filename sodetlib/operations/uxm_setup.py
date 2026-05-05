@@ -398,7 +398,8 @@ def estimate_uc_dc_atten(S, cfg, band, update_cfg=True, tone_power=None):
 @sdl.set_action()
 def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
     """
-    Find freq, setup notches, and serial gradient descent and eta scan
+    Find freq, setup notches, and serial gradient descent and eta scan.
+    Also sets up fixed tones, but does not turn them on.
 
     The following parameters can be modified in the device cfg:
 
@@ -446,6 +447,8 @@ def setup_tune(S, cfg, bands, show_plots=False, update_cfg=True):
 
     if update_cfg:
         cfg.dev.update_experiment({'tunefile': S.tune_file}, update_file=True)
+
+    setup_fixed_tones(S, cfg, bands=bands, update_cfg=update_cfg)
 
     return True, summary
 
