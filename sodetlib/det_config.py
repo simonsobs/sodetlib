@@ -117,11 +117,8 @@ band_defaults = {
     # Gradient Descent Parameters
     "gradientDescentMaxIters": 100,
     "gradientDescentAverages": 2, 
-    "gradientDescentGain": 0.001,
     "gradientDescentConvergeHz": 500,
     "gradientDescentStepHz": 5000,
-    "gradientDescentMomentum": 1,
-    "gradientDescentBeta": 0.1,
 
     # Fixed tones
     "fixed_tones": {"enabled": False, "freq_offsets": [], "channels": [], "tone_power": 0},
@@ -640,22 +637,22 @@ class DetConfig:
 
         return outfiles
 
-    def get_smurf_control(self, offline=False, epics_root=None,
+    def get_smurf_control(self, offline=False, server_port=None,
                           smurfpub_id=None, make_logfile=False, setup=False,
                           dump_configs=None, config_dir=None,
                           apply_dev_configs=False, load_device_tune=True,
                           **pysmurf_kwargs):
         """
         Creates pysmurf instance based off of configuration parameters.
-        If not specified as keyword arguments ``epics_root`` and ``smurf_pub``
+        If not specified as keyword arguments ``smurf_pub``
         will be created based on the slot and crate id's.
 
         Args:
             offline (bool):
                 Whether to start pysmurf in offline mode. Defaults to False
-            epics_root (str, optional):
-                Pysmurf epics root. If none, it will be set to
-                ``smurf_server_s<slot>``.
+            server_port (int, optional):
+                The port for the SMuRF server to connect to. Will infer from
+                slot number if not provided.
             smurfpub_id (str, optional):
                 Pysmurf publisher ID. If None, will default to
                 crate<crate_id>_slot<slot>.
@@ -674,12 +671,12 @@ class DetConfig:
         import pysmurf.client
 
         slot_cfg = self.sys['slots'][f'SLOT[{self.slot}]']
-        if epics_root is None:
-            epics_root = f'smurf_server_s{self.slot}'
         if smurfpub_id is None:
             smurfpub_id = self.stream_id
         if dump_configs is None:
             dump_configs = self.dump
+        if server_port is None:
+            server_port = 9000 + 3 * int(self.slot)
 
         # Pysmurf publisher will check this to determine publisher id.
         os.environ['SMURFPUB_ID'] = smurfpub_id
@@ -688,9 +685,10 @@ class DetConfig:
             S = pysmurf.client.SmurfControl(offline=True)
         else:
             S = pysmurf.client.SmurfControl(
-                epics_root=epics_root, cfg_file=self.pysmurf_file, setup=setup,
+                cfg_file=self.pysmurf_file, setup=setup,
                 make_logfile=make_logfile, data_path_id=smurfpub_id,
-                **pysmurf_kwargs)
+                server_port=server_port, **pysmurf_kwargs
+            )
         self.S = S
         # Lets just stash this in pysmurf...
         S._sodetlib_cfg = self
