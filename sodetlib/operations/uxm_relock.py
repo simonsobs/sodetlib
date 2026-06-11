@@ -335,7 +335,15 @@ def uxm_relock(
     if not skip_setup_amps:
         summary['timestamps'].append(('setup_amps', time.time()))
         sdl.set_session_data(S, 'timestamps', summary['timestamps'])
-        success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
+
+        # May take two tries
+        try:
+            success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
+        except:
+            try:
+                success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
+            except:
+                return False
 
         if not success:
             return False, summary
