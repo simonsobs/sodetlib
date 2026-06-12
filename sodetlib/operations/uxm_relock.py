@@ -344,6 +344,7 @@ def uxm_relock(
             except:
                 success = False
                 S.log('Failed uxm_setup.setup_amps on %i/%i attempt' % (i, max_setup_amps_attempts))
+                time.sleep(0.1)
 
         if not success:
             return False, summary
