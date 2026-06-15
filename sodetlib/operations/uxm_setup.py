@@ -226,7 +226,7 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3):
 
             # Attempt to read Vds
             for amp in amp_list:
-                _ = amp_biases[f"{amp}_drain_volt"]
+                _ = amp_biases[f"{amp}_drain_current"]
 
             read_biases_success = True
         except Exception as e:
