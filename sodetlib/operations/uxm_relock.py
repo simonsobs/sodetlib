@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import sodetlib as sdl
-from sodetlib.operations.tracking import relock_tracking_setup
+from sodetlib.operations.tracking import setup_tracking_params
 from sodetlib.operations import uxm_setup, bias_steps
 
 import matplotlib.pyplot as plt
@@ -367,9 +367,14 @@ def uxm_relock(
     for b in bands:
         S.set_feedback_enable(b, 1)
 
-    tr = relock_tracking_setup(
-        S, cfg, bands, show_plots=show_plots,
-        reset_rate_khz=reset_rate_khz, nphi0=nphi0
+    # Possibly override cfg values to pass to tracking setup
+    if reset_rate_khz is not None:
+        cfg.dev.exp['flux_ramp_rate_khz'] = reset_rate_khz
+    if nphi0 is not None:
+        cfg.dev.exp['nphi0'] = nphi0
+
+    tr = setup_tracking_params(
+        S, cfg, bands=bands, show_plots=show_plots
     )
     summary['tracking_setup_results'] = tr
 
