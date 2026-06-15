@@ -224,7 +224,7 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3):
         try:
             amp_biases = S.get_amplifier_biases()
 
-            # Attempt to read Vds
+            # Attempt to read Ids
             for amp in amp_list:
                 _ = amp_biases[f"{amp}_drain_current"]
 
