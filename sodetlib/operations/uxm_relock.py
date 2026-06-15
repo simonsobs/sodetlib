@@ -262,7 +262,7 @@ def plot_channel_resonance(S, cfg, band, chan):
 def uxm_relock(
     S, cfg, bands=None, show_plots=False,
     setup_notches=False, new_master_assignment=False, reset_rate_khz=None,
-    nphi0=None, skip_setup_amps=False, max_setup_amps_attempts=3):
+    nphi0=None, skip_setup_amps=False):
     """
     Relocks resonators by running the following steps:
 
@@ -294,8 +294,6 @@ def uxm_relock(
         If True will show plots
     skip_setup_amps : bool
         If True will skip amplifier setup.
-    max_setup_amps_attempts : int
-        Maximum number of attempts at setting up amplifiers before returning error
 
     Returns
     --------
@@ -337,14 +335,7 @@ def uxm_relock(
     if not skip_setup_amps:
         summary['timestamps'].append(('setup_amps', time.time()))
         sdl.set_session_data(S, 'timestamps', summary['timestamps'])
-        for i in range(max_setup_amps_attempts):
-            try:
-                success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
-                break
-            except:
-                success = False
-                S.log('Failed uxm_setup.setup_amps on %i/%i attempt' % (i, max_setup_amps_attempts))
-                time.sleep(0.1)
+        success, summary['amps'] = uxm_setup.setup_amps(S, cfg)
 
         if not success:
             return False, summary
