@@ -145,7 +145,7 @@ def find_drain_voltage(S, target_Id, amp_name, vd_min=0.1, vd_max=0.95,
 
 
 @sdl.set_action()
-def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
+def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3):
     """
     Initial setup for 50k and hemt amplifiers. For C04/C05 cryocards, will first
     check if the drain voltages are set. Then checks if drain
@@ -175,6 +175,9 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
         If true, will update the device cfg and save the file.
     enable_300K_LNA:
         If true, will turn on the 300K LNAs.
+    max_attempts : int
+        Maximum number of attempts at reading amplifier biases,
+        which sometimes fails
     """
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
@@ -214,7 +217,25 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True):
         if cc_rev == 'c04':
             summary[f'{amp}_drain_volt'] = None
 
-    amp_biases = S.get_amplifier_biases()
+    attempts = 0
+    read_biases_success = False
+    while not read_biases_success:
+        attempts += 1
+        try:
+            amp_biases = S.get_amplifier_biases()
+
+            # Attempt to read Ids
+            for amp in amp_list:
+                _ = amp_biases[f"{amp}_drain_current"]
+
+            read_biases_success = True
+        except Exception as e:
+            S.log('Failed S.get_amplifier_biases on attempt %i/%i' % (attempts, max_attempts))
+            if attempts < max_attempts:
+                # May benefit from short pause
+                time.sleep(0.1)
+            else:
+                raise e
 
     # For C04, first check drain voltages
     if cc_rev == 'c04':
