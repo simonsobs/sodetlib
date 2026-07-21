@@ -386,31 +386,38 @@ def pysmurf_func(args):
     enter_pysmurf(slot, agg=args.agg)
 
 
-# Entrypoint for jackhammer hammer
-def hammer_func(args):
-    # here we go....
-    if not args.slots:
+def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
+           dump_rogue=False):
+    """Core hammer sequence to reset and reconfigure SMuRF slots.
+
+    Args
+    ------
+    slots : list of int, optional
+        Slot numbers to hammer. Defaults to all slots in sys_config.
+    no_reboot : bool
+        If True, perform a soft reset without rebooting the carriers.
+    no_dump : bool
+        If True, skip dumping docker logs before hammering.
+    skip_setup : bool
+        If True, skip pysmurf setup after reboot.
+    dump_rogue : bool
+        If True, dump the rogue tree before hammering.
+    """
+    if not slots:
         slots = sys_config['slot_order']
     else:
-        slots = args.slots
         for s in slots:
             if s not in sys_config['slot_order']:
                 raise ValueError(
                     f"Slot {s} is not valid for this system! Can only use "
                     f"slots in: {sys_config['slot_order']}")
 
-    reboot = not (args.no_reboot)
+    reboot = not no_reboot
     all_slots = len(slots) == len(sys_config['slot_order'])
 
-    reboot_str = "hard" if reboot else "soft"
-    cmd = input(f"You are {reboot_str}-resetting slots {slots}. "
-                "Are you sure (y/n)? ")
-    if cmd.lower() not in ["y", "yes"]:
-        return
-
     # dump docker logs for debugging.
-    if not args.no_dump:
-        dump_docker_logs(slots)
+    if not no_dump:
+        dump_docker_logs(slots, dump_rogue_tree=dump_rogue)
 
     cprint(f"Hammering for slots {slots}", True)
 
@@ -419,22 +426,21 @@ def hammer_func(args):
 
     if all_slots:
         cprint("Restarting smurf-util", style=TermColors.HEADER)
-        # Restarts smurf-util to clean up any running processes
         subprocess.run('docker stop smurf-util'.split(), cwd=cwd)
         subprocess.run('docker rm smurf-util'.split(), cwd=cwd)
         start_services('smurf-util', write_env=True)
 
-        # Sets fan levels on crate
         cprint("Setting fan levels", style=TermColors.HEADER)
         setup_fans()
 
     if reboot:
         cprint(f"Rebooting slots: {slots}", style=TermColors.HEADER)
-        deactivate_commands = []
-        activate_commands = []
-        for slot in slots:
-            deactivate_commands.append(f'clia deactivate board {slot}')
-            activate_commands.append(f'clia activate board {slot}')
+        deactivate_commands = [
+            f'clia deactivate board {slot}' for slot in slots
+        ]
+        activate_commands = [
+            f'clia activate board {slot}' for slot in slots
+        ]
 
         print(f"Deactivating carriers: {slots}")
         run_on_shelf_manager('; '.join(deactivate_commands))
@@ -447,13 +453,11 @@ def hammer_func(args):
 
         print("Waiting for carriers to come back online (this takes a bit)")
         for slot in slots:
-            # ip = f'10.0.{sys_config["crate_id"]}.{slot + 100}'
             ip = get_slot_ip(slot)
             subprocess.run(['ping_carrier', ip])
     else:
         print("Skipping reboot process")
 
-    #Brings up all smurf-streamer dockers
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
         services = ['smurf-jupyter', 'smurf-util']
@@ -471,18 +475,39 @@ def hammer_func(args):
     start_sync_dockers()
     controller_cmd(slots, 'up')
 
-    # Waits for streamer-dockers to start
     print("Waiting for server dockers to connect. This might take a few minutes...")
     for slot in slots:
         epics_server = f'smurf_server_s{slot}'
         check_epics_connection(epics_server, retry=True)
 
-    if reboot and not args.skip_setup:
+    if reboot and not skip_setup:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
         setup_smurfs(slots)
         print("Finished configuring pysmurf!")
 
-    # Enters into an ipython notebook for the first specified slot   
+
+# Entrypoint for jackhammer hammer
+def hammer_func(args):
+    if not args.slots:
+        slots = sys_config['slot_order']
+    else:
+        slots = args.slots
+
+    reboot = not (args.no_reboot)
+    reboot_str = "hard" if reboot else "soft"
+    cmd = input(f"You are {reboot_str}-resetting slots {slots}. "
+                "Are you sure (y/n)? ")
+    if cmd.lower() not in ["y", "yes"]:
+        return
+
+    hammer(
+        slots=args.slots or None,
+        no_reboot=args.no_reboot,
+        no_dump=args.no_dump,
+        skip_setup=args.skip_setup,
+        dump_rogue=args.dump_rogue,
+    )
+
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
     enter_pysmurf(slots[0], agg=args.agg)
 
