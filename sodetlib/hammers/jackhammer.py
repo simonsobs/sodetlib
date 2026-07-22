@@ -108,20 +108,30 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
     return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
 
 
-def check_epics_connection(epics_server, retry=False):
+def check_epics_connection(epics_server, retry=False, timeout=180):
     """
-        Checks if we can connect to a specific epics server. 
+        Checks if we can connect to a specific epics server.
 
         Args:
-            epics_server (string): 
+            epics_server (string):
                 epics server to connect to
             retry (bool):
-                If true, will continuously check until a connection has been 
+                If true, will continuously check until a connection has been
                 established.
+            timeout (int):
+                Maximum seconds to wait when retry is True. Raises
+                TimeoutError if exceeded.
     """
     if retry:
         print(f"Waiting for epics connection to {epics_server}", end='', flush=True)
+        start = time.time()
         while True:
+            if time.time() - start > timeout:
+                print()
+                raise TimeoutError(
+                    f"Timed out after {timeout}s waiting for EPICS "
+                    f"connection to {epics_server}"
+                )
             x = util_run(
                 'caget', args=[f'{epics_server}:AMCc:enable'],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT
@@ -387,8 +397,13 @@ def pysmurf_func(args):
 
 
 def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
-           dump_rogue=False):
+           dump_rogue=False, ping_timeout=120, epics_timeout=180,
+           setup_timeout=300):
     """Core hammer sequence to reset and reconfigure SMuRF slots.
+
+    Individual slot failures (ping timeout, EPICS timeout, setup error)
+    are caught and recorded so that the remaining slots can still
+    complete successfully.
 
     Args
     ------
@@ -402,6 +417,17 @@ def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
         If True, skip pysmurf setup after reboot.
     dump_rogue : bool
         If True, dump the rogue tree before hammering.
+    ping_timeout : int
+        Seconds to wait for each carrier to respond after reboot.
+    epics_timeout : int
+        Seconds to wait for each slot's EPICS connection.
+    setup_timeout : int
+        Seconds to wait for each slot's pysmurf setup thread.
+
+    Returns
+    -------
+    dict
+        ``{'succeeded': [slot, ...], 'failed': {slot: reason, ...}}``
     """
     if not slots:
         slots = sys_config['slot_order']
@@ -414,8 +440,8 @@ def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
 
     reboot = not no_reboot
     all_slots = len(slots) == len(sys_config['slot_order'])
+    failed_slots = {}
 
-    # dump docker logs for debugging.
     if not no_dump:
         dump_docker_logs(slots, dump_rogue_tree=dump_rogue)
 
@@ -454,9 +480,23 @@ def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
         print("Waiting for carriers to come back online (this takes a bit)")
         for slot in slots:
             ip = get_slot_ip(slot)
-            subprocess.run(['ping_carrier', ip])
+            try:
+                subprocess.run(['ping_carrier', ip], timeout=ping_timeout)
+            except subprocess.TimeoutExpired:
+                msg = f"Carrier ping timed out after {ping_timeout}s"
+                cprint(f"Slot {slot}: {msg}", style=TermColors.FAIL)
+                failed_slots[slot] = msg
+            except Exception as e:
+                msg = f"Carrier ping failed: {e}"
+                cprint(f"Slot {slot}: {msg}", style=TermColors.FAIL)
+                failed_slots[slot] = msg
     else:
         print("Skipping reboot process")
+
+    active_slots = [s for s in slots if s not in failed_slots]
+    if not active_slots:
+        cprint("All slots failed during reboot", style=TermColors.FAIL)
+        return {'succeeded': [], 'failed': failed_slots}
 
     cprint('Bringing up smurf dockers', style=TermColors.HEADER)
     if all_slots:
@@ -468,22 +508,47 @@ def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
     else:
         services = []
 
-    for slot in slots:
+    for slot in active_slots:
         services.append(f'smurf-streamer-s{slot}')
 
     start_services(services)
     start_sync_dockers()
-    controller_cmd(slots, 'up')
+    controller_cmd(active_slots, 'up')
 
     print("Waiting for server dockers to connect. This might take a few minutes...")
-    for slot in slots:
+    # Iterate over a copy — we remove failed slots from active_slots in the loop body
+    for slot in active_slots[:]:
         epics_server = f'smurf_server_s{slot}'
-        check_epics_connection(epics_server, retry=True)
+        try:
+            check_epics_connection(epics_server, retry=True,
+                                   timeout=epics_timeout)
+        except TimeoutError:
+            msg = f"Server ping timed out after {epics_timeout}s"
+            cprint(f"Slot {slot}: {msg}", style=TermColors.FAIL)
+            failed_slots[slot] = str(msg)
+            active_slots.remove(slot)
+        except Exception as e:
+            msg = f"EPICS connection failed: {e}"
+            cprint(f"Slot {slot}: {msg}", style=TermColors.FAIL)
+            failed_slots[slot] = msg
+            active_slots.remove(slot)
 
-    if reboot and not skip_setup:
+    if reboot and not skip_setup and active_slots:
         cprint("Configuring pysmurf", style=TermColors.HEADER)
-        setup_smurfs(slots)
-        print("Finished configuring pysmurf!")
+        setup_errors = setup_smurfs(active_slots, timeout=setup_timeout)
+        for slot, error in setup_errors.items():
+            cprint(f"Slot {slot}: {error}", style=TermColors.FAIL)
+            failed_slots[slot] = error
+        active_slots = [s for s in active_slots if s not in setup_errors]
+        if active_slots:
+            print("Finished configuring pysmurf!")
+
+    if failed_slots:
+        cprint(f"Failed slots: {failed_slots}", style=TermColors.FAIL)
+    if active_slots:
+        cprint(f"Succeeded slots: {active_slots}", True)
+
+    return {'succeeded': active_slots, 'failed': failed_slots}
 
 
 # Entrypoint for jackhammer hammer
@@ -511,29 +576,55 @@ def hammer_func(args):
     cprint(f"Entering pysmurf slot {slots[0]}", style=TermColors.HEADER)
     enter_pysmurf(slots[0], agg=args.agg)
 
-def setup_smurfs(slots):
+def setup_smurfs(slots, timeout=300):
     """
-    Runs S.setup on one or more slots in parallel
+    Runs S.setup on one or more slots in parallel.
 
     Args
     -----
     slots : list
         List of slots to run on
+    timeout : int
+        Maximum seconds to wait for each slot's setup thread.
+
+    Returns
+    -------
+    dict
+        Mapping of ``{slot: error_message}`` for slots that failed.
+        Empty dict means all slots succeeded.
     """
-    threads = []
+    errors = {}
+    lock = threading.Lock()
+
+    def _run_setup(slot):
+        # Catch all exceptions so a thread crash (e.g. missing docker binary)
+        # gets recorded instead of silently lost.
+        try:
+            res = util_run(
+                'python3',
+                args=f'/sodetlib/scripts/setup_pysmurf.py -N {slot}'.split(),
+            )
+            if res.returncode != 0:
+                with lock:
+                    errors[slot] = "Pysmurf setup returned a non-zero exit code."
+        except Exception as e:
+            with lock:
+                errors[slot] = f"Pysmurf setup raised: {e}"
+
+    threads = {}
     for s in slots:
         print(f"Configuring pysmurf on slot {s}...")
-        kw = {
-            'args': ('python3',),
-            'kwargs': {'args': f'/sodetlib/scripts/setup_pysmurf.py -N {s}'.split()}
-
-        }
-        th = threading.Thread(target=util_run, **kw )
+        th = threading.Thread(target=_run_setup, args=(s,))
         th.start()
-        threads.append(th)
+        threads[s] = th
 
-    for th in threads:
-        th.join()
+    for s, th in threads.items():
+        th.join(timeout=timeout)
+        if th.is_alive():
+            with lock:
+                errors.setdefault(s, f"Pysmurf setup timed out after {timeout}s")
+
+    return errors
 
 def start_sync_dockers():
     """
