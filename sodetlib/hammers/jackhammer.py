@@ -79,7 +79,7 @@ def get_docker_services():
     res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
-def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
+def util_run(cmd, args=[], name=None, rm=True, allocate_tty=False, **run_kwargs):
     """
     Runs a command using subproces.run within the sodetlib util docker.
 
@@ -94,12 +94,17 @@ def util_run(cmd, args=[], name=None, rm=True, **run_kwargs):
         set and docker-compose will choose the default.
     rm : bool
         If True, will remove the container when the command has finished.
+    allocate_tty : bool
+        If True, allow docker to allocate a pseudo-TTY. Set to True for
+        interactive commands (bash, ipython). Defaults to False (--no-tty) to
+        prevent terminal corruption when running non-interactively.
     run_kwargs : Additional keyword arguments
         Any additional kwargs specified will be passed directly to the
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
-    cmd  = f'{docker_compose_cmd} run --entrypoint={cmd} '
+    tty_flag = '' if allocate_tty else '--no-tty '
+    cmd  = f'{docker_compose_cmd} run {tty_flag}--entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
     if rm:
@@ -292,7 +297,7 @@ def enter_pysmurf(slot, agg=False):
         util_run(
             'python3',
             args=f"/sodetlib/scripts/start_pysmurf_ipython.py -N {slot}".split(),
-            name=name, rm=False
+            name=name, rm=False, allocate_tty=True
         )
 
 def write_docker_env():
@@ -664,7 +669,7 @@ def log_func(args):
 
 # Entrypoint for jackhamer util
 def util_func(args):
-    util_run('bash', rm=(not args.detached))
+    util_run('bash', rm=(not args.detached), allocate_tty=True)
 
 
 def gui_func(args):
