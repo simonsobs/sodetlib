@@ -79,7 +79,7 @@ def get_docker_services():
     res = subprocess.run(shlex.split(cmd), cwd=cwd, stdout=subprocess.PIPE)
     return res.stdout.decode().split()
 
-def util_run(cmd, args=[], name=None, rm=True, allocate_tty=False, **run_kwargs):
+def util_run(cmd, args=None, name=None, rm=True, allocate_tty=False, **run_kwargs):
     """
     Runs a command using subproces.run within the sodetlib util docker.
 
@@ -103,6 +103,8 @@ def util_run(cmd, args=[], name=None, rm=True, allocate_tty=False, **run_kwargs)
         subprocess.run function. See the subprocess docs for allowed kwargs:
         https://docs.python.org/3/library/subprocess.html#subprocess.run
     """
+    if args is None:
+        args = []
     tty_flag = '' if allocate_tty else '--no-tty '
     cmd  = f'{docker_compose_cmd} run {tty_flag}--entrypoint={cmd} '
     if name is not None:
@@ -177,7 +179,7 @@ def get_running_dockers(get_all=True):
     return containers
 
 
-def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
+def kill_bad_dockers(slots, kill_monitor=False, names=None, images=None):
     """
         Kills relevant dockers for a given set of slots.
 
@@ -190,6 +192,11 @@ def kill_bad_dockers(slots, kill_monitor=False, names=[], images=[]):
                 List of additional docker names we should kill
             images (list of strings):
     """
+
+    if names is None:
+        names = []
+    if images is None:
+        images = []
 
     print(f"Killing bad dockers for slots {slots}")
     bad_names = names
