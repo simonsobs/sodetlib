@@ -96,7 +96,7 @@ def util_run(cmd, args=None, name=None, rm=True, allocate_tty=False, **run_kwarg
         If True, will remove the container when the command has finished.
     allocate_tty : bool
         If True, allow docker to allocate a pseudo-TTY. Set to True for
-        interactive commands (bash, ipython). Defaults to False (--no-tty) to
+        interactive commands (bash, ipython). Defaults to False (-T, --no-TTY) to
         prevent terminal corruption when running non-interactively.
     run_kwargs : Additional keyword arguments
         Any additional kwargs specified will be passed directly to the
@@ -105,7 +105,7 @@ def util_run(cmd, args=None, name=None, rm=True, allocate_tty=False, **run_kwarg
     """
     if args is None:
         args = []
-    tty_flag = '' if allocate_tty else '--no-tty '
+    tty_flag = '' if allocate_tty else '-T '
     cmd  = f'{docker_compose_cmd} run {tty_flag}--entrypoint={cmd} '
     if name is not None:
         cmd += f'--name={name} '
