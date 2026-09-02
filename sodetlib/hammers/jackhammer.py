@@ -277,7 +277,7 @@ def dump_docker_logs(slots, dump_rogue_tree=False):
     if dump_rogue_tree:
         dump_script = '/sodetlib/scripts/dump_rogue_state.py'
         for slot in slots:
-            if check_server_connection(9000 + 2 * slot, retry=False):
+            if check_server_connection(9000 + 3 * slot, retry=False):
                 out_file = os.path.join(dump_dir, f'rogue_state_s{slot}.yml')
                 cprint(f"Dumping s{slot} state to {out_file}", style=TermColors.HEADER)
                 util_run('python3', args=[dump_script, str(slot), out_file],
@@ -543,7 +543,7 @@ def hammer(slots=None, no_reboot=False, no_dump=False, skip_setup=False,
     # Iterate over a copy — we remove failed slots from active_slots in the loop body
     for slot in active_slots[:]:
         try:
-            check_server_connection(9000 + 2 * slot, retry=True,
+            check_server_connection(9000 + 3 * slot, retry=True,
                                     timeout=server_timeout)
         except TimeoutError:
             msg = f"Server ping timed out after {server_timeout}s"
@@ -703,7 +703,7 @@ def gui_func(args):
             slot = args.slot
         else:
             slot = available_slots[0]
-        server_port = 9000 + 2*slot
+        server_port = 9000 + 3*slot
 
     sodetlib_root = os.environ.get('SODETLIB_ROOT', '/home/cryo/sodetlib')
     script_path = os.path.join(sodetlib_root, 'hammers', 'run_gui.sh')
