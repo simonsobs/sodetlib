@@ -78,16 +78,13 @@ def _ping_side_effect(failing_slots, exc_type=subprocess.TimeoutExpired):
     return side_effect
 
 
-def _epics_side_effect(failing_slots, exc_type=TimeoutError):
-    """Emulate EPICS connection results after streamer dockers start.
+def _server_side_effect(failing_slots, exc_type=TimeoutError):
+    """Emulate server connection results after streamer dockers start.
 
-    hammer() calls ``check_epics_connection(epics_server, retry=True,
-    timeout=...)`` for each slot to wait for the pysmurf EPICS server
+    hammer() calls ``check_server_connection(port, retry=True,
+    timeout=...)`` for each slot to wait for the pysmurf server
     to become reachable.  This side_effect raises for slots in
     ``failing_slots`` and returns True for the rest.
-
-    The slot number is extracted from the EPICS server name, which
-    follows the convention ``smurf_server_s<slot>``.
 
     Emulated failure modes:
       - TimeoutError: server never became reachable within the timeout
@@ -95,15 +92,15 @@ def _epics_side_effect(failing_slots, exc_type=TimeoutError):
       - Any other exc_type: unexpected error during the EPICS check
         (e.g. a RuntimeError from the underlying caget call)
     """
-    def side_effect(epics_server, retry=False, timeout=180):
-        slot = int(epics_server.split('_s')[-1])
+    def side_effect(port, retry=False, timeout=180):
+        slot = (int(port) - 9000) // 3
         if slot in failing_slots:
             if exc_type is TimeoutError:
                 raise TimeoutError(
-                    f"Timed out after {timeout}s waiting for EPICS "
+                    f"Timed out after {timeout}s waiting for server "
                     f"connection to {epics_server}"
                 )
-            raise exc_type(f"EPICS connection error for {epics_server}")
+            raise exc_type(f"Server connection error for slot {slot}")
         return True
     return side_effect
 
@@ -156,14 +153,14 @@ def hammer_mocks():
         controller_cmd=mock.DEFAULT,
         run_on_shelf_manager=mock.DEFAULT,
         setup_fans=mock.DEFAULT,
-        check_epics_connection=mock.DEFAULT,
+        check_server_connection=mock.DEFAULT,
         util_run=mock.DEFAULT,
         subprocess=mock.DEFAULT,
         time=mock.DEFAULT,
     ) as mocks:
         mocks['subprocess'].run.return_value = MagicMock(returncode=0)
         mocks['subprocess'].TimeoutExpired = subprocess.TimeoutExpired
-        mocks['check_epics_connection'].return_value = True
+        mocks['check_server_connection'].return_value = True
         mocks['util_run'].return_value = MagicMock(returncode=0)
         yield mocks
 
@@ -197,8 +194,8 @@ def test_single_slot_fails_at_ping(hammer_mocks):
     assert 'timed out' in result['failed'][3].lower()
 
 
-def test_single_slot_fails_at_epics(hammer_mocks):
-    hammer_mocks['check_epics_connection'].side_effect = _epics_side_effect({3})
+def test_single_slot_fails_at_server(hammer_mocks):
+    hammer_mocks['check_server_connection'].side_effect = _server_side_effect({3})
 
     result = jackhammer.hammer(slots=[2, 3, 4], no_dump=True)
 
@@ -228,15 +225,15 @@ def test_ping_generic_exception(hammer_mocks):
     assert 'Carrier ping failed' in result['failed'][3]
 
 
-def test_epics_generic_exception(hammer_mocks):
-    hammer_mocks['check_epics_connection'].side_effect = _epics_side_effect(
+def test_server_generic_exception(hammer_mocks):
+    hammer_mocks['check_server_connection'].side_effect = _server_side_effect(
         {4}, exc_type=RuntimeError
     )
 
     result = jackhammer.hammer(slots=[2, 3, 4], no_dump=True)
 
     assert result['succeeded'] == [2, 3]
-    assert 'EPICS connection failed' in result['failed'][4]
+    assert 'Server connection failed' in result['failed'][4]
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +251,7 @@ def test_all_slots_fail_at_ping_early_return(hammer_mocks):
 
 def test_multiple_failures_at_different_stages(hammer_mocks):
     hammer_mocks['subprocess'].run.side_effect = _ping_side_effect({2})
-    hammer_mocks['check_epics_connection'].side_effect = _epics_side_effect({3})
+    hammer_mocks['check_server_connection'].side_effect = _server_side_effect({3})
     hammer_mocks['util_run'].side_effect = _util_run_side_effect(
         raising_slots={4: RuntimeError("docker not found")}
     )
