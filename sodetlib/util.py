@@ -565,6 +565,7 @@ class Registers:
         'pysmurf_action_timestamp': _sostream + "pysmurf_action_timestamp",
         'stream_tag': _sostream + "stream_tag",
         'open_g3stream': _sostream + "open_g3stream",
+        'start_g3stream': _sostream + "startG3Stream",
         'g3_session_id': _sofilewriter + "session_id",
         'g3_filepath': _sofilewriter + "filepath",
         'debug_data': _sostream + "DebugData",
