@@ -65,8 +65,7 @@ def reload_tune(S, cfg, bands, setup_notches=False,
 
 @sdl.set_action()
 def run_grad_descent_and_eta_scan(
-    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None,
-    gain=None): 
+    S, cfg, bands=None, update_tune=False, force_run=False, max_iters=None):
     """
     This function runs serial gradient and eta scan for each band.
     Critically, it pulls in gradient descent tune parameters from the device
@@ -108,14 +107,10 @@ def run_grad_descent_and_eta_scan(
 
         if max_iters is None:
             max_iters = bcfg['gradientDescentMaxIters']
-        if gain is None:
-            gain = bcfg['gradientDescentGain']
 
         S.set_gradient_descent_step_hz(b, bcfg['gradientDescentStepHz'])
         S.set_gradient_descent_max_iters(b, max_iters)
-        S.set_gradient_descent_gain(b, gain)
         S.set_gradient_descent_converge_hz(b, bcfg['gradientDescentConvergeHz'])
-        S.set_gradient_descent_beta(b, bcfg['gradientDescentBeta'])
 
         S.log(f"Running grad descent and eta scan on band {b}")
 
