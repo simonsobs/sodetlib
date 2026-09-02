@@ -145,7 +145,7 @@ def find_drain_voltage(S, target_Id, amp_name, vd_min=0.1, vd_max=0.95,
 
 
 @sdl.set_action()
-def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3, opt_args={}):
+def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3, opt_args=None):
     """
     Initial setup for 50k and hemt amplifiers. For C04/C05 cryocards, will first
     check if the drain voltages are set. Then checks if drain
@@ -184,6 +184,9 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3, op
     sdl.pub_ocs_log(S, "Starting setup_amps")
 
     exp = cfg.dev.exp
+
+    if opt_args is None:
+        opt_args = {}
 
     # Determine cryocard rev
     major, minor, patch = S.C.get_fw_version()
