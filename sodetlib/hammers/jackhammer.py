@@ -116,7 +116,7 @@ def util_run(cmd, args=None, name=None, rm=True, allocate_tty=False, **run_kwarg
     return subprocess.run(shlex.split(cmd), cwd=cwd, **run_kwargs)
 
 
-def check_server_connection(server_port, retry=False, timeout=180):
+def check_server_connection(server_port, retry=False, timeout=180, ping_timeout=1):
     """
         Checks if we can connect to a specific server.
 
@@ -137,7 +137,7 @@ def check_server_connection(server_port, retry=False, timeout=180):
     msg = {'path': 'AMCc.Ready', 'attr': 'get', 'args': [], 'kwargs': {}}
     def do_ping():
         s = c.socket(zmq.REQ)
-        s.setsockopt(zmq.RCVTIMEO, timeout * 1000)
+        s.setsockopt(zmq.RCVTIMEO, ping_timeout * 1000)
         s.setsockopt(zmq.LINGER, 0)  # discard undelivered messages
         s.connect(f"tcp://localhost:{server_port + 1}")
         try:
@@ -153,7 +153,8 @@ def check_server_connection(server_port, retry=False, timeout=180):
         print(f"Waiting for connection to server on port {server_port}", end='', flush=True)
         start = time.time()
         while True:
-            if time.time() - start > timeout:
+            t_iter = time.time()
+            if t_iter - start > timeout:
                 print()
                 raise TimeoutError(
                     f"Timed out after {timeout}s waiting for server "
@@ -161,6 +162,10 @@ def check_server_connection(server_port, retry=False, timeout=180):
                 )
             if do_ping():
                 break
+            dt = time.time() - t_iter
+            # space out the pings if communication is established but server not ready
+            if dt < ping_timeout:
+                time.sleep(ping_timeout - dt)
             print('.', end='', flush=True)
 
         print("\nConnected!")
