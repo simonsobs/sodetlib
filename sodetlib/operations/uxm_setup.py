@@ -240,6 +240,11 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3):
     # For C04, first check drain voltages
     if cc_rev == 'c04':
         for amp in amp_list:
+            if exp[f"amp_{amp}_drain_volt"] == 0:
+                S.log(
+                    f"Device config sets 'amp_{amp}_drain_volt' to 0."
+                    "The amplifier will remain disabled."
+                )
             Vd = amp_biases[f"{amp}_drain_volt"]
             if Vd != exp[f"amp_{amp}_drain_volt"]:
                 S.set_amp_drain_voltage(amp, exp[f"amp_{amp}_drain_volt"]) 
