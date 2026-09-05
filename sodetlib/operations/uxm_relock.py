@@ -134,6 +134,7 @@ def run_grad_descent_and_eta_scan(
             band_center_mhz = S.get_band_center_mhz(b)
             subband_offset = S.get_tone_frequency_offset_mhz(b)
             center_freq_array = S.get_center_frequency_array(b)
+            # radians; the 'eta_phase' resonance key is degrees
             eta_phase_array = S.get_eta_phase_array(b)
             eta_mag_array = S.get_eta_mag_array(b)
             res_freqs = band_center_mhz + subband_offset + center_freq_array
@@ -149,7 +150,7 @@ def run_grad_descent_and_eta_scan(
 
                 res['freq'] = res_freqs[ch]
                 res['offset'] = center_freq_array[ch]
-                res['eta_phase'] = eta_phase_array[ch]
+                res['eta_phase'] = np.rad2deg(eta_phase_array[ch])
                 res['eta_scaled'] = eta_mag_array[ch]
 
     if update_tune:
@@ -196,8 +197,10 @@ def get_full_band_sweep(S, cfg, band, chan):
     finally:
         S.set_center_frequency_array(band, center_freq_array)
         S.set_amplitude_scale_array(band, amp_scale_array)
-        S.set_eta_phase_array(band, eta_phase_array)
+        # magnitude before phase: eta is stored as Cartesian etaI/etaQ, so
+        # setting the phase while the magnitude is zero discards it
         S.set_eta_mag_array(band, eta_mag_array)
+        S.set_eta_phase_array(band, eta_phase_array)
         S.set_feedback_enable(band, fb_enable)
         S.set_feedback_enable_array(band, fb_enable_arr)
     return fs, resp
@@ -239,8 +242,9 @@ def plot_channel_resonance(S, cfg, band, chan):
     ax.axvline(res_freq, color='grey', ls='--')
 
     # Circ plot
+    # get_eta_phase_array is already radians
     eta_phase = S.get_eta_phase_array(band)[chan]
-    eta = np.exp(1.0j * eta_phase * (2*np.pi) / 360)
+    eta = np.exp(1.0j * eta_phase)
     Q = np.real(resp * eta)
     I = -np.imag(resp * eta)
 
