@@ -782,10 +782,17 @@ class BiasStepAnalysis:
             if not len(ts[~np.isnan(ts)]):
                 continue
             for rc in rcs:
+                # Here, the polarity of resp is aligned to dIbias
+                # and the offset is adjusted to be zero at the end.
+                # Immediately after the bias increase, temperature of TES
+                # cannot follow the change and the resistance is the same.
+                # In this regime, resp increases in electrical time constant.
+                # Then, as the temperature and resistance gradually rise,
+                # resp decreases in thermal time constant, tau_eff.
+                # We first find the peak and fit the latter part.
                 resp = self.mean_resp[rc]
                 if tmin is None:
-                    sgn = self.polarity[rc] * -1
-                    tmin_m = sgn*resp > 0.9 * np.nanmax(sgn*resp)
+                    tmin_m = resp > 0.9 * np.nanmax(resp)
                     if not tmin_m.any():
                         continue
                     fit_tmin = np.max((0, ts[tmin_m][-1]))
