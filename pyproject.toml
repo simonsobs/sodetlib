@@ -32,6 +32,8 @@ dependencies = [
     "PyYAML",
     "scipy",
     "tqdm",
+    "zmq",
+    "sotodlib",
 ]
 
 [project.optional-dependencies]
