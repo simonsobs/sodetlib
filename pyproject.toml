@@ -28,10 +28,12 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pandas",
-    "pysmurf-slac==10.3.4",
+    "pysmurf-slac",
     "PyYAML",
     "scipy",
     "tqdm",
+    "zmq",
+    "sotodlib",
 ]
 
 [project.optional-dependencies]
