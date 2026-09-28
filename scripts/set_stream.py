@@ -18,13 +18,13 @@ if __name__ == '__main__':
     parser.add_argument('--duration', '-d', type=float)
     parser.add_argument('--emulator', action='store_true')
     parser.add_argument('--tag', type=str, default='')
-    parser.add_argument('--epics-root', type=str, default=None)
+    parser.add_argument('--server-port', type=int, default=None)
     parser.add_argument('--skip-freq-mask', action='store_true')
     parser.add_argument('--apply-dev-cfg', action='store_true')
     args = cfg.parse_args(parser)
 
     S = cfg.get_smurf_control(
-        dump_configs=args.dump_configs, epics_root=args.epics_root,
+        dump_configs=args.dump_configs, server_port=args.server_port,
         apply_dev_configs=args.apply_dev_cfg
     )
 
