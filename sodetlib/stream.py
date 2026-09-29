@@ -228,11 +228,13 @@ def stream_g3_on(S, make_freq_mask=False, emulator=False, tag=None,
         reg.source_enable.set(1)
         S.set_stream_enable(1)
 
-    reg.open_g3stream.set(1)
+    # trigger the g3 streamer to start a new session
+    # wrapper ensure status frame is properly formed
+    reg.start_g3stream.set(1)
 
     # Sometimes it takes a bit for data to propogate through to the
-    # streamer
-    for _ in range(10):
+    # streamer. Wait up to 30s
+    for _ in range(60):
         sess_id = reg.g3_session_id.get()
         if sess_id != 0:
             break

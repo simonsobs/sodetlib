@@ -10,7 +10,7 @@ def resonator_fitting(S,tunefile):
 	Automated fitting of resonator parameters from tunning files
 	----------
 	tunefile : str array
-		Full directories of tunning files. Can be one file or an array of multiple files.  		  
+		Full directories of tunning files. Can be one file or an array of multiple files.
 	Returns
 	-------
 	df_param : dataframe
@@ -19,7 +19,7 @@ def resonator_fitting(S,tunefile):
 	if np.array([tunefile]).size==1:
 		df_param=one_resonator_fitting(tunefile)
 	elif np.array([tunefile]).size>1:
-		df_param=pd.DataFrame( {'time':[],'resonator_index':[], 'f0':[], 'Qi':[], 
+		df_param=pd.DataFrame( {'time':[],'resonator_index':[], 'f0':[], 'Qi':[],
                 'Qc':[],'Q':[],'br': [],'depth':[]})
 		for onefile in list(tunefile):
 			f=one_resonator_fitting(onefile)
@@ -32,13 +32,13 @@ def one_resonator_fitting(tunefile):
 	Automated fitting of resonator parameters from one tunning file.
 	----------
 	tunefile : str
-		Full directories of one tunning file. 		  
+		Full directories of one tunning file.
 	Returns
 	-------
 	dfres : dataframe
 		a pandas dataframe consisting of columns:ctime, resonator_index, f0, Qi, Qc, Q, br, depth.
-	"""    
-	dres = {'time':[],'resonator_index':[], 'f0':[], 'Qi':[], 
+	"""
+	dres = {'time':[],'resonator_index':[], 'f0':[], 'Qi':[],
                 'Qc':[],'Q':[],'br': [],'depth':[]}
 	dfres =pd.DataFrame(dres)
 	data=np.load(tunefile,allow_pickle=True).item()
@@ -59,31 +59,31 @@ def one_resonator_fitting(tunefile):
 	            time=data[band]['find_freq']['timestamp'][0]
 	            s21_mag=np.abs(result.best_fit.real+1j*result.best_fit.imag)
 	            depth = max(s21_mag)-min(s21_mag)
-	            dfres = dfres.append({'time':time,'resonator_index': int(res_index), 'f0': f0, 'Qi': Qi, 
+	            dfres = dfres.append({'time':time,'resonator_index': int(res_index), 'f0': f0, 'Qi': Qi,
 	                'Qc': Qc, 'Q': Q, 'br':br, 'depth':depth}, ignore_index=True)
 	return dfres
-		
-if __name__=='__main__':    
+
+if __name__=='__main__':
 	parser = argparse.ArgumentParser()
 
 	# Arguments that are needed to create Pysmurf object
 	parser.add_argument('--setup', action='store_true')
 	parser.add_argument('--config-file', required=True)
-	parser.add_argument('--epics-root', default='smurf_server_s2')
+	parser.add_argument('--server-port', default=9006)  # slot 2
 
 	# Custom arguments for this script
 
-	parser.add_argument('--tunefile', required=True, 
+	parser.add_argument('--tunefile', required=True,
 		help='Tune file that you want to load for this analysis.')
 
 	# Parse command line arguments
 	args = parser.parse_args()
 
 	S = pysmurf.client.SmurfControl(
-			epics_root = args.epics_root,
+			server_port = args.server_port,
 			cfg_file = args.config_file,
 			setup = args.setup, make_logfile=False,
 	)
-	
+
 	#Put your script calls here
 	resonator_fitting(S,tunefile = args.tunefile)
