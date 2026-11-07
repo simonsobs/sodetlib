@@ -28,11 +28,11 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pandas",
-    "pysmurf-slac",
+    "pysmurf-slac>=11.4",
     "PyYAML",
     "scipy",
     "tqdm",
-    "zmq",
+    "pyzmq",
     "sotodlib",
 ]
 

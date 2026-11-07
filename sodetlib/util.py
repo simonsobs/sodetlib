@@ -665,8 +665,6 @@ def set_current_mode(S, bgs, mode, const_current=True):
                 new_dac_volt_arr[pos_idx] *= S.high_low_current_ratio
                 new_dac_volt_arr[neg_idx] *= S.high_low_current_ratio
 
-    relay_data = cmd_make(0, S.C.relay_address, new_relay)
-
     # Sets DAC data values, clipping the data array to make sure they contain
     # the correct no. of bits
     dac_data = (new_dac_volt_arr / S._rtm_slow_dac_bit_to_volt).astype(int)

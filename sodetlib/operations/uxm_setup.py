@@ -185,8 +185,7 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3, op
 
     exp = cfg.dev.exp
 
-    if opt_args is None:
-        opt_args = {}
+    opt_args = dict(opt_args) if opt_args else {}
 
     # Determine cryocard rev
     major, minor, patch = S.C.get_fw_version()
@@ -278,8 +277,8 @@ def setup_amps(S, cfg, update_cfg=True, enable_300K_LNA=True, max_attempts=3, op
                 S.log(f"{amp} current not within tolerance, scanning for correct gate voltage")
                 if "vg_min" not in amp_opts:
                     amp_opts["vg_min"] = exp[f'amp_{amp}_gate_volt_min']
-                if "vg_max" not in opt_args:
-                    amp_opts["vg_max"] = exp[f'amp_{amp}_gate_volt_max'],
+                if "vg_max" not in amp_opts:
+                    amp_opts["vg_max"] = exp[f'amp_{amp}_gate_volt_max']
                 # If optimal value was found previously, use it first.
                 init_gate_volt = exp[f'amp_{amp}_gate_volt']
                 if init_gate_volt is None:

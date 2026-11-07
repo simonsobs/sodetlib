@@ -5,9 +5,9 @@ scipy
 matplotlib
 lmfit
 pandas
-zmq
+pyzmq
 sotodlib
-pysmurf-slac
+pysmurf-slac>=11.4
 
 # scripts
 ipython
