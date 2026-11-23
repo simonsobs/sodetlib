@@ -602,8 +602,8 @@ def set_current_mode(S, bgs, mode, const_current=True):
     """
     Sets one or more bias lines to high current mode. If const_current is True,
     will also update the DC bias voltages to try and preserve current based on
-    the set high_low_current_ratio. We need this function to replace the
-    existing pysmurf function so we can set both PV's in a single epics call,
+    the set high_low_current_ratio. This function replaces the existing pysmurf
+    function so we can control the timing of the registers that are set,
     minimizing heating on the cryostat.
 
     This function will attempt to check the existing rogue relay state to

@@ -89,8 +89,8 @@ def _server_side_effect(failing_slots, exc_type=TimeoutError):
     Emulated failure modes:
       - TimeoutError: server never became reachable within the timeout
         (default)
-      - Any other exc_type: unexpected error during the EPICS check
-        (e.g. a RuntimeError from the underlying caget call)
+      - Any other exc_type: unexpected error (e.g. a RuntimeError from
+        the underlying caget call)
     """
     def side_effect(port, retry=False, timeout=180):
         slot = (int(port) - 9000) // 3
@@ -98,7 +98,7 @@ def _server_side_effect(failing_slots, exc_type=TimeoutError):
             if exc_type is TimeoutError:
                 raise TimeoutError(
                     f"Timed out after {timeout}s waiting for server "
-                    f"connection to {epics_server}"
+                    f"connection on port {port}"
                 )
             raise exc_type(f"Server connection error for slot {slot}")
         return True
