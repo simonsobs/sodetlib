@@ -15,7 +15,6 @@ from sotodlib.core import AxisManager
 
 if not os.environ.get('NO_PYSMURF', False):
     try:
-        import epics
         import pysmurf
         from pysmurf.client.command.cryo_card import cmd_make
     except Exception:
@@ -208,8 +207,8 @@ def get_metadata(S, cfg):
         'iv_file': cfg.dev.exp.get('iv_file'),
         'v_bias': S.get_tes_bias_bipolar_array(),
         'pysmurf_client_version': pysmurf.__version__,
-        'rogue_version': S._caget(f'{S.epics_root}:AMCc:RogueVersion'),
-        'smurf_core_version': S._caget(f'{S.epics_root}:AMCc:SmurfApplication:SmurfVersion'),
+        'rogue_version': S._caget('AMCc.RogueVersion'),
+        'smurf_core_version': S._caget('AMCc.SmurfApplication.SmurfVersion'),
         'sodetlib_version': sodetlib.__version__,
         'fpga_git_hash': S.get_fpga_git_hash_short(),
         'cryocard_fw_version': S.C.get_fw_version(),
@@ -541,7 +540,7 @@ def get_r2(sig, sig_hat):
 class _Register:
     def __init__(self, S, addr):
         self.S = S
-        self.addr = S.epics_root + ":" + addr
+        self.addr = addr
 
     def get(self, **kw):
         return self.S._caget(self.addr, **kw)
@@ -555,17 +554,18 @@ class Registers:
     they are not in the standard rogue tree, or settable by existing pysmurf
     get/set functions
     """
-    _root = 'AMCc:'
-    _processor = _root + "SmurfProcessor:"
-    _sostream = _processor + "SOStream:"
-    _sofilewriter = _sostream + 'SOFileWriter:'
-    _source_root = _root + 'StreamDataSource:'
+    _root = 'AMCc.'
+    _processor = _root + "SmurfProcessor."
+    _sostream = _processor + "SOStream."
+    _sofilewriter = _sostream + 'SOFileWriter.'
+    _source_root = _root + 'StreamDataSource.'
 
     _registers = {
         'pysmurf_action': _sostream + 'pysmurf_action',
         'pysmurf_action_timestamp': _sostream + "pysmurf_action_timestamp",
         'stream_tag': _sostream + "stream_tag",
         'open_g3stream': _sostream + "open_g3stream",
+        'start_g3stream': _sostream + "startG3Stream",
         'g3_session_id': _sofilewriter + "session_id",
         'g3_filepath': _sofilewriter + "filepath",
         'debug_data': _sostream + "DebugData",
@@ -602,8 +602,8 @@ def set_current_mode(S, bgs, mode, const_current=True):
     """
     Sets one or more bias lines to high current mode. If const_current is True,
     will also update the DC bias voltages to try and preserve current based on
-    the set high_low_current_ratio. We need this function to replace the
-    existing pysmurf function so we can set both PV's in a single epics call,
+    the set high_low_current_ratio. This function replaces the existing pysmurf
+    function so we can control the timing of the registers that are set,
     minimizing heating on the cryostat.
 
     This function will attempt to check the existing rogue relay state to
@@ -665,33 +665,25 @@ def set_current_mode(S, bgs, mode, const_current=True):
                 new_dac_volt_arr[pos_idx] *= S.high_low_current_ratio
                 new_dac_volt_arr[neg_idx] *= S.high_low_current_ratio
 
-    relay_data = cmd_make(0, S.C.relay_address, new_relay)
-
     # Sets DAC data values, clipping the data array to make sure they contain
     # the correct no. of bits
     dac_data = (new_dac_volt_arr / S._rtm_slow_dac_bit_to_volt).astype(int)
     nbits = S._rtm_slow_dac_nbits
     dac_data = np.clip(dac_data, -2**(nbits-1), 2**(nbits-1)-1)
 
-    dac_data_reg = S.rtm_spi_max_root + S._rtm_slow_dac_data_array_reg
-
-
-    if isinstance(S.C.writepv, str):
-        cryocard_writepv = S.C.writepv
-    else:
-        cryocard_writepv = S.C.writepv.pvname
+    dac_data_reg = S.rtm_spi_max_root + S._rtm_slow_dac_data_reg
 
     # It takes longer for DC voltages to settle than it does to toggle the
     # high-current relay, so we can set them at the same time when switchign
     # to hcm, but when switching to lcm we need a sleep statement to prevent
     # dets from latching.
     if mode:
-        epics.caput_many([cryocard_writepv, dac_data_reg], [relay_data, dac_data],
-                         wait=True)
+        S._caput(dac_data_reg, dac_data, wait_done=False)
+        S.C.do_write(S.C.relay_address, new_relay)
     else:
         S._caput(dac_data_reg, dac_data)
         time.sleep(0.04)
-        S._caput(cryocard_writepv, relay_data)
+        S.C.do_write(S.C.relay_address, new_relay)
 
     time.sleep(0.1)  # Just to be safe
 

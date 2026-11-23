@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: set up Python 3.8
+    - name: set up Python 3.12
       uses: actions/setup-python@v6
       with:
-        python-version: 3.8
+        python-version: 3.12
 
     - name: clone sodetlib
       uses: actions/checkout@v6

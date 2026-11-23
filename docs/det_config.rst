@@ -32,7 +32,7 @@ Details can be seen in the `DetConfig parser`_ and `API`_ sections.
 
 Once the configuration has been loaded, the ``get_smurf_control`` function can
 be used to create a pysmurf-instance based on the configuration info.  The
-DetConfig object will automaticlly determine the epics root and set the
+DetConfig object will automatically determine the server port and set the
 publisher ID based on the crate and slot number.  If ``dump_configs`` is set to
 ``True``, all configuration files will be copied to the pysmurf output
 directory. For example::
